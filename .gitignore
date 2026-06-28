@@ -1,0 +1,15 @@
+build/
+
+external/rc-switch/.git
+
+*.o
+*.a
+*.so
+*.exe
+
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+
+*.log
