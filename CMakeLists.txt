@@ -13,3 +13,4 @@ add_executable(tower
 )
 
 target_include_directories(tower PRIVATE include)
+target_link_libraries(tower PRIVATE gpiod)

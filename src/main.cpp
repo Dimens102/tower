@@ -1,7 +1,8 @@
 #include <iostream>
-
 #include "version.h"
+
 #include "core/command.h"
+#include "core/gpio.h"
 
 void print_usage()
 {
@@ -32,9 +33,23 @@ int main(int argc, char* argv[])
             break;
 
         case Command::Receive:
-            std::cout << "Tower receive mode\n";
-            break;
+            {
+                GPIO gpio;
 
+                if (!gpio.openChip("/dev/gpiochip0"))
+                {
+                    return 1;
+                }
+
+                if (!gpio.requestInput(23, GPIOEdge::None))
+                {
+                    return 1;
+                }
+
+                bool value = gpio.read(23);
+                std::cout << "GPIO23 value: " << value << "\n";
+                break;
+            }
         case Command::Send:
             std::cout << "Tower send mode\n";
             break;
