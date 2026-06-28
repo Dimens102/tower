@@ -9,6 +9,7 @@ add_executable(tower
     src/main.cpp
     src/core/gpio.cpp
     src/core/command.cpp
+    src/core/rf_receiver.cpp
 )
 
 target_include_directories(tower PRIVATE include)
