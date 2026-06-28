@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(tower
     src/main.cpp
+    src/core/gpio.cpp
     src/core/command.cpp
 )
 
