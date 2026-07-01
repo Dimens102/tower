@@ -206,3 +206,60 @@ I²C
 ↓
 
 Automation
+
+# Current Development Rules
+
+- main.cpp is a dispatcher only.
+- Core contains only shared infrastructure.
+- Every subsystem gets its own directory.
+- Third-party libraries stay hidden behind our own interfaces.
+- Build after every meaningful change.
+- Every commit must compile.
+- Freeze completed subsystems unless fixing bugs.
+- Store persistent data under data/.
+- Prefer device-oriented commands over file-oriented commands.
+
+---
+
+# Current Milestone
+
+☑ GPIO v1 complete
+
+Next:
+
+☐ IR framework
+☐ IR receiver
+☐ IR transmitter
+☐ Learn first remote
+☐ IR database load()
+
+---
+
+# Ideas Parking Lot
+
+## Architecture
+- Hierarchical CLI:
+  - tower ir learn
+  - tower ir send
+  - tower rf learn
+  - tower weather read
+
+## Radio
+- CC1101 support
+- Receiver comparison tool
+- Radio diagnostics
+
+## Bluetooth
+- HID media remote
+- BLE support
+
+## User Interface
+- Web dashboard
+- REST API
+
+## Development
+- Unit tests
+- Plugin architecture
+- Driver manager
+- Configuration editor
+- tower status command

@@ -3,6 +3,7 @@
 
 #include "core/command.h"
 #include "core/gpio.h"
+#include "commands/command_handlers.h"
 
 void print_usage()
 {
@@ -29,78 +30,22 @@ int main(int argc, char* argv[])
     switch (parseCommand(argv[1]))
     {
         case Command::Version:
-            std::cout << "Tower " << TOWER_VERSION << "\n";
-            break;
+            return runVersionCommand();
 
         case Command::Receive:
-        {
-            GPIO gpio;
+            return runReceiveCommand();
 
-            if (!gpio.openChip("/dev/gpiochip0"))
-            {
-                return 1;
-            }
-
-            if (!gpio.requestInput(23, GPIOEdge::Both))
-            {
-                return 1;
-            }
-
-            std::cout << "Waiting for GPIO23 edges. Press Ctrl+C to stop.\n";
-
-            int count = 0;
-
-            while (true)
-            {
-                GPIOEvent event;
-
-                if (gpio.waitForEdge(23, event, 1000))
-                {
-                    ++count;
-                    std::cout << "Edge " << count
-                              << " line=" << event.line
-                              << " edge=" << (event.edge == GPIOEdge::Rising ? "rising" : "falling")
-                              << " timestamp_ns=" << event.timestampNs
-                              << "\n";
-                }
-            }
-
-            break;
-        }
         case Command::Send:
-            std::cout << "Tower send mode\n";
-            break;
+            return runSendCommand();
 
         case Command::Learn:
-            std::cout << "Tower learn mode\n";
-            break;
+            return runLearnCommand();
 
         case Command::Replay:
-            std::cout << "Tower replay mode\n";
-            break;
+            return runReplayCommand();
 
         case Command::Config:
-        {
-            GPIO gpio;
-
-            if (!gpio.openChip("/dev/gpiochip0"))
-            {
-                return 1;
-            }
-
-            if (!gpio.requestOutput(24, false))
-            {
-                return 1;
-            }
-
-            std::cout << "GPIO24 ON\n";
-            gpio.write(24, true);
-
-            std::cout << "GPIO24 OFF\n";
-            gpio.write(24, false);
-
-            break;
-        }
+            return runConfigCommand();
 
         default:
             std::cerr << "Unknown command\n\n";
