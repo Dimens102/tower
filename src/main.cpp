@@ -33,23 +33,40 @@ int main(int argc, char* argv[])
             break;
 
         case Command::Receive:
+        {
+            GPIO gpio;
+
+            if (!gpio.openChip("/dev/gpiochip0"))
             {
-                GPIO gpio;
-
-                if (!gpio.openChip("/dev/gpiochip0"))
-                {
-                    return 1;
-                }
-
-                if (!gpio.requestInput(23, GPIOEdge::None))
-                {
-                    return 1;
-                }
-
-                bool value = gpio.read(23);
-                std::cout << "GPIO23 value: " << value << "\n";
-                break;
+                return 1;
             }
+
+            if (!gpio.requestInput(23, GPIOEdge::Both))
+            {
+                return 1;
+            }
+
+            std::cout << "Waiting for GPIO23 edges. Press Ctrl+C to stop.\n";
+
+            int count = 0;
+
+            while (true)
+            {
+                GPIOEvent event;
+
+                if (gpio.waitForEdge(23, event, 1000))
+                {
+                    ++count;
+                    std::cout << "Edge " << count
+                              << " line=" << event.line
+                              << " edge=" << (event.edge == GPIOEdge::Rising ? "rising" : "falling")
+                              << " timestamp_ns=" << event.timestampNs
+                              << "\n";
+                }
+            }
+
+            break;
+        }
         case Command::Send:
             std::cout << "Tower send mode\n";
             break;
@@ -63,8 +80,27 @@ int main(int argc, char* argv[])
             break;
 
         case Command::Config:
-            std::cout << "Tower config mode\n";
+        {
+            GPIO gpio;
+
+            if (!gpio.openChip("/dev/gpiochip0"))
+            {
+                return 1;
+            }
+
+            if (!gpio.requestOutput(24, false))
+            {
+                return 1;
+            }
+
+            std::cout << "GPIO24 ON\n";
+            gpio.write(24, true);
+
+            std::cout << "GPIO24 OFF\n";
+            gpio.write(24, false);
+
             break;
+        }
 
         default:
             std::cerr << "Unknown command\n\n";
