@@ -39,10 +39,9 @@ int main(int argc, char* argv[])
             return runSendCommand(argc, argv);
 
         case Command::Learn:
-            return runLearnCommand();
-
+            return runLearnCommand(argc, argv);
         case Command::Replay:
-            return runReplayCommand();
+            return runReplayCommand(argc, argv);
 
         case Command::Config:
             return runConfigCommand();

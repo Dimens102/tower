@@ -17,6 +17,8 @@ add_executable(tower
     src/commands/receive.cpp
     src/commands/config.cpp
     src/ir/ir_database.cpp
+    src/ir/ir_transmitter_database.cpp
+    src/ir/ir_sender.cpp
     src/ir/ir_receiver.cpp
     src/rf/rf_database.cpp
     src/rf/rf_sender.cpp

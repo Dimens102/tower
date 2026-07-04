@@ -1,0 +1,3 @@
+device=Logitech-Z5500
+command=0x810
+protocol=nec

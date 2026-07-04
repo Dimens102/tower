@@ -1,0 +1,6 @@
+name=Tower-IR-TX-001
+device_name=Left IR Blaster
+hardware=ID1
+gpio=22
+status=active
+lirc_device=/dev/lirc0

@@ -3,6 +3,6 @@
 int runVersionCommand();
 int runReceiveCommand();
 int runSendCommand(int argc, char* argv[]);
-int runLearnCommand();
-int runReplayCommand();
+int runLearnCommand(int argc, char* argv[]);
+int runReplayCommand(int argc, char* argv[]);
 int runConfigCommand();
