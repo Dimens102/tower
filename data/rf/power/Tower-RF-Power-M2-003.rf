@@ -1,0 +1,10 @@
+name=Tower-RF-Power-M2-003
+protocol=kaku_ac
+description=Modern KlikAanKlikUit self-learning receiver
+transmitter_id=0x123458
+unit=1
+gpio=24
+status=paired
+pulse=260
+repeat=16
+device_name=Z5500 power supply

@@ -1,0 +1,11 @@
+name=Tower-RF-Power-M1-001
+protocol=kaku_old
+description=Legacy KlikAanKlikUit fixed code
+house=O
+unit=2
+gpio=24
+pulse=350
+on=1380373
+off=1380372
+status=paired
+device_name=Corner mood Saltlight

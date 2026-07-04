@@ -18,6 +18,8 @@ add_executable(tower
     src/commands/config.cpp
     src/ir/ir_database.cpp
     src/ir/ir_receiver.cpp
+    src/rf/rf_database.cpp
+    src/rf/rf_sender.cpp
 )
 
 target_include_directories(tower PRIVATE include)

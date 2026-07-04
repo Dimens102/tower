@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
             return runReceiveCommand();
 
         case Command::Send:
-            return runSendCommand();
+            return runSendCommand(argc, argv);
 
         case Command::Learn:
             return runLearnCommand();

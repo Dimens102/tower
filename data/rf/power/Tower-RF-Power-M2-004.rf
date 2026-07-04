@@ -1,0 +1,8 @@
+name=Tower-RF-Power-M2-004
+protocol=kaku_ac
+description=Modern KlikAanKlikUit self-learning receiver
+transmitter_id=0x123459
+unit=1
+gpio=24
+status=unpaired
+device_name=Spare modern KAKU receiver
