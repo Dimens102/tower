@@ -6,6 +6,7 @@ enum class Command
     Receive,
     Send,
     Learn,
+    LearnKernel,
     Replay,
     Config,
     Unknown

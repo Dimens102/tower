@@ -10,6 +10,7 @@ Command parseCommand(const char* text)
     if (std::strcmp(text, "receive") == 0) return Command::Receive;
     if (std::strcmp(text, "send") == 0) return Command::Send;
     if (std::strcmp(text, "learn") == 0) return Command::Learn;
+    if (std::strcmp(text, "learn-kernel") == 0) return Command::LearnKernel;
     if (std::strcmp(text, "replay") == 0) return Command::Replay;
     if (std::strcmp(text, "config") == 0) return Command::Config;
 

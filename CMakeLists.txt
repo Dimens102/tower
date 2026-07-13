@@ -13,6 +13,7 @@ add_executable(tower
     src/commands/version.cpp
     src/commands/send.cpp
     src/commands/learn.cpp
+    src/commands/learn_kernel.cpp
     src/commands/replay.cpp
     src/commands/receive.cpp
     src/commands/config.cpp
@@ -20,6 +21,7 @@ add_executable(tower
     src/ir/ir_transmitter_database.cpp
     src/ir/ir_sender.cpp
     src/ir/ir_receiver.cpp
+    src/ir/ir_kernel_receiver.cpp
     src/rf/rf_database.cpp
     src/rf/rf_sender.cpp
 )

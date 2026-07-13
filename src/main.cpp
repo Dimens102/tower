@@ -15,6 +15,7 @@ void print_usage()
         << "  tower receive\n"
         << "  tower send\n"
         << "  tower learn\n"
+        << "  tower learn-kernel\n"
         << "  tower replay\n"
         << "  tower config\n";
 }
@@ -42,6 +43,9 @@ int main(int argc, char* argv[])
             return runLearnCommand(argc, argv);
         case Command::Replay:
             return runReplayCommand(argc, argv);
+
+        case Command::LearnKernel:
+            return runLearnKernelCommand();
 
         case Command::Config:
             return runConfigCommand();
