@@ -7,4 +7,4 @@ gpio=24
 status=paired
 pulse=260
 repeat=16
-device_name=Z5500 power supply
+device_name=Logitech Z5500
