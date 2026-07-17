@@ -1,41 +1,51 @@
 #include "commands/command_handlers.h"
 
 #include <iostream>
+#include <string>
 
 #include "ir/ir_code.h"
 #include "ir/ir_database.h"
 #include "ir/ir_receiver.h"
 
-int runLearnCommand()
+int runLearnCommand(int argc, char* argv[])
 {
-    IRReceiver receiver;
+     if (argc < 4)
+     {
+          std::cerr << "Usage: tower learn <device-name> <command-name>\n";
+          return 1;
+     }
 
-    if (!receiver.initialize(23))
-    {
-        return 1;
-    }
+     std::string deviceName = argv[2];
+     std::string commandName = argv[3];
 
-    IRCode code;
+     IRReceiver receiver;
 
-    if (!receiver.receive(code))
-    {
-        receiver.shutdown();
-        return 1;
-    }
+     if (!receiver.initialize(18))
+     {
+          return 1;
+     }
 
-    receiver.shutdown();
+     IRCode code;
 
-    code.device = "test_device";
-    code.command = "test_command";
+     if (!receiver.receive(code))
+     {
+          receiver.shutdown();
+          return 1;
+     }
 
-    IRDatabase database;
+     receiver.shutdown();
 
-    if (!database.save(code.device, code.command, code))
-    {
-        return 1;
-    }
+     code.device = deviceName;
+     code.command = commandName;
 
-    std::cout << "IR code captured and saved.\n";
+     IRDatabase database;
 
-    return 0;
+     if (!database.save(code.device, code.command, code))
+     {
+          return 1;
+     }
+
+     std::cout << "IR code captured and saved.\n";
+
+     return 0;
 }

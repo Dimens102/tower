@@ -1,4 +1,5 @@
 #include "ir/ir_receiver.h"
+#include "ir/ir_constants.h"
 
 #include <iostream>
 
@@ -24,25 +25,70 @@ bool IRReceiver::initialize(int gpio)
 
 bool IRReceiver::receive(IRCode& code)
 {
-    GPIOEvent event;
+    std::cout << "Waiting for IR transmission...\n";
 
-    std::cout << "Waiting for first IR pulse...\n";
-
-    if (!gpio.waitForEdge(gpioPin, event, 5000))
+    while (true)
     {
-        std::cout << "Timeout waiting for IR signal.\n";
-        return false;
+        GPIOEvent firstEvent;
+        GPIOEvent secondEvent;
+
+        if (!gpio.waitForEdge(gpioPin, firstEvent, 5000))
+        {
+            std::cout << "Timeout waiting for IR signal.\n";
+            return false;
+        }
+
+        if (!gpio.waitForEdge(
+                gpioPin,
+                secondEvent,
+                IR_START_EDGE_TIMEOUT_MS))
+        {
+            std::cout << "Ignored isolated noise edge.\n";
+            continue;
+        }
+
+        code.protocol = "raw";
+        code.pulses.clear();
+
+        unsigned int startPulse =
+                static_cast<unsigned int>(
+                        (secondEvent.timestampNs - firstEvent.timestampNs) / 1000);
+
+        code.pulses.push_back(startPulse);
+
+        unsigned long long previousTimestamp = secondEvent.timestampNs;
+
+        while (code.pulses.size() < IR_MAX_PULSES)
+        {
+            GPIOEvent nextEvent;
+
+            if (!gpio.waitForEdge(
+                    gpioPin,
+                    nextEvent,
+                    IR_EDGE_TIMEOUT_MS))
+            {
+                break;
+            }
+
+            code.pulses.push_back(
+                static_cast<unsigned int>(
+                    (nextEvent.timestampNs - previousTimestamp) / 1000));
+
+            previousTimestamp = nextEvent.timestampNs;
+        }
+
+        std::cout << "Captured "
+                  << code.pulses.size()
+                  << " pulse lengths.\n";
+
+        if (code.pulses.size() < IR_MIN_PULSES)
+        {
+            std::cout << "Rejected short/noisy IR capture.\n";
+            continue;
+        }
+
+        return true;
     }
-
-    std::cout << "Received first pulse on GPIO "
-              << event.line
-              << " timestamp="
-              << event.timestampNs
-              << "\n";
-
-    code.protocol = "raw";
-
-    return true;
 }
 
 void IRReceiver::shutdown()
