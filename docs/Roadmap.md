@@ -1,14 +1,14 @@
 # Tower Roadmap
 
-> Last updated: 2026-07-01
+> Last updated: 2026-07-17
 
 ---
 
 # Vision
 
-Tower is a modular home automation platform.
+Tower is a modular, database-driven home automation platform.
 
-Tower should become the central system that controls, monitors and automates devices using multiple hardware interfaces while remaining hardware independent through clean driver abstractions.
+Tower should become the central system that controls, monitors, and automates devices through multiple hardware interfaces while remaining hardware-independent through clean driver abstractions.
 
 The project is built around small reusable modules instead of one large application.
 
@@ -16,119 +16,163 @@ The project is built around small reusable modules instead of one large applicat
 
 # Foundation
 
-Status: 80%
+Status: 85%
 
-[x] Git repository
-[x] CMake build system
-[x] Versioning
-[x] Command parser
-[x] GPIO abstraction
-[x] GPIO input
-[x] GPIO edge events
-[ ] GPIO output
-[ ] Driver Manager
-[ ] Logging system
-[ ] Configuration system
+[x] Git repository  
+[x] CMake build system  
+[x] Versioning  
+[x] Command parser  
+[x] GPIO abstraction  
+[x] GPIO input  
+[x] GPIO edge events  
+[ ] GPIO output  
+[ ] Driver Manager  
+[ ] Logging system  
+[ ] Configuration system  
+[ ] Tower daemon/service  
+[ ] Persistent schema/version handling  
 
 ---
 
 # Drivers
 
-Status: 15%
+Status: 25%
 
-GPIO
-------
-[x] Input
-[x] Edge detection
-[ ] Output
-[ ] PWM
+## GPIO
 
-SPI
------
-[ ] Generic SPI driver
+[x] Input  
+[x] Edge detection  
+[ ] Output  
+[ ] PWM  
 
-I²C
------
-[ ] Generic I²C driver
+## SPI
 
-UART
-------
-[ ] Generic UART driver
+[ ] Generic SPI driver  
 
-Bluetooth
------------
-[ ] Bluetooth manager
-[ ] HID keyboard
-[ ] HID media remote
+## I²C
+
+[ ] Generic I²C driver  
+
+## UART
+
+[ ] Generic UART driver  
+
+## Bluetooth
+
+[ ] Bluetooth manager  
+[ ] HID keyboard  
+[ ] HID media remote  
 
 ---
 
 # Radio
 
-Status: 5%
+Status: 45%
 
-433 MHz
----------
-[x] Basic receiver
-[ ] Pulse capture
-[ ] Pulse timing
-[ ] Noise filtering
-[ ] Packet detection
-[ ] Protocol detection
+## 433 MHz RF
 
-868 MHz
----------
-[ ] CC1101 driver
+[x] Basic receiver  
+[x] RF transmission  
+[x] Stored RF device definitions  
+[ ] Pulse capture  
+[ ] Pulse timing analysis  
+[ ] Noise filtering  
+[ ] Packet detection  
+[ ] Protocol detection  
+[ ] Verify `Tower-RF-Power-M2-004` after pairing  
 
-IR
-----
-[ ] Receiver
-[ ] Transmitter
-[ ] Learning
-[ ] Database
+## 868 MHz
+
+[ ] CC1101 driver  
+
+## IR
+
+[x] Receiver framework  
+[x] Raw IR capture  
+[x] Start-of-frame filtering  
+[x] Pulse validation and timeout handling  
+[x] IR replay  
+[x] Multiple LIRC transmitters  
+[x] Kernel-decoded IR learning  
+[x] Raw IR learning  
+[x] IR database save path  
+[x] Verified Denon recordings  
+[x] Re-learned Logitech Z5500 power command  
+[ ] Interactive learning wizard  
+[ ] Protocol-aware storage with raw fallback  
+[ ] IR database load/list/remove commands  
+[ ] Carrier-frequency handling where supported  
 
 ---
 
 # Protocols
 
-Status: 0%
+Status: 20%
 
-RF
+## RF
 
-[ ] PT2262
-[ ] EV1527
-[ ] HT6P20
-[ ] Raw Pulse
+[ ] PT2262  
+[ ] EV1527  
+[ ] HT6P20  
+[x] Stored family-specific timing values  
+[ ] Raw pulse format  
+[ ] Protocol verification tooling  
 
-IR
+## IR
 
-[ ] NEC
-[ ] RC5
-[ ] RC6
-[ ] Sony
-[ ] Panasonic
+[x] Kernel-decoded NEC learning path  
+[x] Raw pulse fallback  
+[ ] NEC userspace decoder  
+[ ] RC5  
+[ ] RC6  
+[ ] Sony  
+[ ] Panasonic  
+[ ] Protocol/scancode normalization  
+
+---
+
+# Device Database
+
+Status: 20%
+
+[x] Persistent RF device files  
+[x] Persistent IR command files  
+[x] Friendly device metadata in RF records  
+[x] IR command save path  
+[ ] Stable logical device IDs  
+[ ] Device type  
+[ ] Manufacturer  
+[ ] Model  
+[ ] Location  
+[ ] Tags and descriptions  
+[ ] Command IDs separate from filenames  
+[ ] Transport mappings  
+[ ] Database validation  
+[ ] Database migrations/versioning  
+[ ] Device replacement without editing automations  
 
 ---
 
 # Device Library
 
-Status: 0%
+Status: 15%
 
-Current planned devices
+## Current devices
 
-[ ] Denon AVR
-[ ] Logitech Z5500
-[ ] Eurom Arico
-[ ] KPN TV
-[ ] Dell 1610HD
+[x] Denon AVR IR recordings  
+[x] Logitech Z5500 IR power recording  
+[x] Modern KAKU RF power devices  
+[ ] Eurom Arico  
+[ ] KPN TV  
+[ ] Dell 1610HD  
 
-Future
+## Future
 
-[ ] Weather stations
-[ ] PIR sensors
-[ ] Temperature sensors
-[ ] Relays
-[ ] Light switches
+[ ] Weather stations  
+[ ] PIR sensors  
+[ ] Temperature sensors  
+[ ] Relays  
+[ ] Light switches  
 
 ---
 
@@ -136,15 +180,29 @@ Future
 
 Status: 0%
 
-[ ] Scheduler
+[ ] Tower daemon/service  
+[ ] Scheduler  
+[ ] Event system  
+[ ] Rules engine  
+[ ] Conditions  
+[ ] Actions  
+[ ] Scenes  
+[ ] Delays and retries  
+[ ] Execution logging  
+[ ] Notifications  
+[ ] Device state model  
 
-[ ] Event system
+Automations must use logical identities such as:
 
-[ ] Rules engine
+```text
+LivingRoomReceiver.Power
+```
 
-[ ] Scenes
+They must not directly execute files such as:
 
-[ ] Notifications
+```text
+data/ir/Denon/Power.ir
+```
 
 ---
 
@@ -152,114 +210,121 @@ Status: 0%
 
 Status: 5%
 
-[x] Command Line
+[x] Command Line  
+[ ] REST API  
+[ ] Web Interface  
+[ ] Mobile Interface  
+[ ] PC Integration  
+[ ] Authentication and user accounts  
 
-[ ] REST API
-
-[ ] Web Interface
-
-[ ] Mobile Interface
+Interfaces should edit and invoke Tower objects. They must not contain scheduling, protocol, or hardware-access logic.
 
 ---
 
-# Long Term Vision
+# Future Transports
 
-Tower should eventually support:
-
-- GPIO
-- SPI
-- I²C
-- UART
-- IR
-- RF
-- Bluetooth
-- Camera
-- Audio
-- Ethernet
-- WiFi
-
-Every hardware interface should appear as a driver.
-
-Everything above the driver layer should be completely hardware independent.
+[ ] MQTT  
+[ ] Zigbee  
+[ ] HTTP devices  
+[ ] Serial devices  
+[ ] Direct GPIO devices  
+[ ] Bluetooth devices  
 
 ---
 
 # Current Milestone
 
-Build the hardware driver layer.
+Build the device-oriented IR learning flow.
 
 Current focus:
 
-GPIO
-↓
-
-IR
-
-↓
-
-RF
-
-↓
-
-I²C
-
-↓
-
-Automation
-
-# Current Development Rules
-
-- main.cpp is a dispatcher only.
-- Core contains only shared infrastructure.
-- Every subsystem gets its own directory.
-- Third-party libraries stay hidden behind our own interfaces.
-- Build after every meaningful change.
-- Every commit must compile.
-- Freeze completed subsystems unless fixing bugs.
-- Store persistent data under data/.
-- Prefer device-oriented commands over file-oriented commands.
+```text
+Define device database schema
+        |
+        v
+Define command and transport identities
+        |
+        v
+Build interactive IR learning wizard
+        |
+        v
+Store decoded protocol when reliable
+        |
+        v
+Store raw pulses as fallback
+```
 
 ---
 
-# Current Milestone
+# Current Development Rules
 
-☑ GPIO v1 complete
+- `main.cpp` is a dispatcher only.
+- Core contains only shared infrastructure.
+- Every subsystem gets its own directory.
+- Third-party libraries stay hidden behind Tower interfaces.
+- Build after every meaningful change.
+- Every commit must compile.
+- Commit only after a working milestone.
+- Freeze completed subsystems unless fixing bugs.
+- Store persistent data under `data/`.
+- Prefer device-oriented commands over file-oriented commands.
+- Keep protocol decoding, storage, and hardware access separate.
+- Record whether values are tested, inherited, or provisional.
+- Update documentation when an architectural decision changes.
 
-Next:
+---
 
-☐ IR framework
-☐ IR receiver
-☐ IR transmitter
-☐ Learn first remote
-☐ IR database load()
+# Completed Recent Milestones
+
+[x] Add IR replay with multiple LIRC transmitters  
+[x] Add kernel-decoded IR learning support  
+[x] Improve raw IR learning and pulse capture  
+[x] Add verified Denon and Logitech IR recordings  
+[x] Remove temporary IR test recording  
+[x] Update RF power device metadata  
 
 ---
 
 # Ideas Parking Lot
 
 ## Architecture
+
 - Hierarchical CLI:
-  - tower ir learn
-  - tower ir send
-  - tower rf learn
-  - tower weather read
+  - `tower ir learn`
+  - `tower ir send`
+  - `tower rf learn`
+  - `tower weather read`
+- Driver manager
+- Plugin architecture
+- Internal event bus
+- Database schema versioning
 
 ## Radio
+
 - CC1101 support
 - Receiver comparison tool
 - Radio diagnostics
+- Signal verification/replay comparison
 
 ## Bluetooth
+
 - HID media remote
 - BLE support
 
 ## User Interface
+
 - Web dashboard
 - REST API
+- Mobile application
+- Device and automation editors
 
 ## Development
+
 - Unit tests
-- Plugin architecture
-- Driver manager
+- Integration tests with captured signals
 - Configuration editor
-- tower status command
+- `tower status` command
+- `tower devices list`
+- `tower commands list`
+- Structured logging
+- Backup/export of the Tower database
