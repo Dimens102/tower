@@ -1,4 +1,0 @@
-device=test_device
-command=test_command
-protocol=raw
-pulses=
