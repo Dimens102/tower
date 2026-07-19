@@ -9,6 +9,7 @@ enum class Command
     LearnKernel,
     Replay,
     Config,
+    Device,
     Unknown
 };
 

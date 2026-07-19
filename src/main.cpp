@@ -1,11 +1,12 @@
-#include <iostream>
-#include "version.h"
 
+#include <iostream>
+#include "commands/command_handlers.h"
 #include "core/command.h"
 #include "core/gpio.h"
-#include "commands/command_handlers.h"
+#include "version.h"
 
 void print_usage()
+
 {
     std::cout
         << "Tower Home Automation Engine\n"
@@ -17,7 +18,8 @@ void print_usage()
         << "  tower learn\n"
         << "  tower learn-kernel\n"
         << "  tower replay\n"
-        << "  tower config\n";
+        << "  tower config\n"
+        << "  tower device\n";
 }
 
 int main(int argc, char* argv[])
@@ -49,6 +51,9 @@ int main(int argc, char* argv[])
 
         case Command::Config:
             return runConfigCommand();
+
+        case Command::Device:
+            return runDeviceCommand(argc, argv);
 
         default:
             std::cerr << "Unknown command\n\n";

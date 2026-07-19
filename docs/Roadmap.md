@@ -1,36 +1,35 @@
 # Tower Roadmap
 
-> Last updated: 2026-07-17
+> Last updated: 2026-07-19
 
 ---
 
 # Vision
 
 Tower is a modular, database-driven home automation platform.
-
 Tower should become the central system that controls, monitors, and automates devices through multiple hardware interfaces while remaining hardware-independent through clean driver abstractions.
-
 The project is built around small reusable modules instead of one large application.
 
 ---
 
 # Foundation
 
-Status: 85%
-
-[x] Git repository  
-[x] CMake build system  
-[x] Versioning  
-[x] Command parser  
-[x] GPIO abstraction  
-[x] GPIO input  
-[x] GPIO edge events  
-[ ] GPIO output  
-[ ] Driver Manager  
-[ ] Logging system  
-[ ] Configuration system  
-[ ] Tower daemon/service  
-[ ] Persistent schema/version handling  
+Status: 88%
+[x] Git repository
+[x] CMake build system
+[x] Versioning
+[x] Command parser
+[x] GPIO abstraction
+[x] GPIO input
+[x] GPIO edge events
+[x] Vendored JSON library
+[x] Modular device command handlers
+[ ] GPIO output
+[ ] Driver Manager
+[ ] Logging system
+[ ] Configuration system
+[ ] Tower daemon/service
+[ ] Persistent schema/version handling
 
 ---
 
@@ -40,28 +39,28 @@ Status: 25%
 
 ## GPIO
 
-[x] Input  
-[x] Edge detection  
-[ ] Output  
-[ ] PWM  
+[x] Input
+[x] Edge detection
+[ ] Output
+[ ] PWM
 
 ## SPI
 
-[ ] Generic SPI driver  
+[ ] Generic SPI driver
 
 ## I²C
 
-[ ] Generic I²C driver  
+[ ] Generic I²C driver
 
 ## UART
 
-[ ] Generic UART driver  
+[ ] Generic UART driver
 
 ## Bluetooth
 
-[ ] Bluetooth manager  
-[ ] HID keyboard  
-[ ] HID media remote  
+[ ] Bluetooth manager
+[ ] HID keyboard
+[ ] HID media remote
 
 ---
 
@@ -71,37 +70,37 @@ Status: 45%
 
 ## 433 MHz RF
 
-[x] Basic receiver  
-[x] RF transmission  
-[x] Stored RF device definitions  
-[ ] Pulse capture  
-[ ] Pulse timing analysis  
-[ ] Noise filtering  
-[ ] Packet detection  
-[ ] Protocol detection  
-[ ] Verify `Tower-RF-Power-M2-004` after pairing  
+[x] Basic receiver
+[x] RF transmission
+[x] Stored RF device definitions
+[ ] Pulse capture
+[ ] Pulse timing analysis
+[ ] Noise filtering
+[ ] Packet detection
+[ ] Protocol detection
+[ ] Verify `Tower-RF-Power-M2-004` after pairing
 
 ## 868 MHz
 
-[ ] CC1101 driver  
+[ ] CC1101 driver
 
 ## IR
 
-[x] Receiver framework  
-[x] Raw IR capture  
-[x] Start-of-frame filtering  
-[x] Pulse validation and timeout handling  
-[x] IR replay  
-[x] Multiple LIRC transmitters  
-[x] Kernel-decoded IR learning  
-[x] Raw IR learning  
-[x] IR database save path  
-[x] Verified Denon recordings  
-[x] Re-learned Logitech Z5500 power command  
-[ ] Interactive learning wizard  
-[ ] Protocol-aware storage with raw fallback  
-[ ] IR database load/list/remove commands  
-[ ] Carrier-frequency handling where supported  
+[x] Receiver framework
+[x] Raw IR capture
+[x] Start-of-frame filtering
+[x] Pulse validation and timeout handling
+[x] IR replay
+[x] Multiple LIRC transmitters
+[x] Kernel-decoded IR learning
+[x] Raw IR learning
+[x] IR database save path
+[x] Verified Denon recordings
+[x] Re-learned Logitech Z5500 power command
+[ ] Interactive learning wizard
+[ ] Protocol-aware storage with raw fallback
+[ ] IR database load/list/remove commands
+[ ] Carrier-frequency handling where supported
 
 ---
 
@@ -111,45 +110,59 @@ Status: 20%
 
 ## RF
 
-[ ] PT2262  
-[ ] EV1527  
-[ ] HT6P20  
-[x] Stored family-specific timing values  
-[ ] Raw pulse format  
-[ ] Protocol verification tooling  
+[ ] PT2262
+[ ] EV1527
+[ ] HT6P20
+[x] Stored family-specific timing values
+[ ] Raw pulse format
+[ ] Protocol verification tooling
 
 ## IR
 
-[x] Kernel-decoded NEC learning path  
-[x] Raw pulse fallback  
-[ ] NEC userspace decoder  
-[ ] RC5  
-[ ] RC6  
-[ ] Sony  
-[ ] Panasonic  
-[ ] Protocol/scancode normalization  
+[x] Kernel-decoded NEC learning path
+[x] Raw pulse fallback
+[ ] NEC userspace decoder
+[ ] RC5
+[ ] RC6
+[ ] Sony
+[ ] Panasonic
+[ ] Protocol/scancode normalization
 
 ---
 
 # Device Database
 
-Status: 20%
-
-[x] Persistent RF device files  
-[x] Persistent IR command files  
-[x] Friendly device metadata in RF records  
-[x] IR command save path  
-[ ] Stable logical device IDs  
-[ ] Device type  
-[ ] Manufacturer  
-[ ] Model  
-[ ] Location  
-[ ] Tags and descriptions  
-[ ] Command IDs separate from filenames  
-[ ] Transport mappings  
-[ ] Database validation  
-[ ] Database migrations/versioning  
-[ ] Device replacement without editing automations  
+Status: 65%
+[x] Persistent RF device files
+[x] Persistent IR command files
+[x] Friendly device metadata in RF records
+[x] IR command save path
+[x] Stable logical device IDs
+[x] Friendly device names
+[x] Device type
+[x] Manufacturer
+[x] Model
+[x] Location
+[x] Enabled state
+[x] Device aliases
+[x] JSON device persistence
+[x] Device list command
+[x] Device show command
+[x] Device create command
+[x] Device set command
+[x] Device alias add/remove commands
+[x] Device delete command
+[x] Structured command objects inside devices
+[x] Transport type field
+[x] Transport device mapping field
+[x] Transport command mapping field
+[x] Transmitter field
+[ ] Command CRUD CLI
+[ ] Command aliases
+[ ] Tags and descriptions
+[ ] Database validation
+[ ] Database migrations/versioning
+[ ] Device replacement without editing automations
 
 ---
 
@@ -159,47 +172,42 @@ Status: 15%
 
 ## Current devices
 
-[x] Denon AVR IR recordings  
-[x] Logitech Z5500 IR power recording  
-[x] Modern KAKU RF power devices  
-[ ] Eurom Arico  
-[ ] KPN TV  
-[ ] Dell 1610HD  
+[x] Denon AVR IR recordings
+[x] Logitech Z5500 IR power recording
+[x] Modern KAKU RF power devices
+[ ] Eurom Arico
+[ ] KPN TV
+[ ] Dell 1610HD
 
 ## Future
 
-[ ] Weather stations  
-[ ] PIR sensors  
-[ ] Temperature sensors  
-[ ] Relays  
-[ ] Light switches  
+[ ] Weather stations
+[ ] PIR sensors
+[ ] Temperature sensors
+[ ] Relays
+[ ] Light switches
 
 ---
 
 # Automation
 
 Status: 0%
-
-[ ] Tower daemon/service  
-[ ] Scheduler  
-[ ] Event system  
-[ ] Rules engine  
-[ ] Conditions  
-[ ] Actions  
-[ ] Scenes  
-[ ] Delays and retries  
-[ ] Execution logging  
-[ ] Notifications  
-[ ] Device state model  
-
+[ ] Tower daemon/service
+[ ] Scheduler
+[ ] Event system
+[ ] Rules engine
+[ ] Conditions
+[ ] Actions
+[ ] Scenes
+[ ] Delays and retries
+[ ] Execution logging
+[ ] Notifications
+[ ] Device state model
 Automations must use logical identities such as:
-
 ```text
 LivingRoomReceiver.Power
 ```
-
 They must not directly execute files such as:
-
 ```text
 data/ir/Denon/Power.ir
 ```
@@ -209,49 +217,45 @@ data/ir/Denon/Power.ir
 # Interfaces
 
 Status: 5%
-
-[x] Command Line  
-[ ] REST API  
-[ ] Web Interface  
-[ ] Mobile Interface  
-[ ] PC Integration  
-[ ] Authentication and user accounts  
-
+[x] Command Line
+[ ] REST API
+[ ] Web Interface
+[ ] Mobile Interface
+[ ] PC Integration
+[ ] Authentication and user accounts
 Interfaces should edit and invoke Tower objects. They must not contain scheduling, protocol, or hardware-access logic.
 
 ---
 
 # Future Transports
 
-[ ] MQTT  
-[ ] Zigbee  
-[ ] HTTP devices  
-[ ] Serial devices  
-[ ] Direct GPIO devices  
-[ ] Bluetooth devices  
+[ ] MQTT
+[ ] Zigbee
+[ ] HTTP devices
+[ ] Serial devices
+[ ] Direct GPIO devices
+[ ] Bluetooth devices
 
 ---
 
 # Current Milestone
 
-Build the device-oriented IR learning flow.
-
+Build logical command management and connect device commands to the existing IR and RF databases.
 Current focus:
-
 ```text
-Define device database schema
+Complete structured device database
         |
         v
-Define command and transport identities
+Implement command CRUD
         |
         v
-Build interactive IR learning wizard
+Resolve command transport mappings
         |
         v
-Store decoded protocol when reliable
+Build shared command execution path
         |
         v
-Store raw pulses as fallback
+Integrate device-oriented IR learning
 ```
 
 ---
@@ -259,9 +263,11 @@ Store raw pulses as fallback
 # Current Development Rules
 
 - `main.cpp` is a dispatcher only.
+- Command-group source files are dispatchers only.
+- Each subcommand should use a dedicated handler where practical.
 - Core contains only shared infrastructure.
 - Every subsystem gets its own directory.
-- Third-party libraries stay hidden behind Tower interfaces.
+- Third-party libraries stay under `external/` and remain hidden behind Tower interfaces.
 - Build after every meaningful change.
 - Every commit must compile.
 - Commit only after a working milestone.
@@ -276,12 +282,18 @@ Store raw pulses as fallback
 
 # Completed Recent Milestones
 
-[x] Add IR replay with multiple LIRC transmitters  
-[x] Add kernel-decoded IR learning support  
-[x] Improve raw IR learning and pulse capture  
-[x] Add verified Denon and Logitech IR recordings  
-[x] Remove temporary IR test recording  
-[x] Update RF power device metadata  
+[x] Add IR replay with multiple LIRC transmitters
+[x] Add kernel-decoded IR learning support
+[x] Improve raw IR learning and pulse capture
+[x] Add verified Denon and Logitech IR recordings
+[x] Remove temporary IR test recording
+[x] Update RF power device metadata
+[x] Replace `.device` files with JSON
+[x] Vendor `nlohmann/json`
+[x] Add structured logical device model
+[x] Implement complete device CRUD CLI
+[x] Add device aliases
+[x] Split device CLI into modular handlers
 
 ---
 

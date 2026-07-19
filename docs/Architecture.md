@@ -18,17 +18,32 @@
 - User interfaces must not contain automation logic.
 - Automations must reference logical device commands, not filenames.
 - New transports must be addable without redesigning the automation engine.
+- CLI command groups should use small, dedicated handler files instead of monolithic implementations.
 
 ## Current core layers
 
 ```text
 Tower CLI
-  -> Command parser
-  -> RFReceiver / IRReceiver / IRSender / future modules
+  -> Command parser and command-group dispatchers
+  -> Device Database / RFReceiver / IRReceiver / IRSender / future modules
   -> GPIO abstraction / LIRC abstraction
   -> libgpiod / Linux input / LIRC
   -> Linux hardware devices
 ```
+
+## Current device command structure
+
+```text
+src/commands/device.cpp
+    -> device_list.cpp
+    -> device_show.cpp
+    -> device_create.cpp
+    -> device_set.cpp
+    -> device_alias.cpp
+    -> device_delete.cpp
+```
+
+`device.cpp` is a dispatcher only. Each device subcommand has its own handler.
 
 ## Target architecture
 
@@ -90,7 +105,9 @@ LivingRoomReceiver.Power
 
 - Store stable logical device IDs.
 - Store friendly names, type, manufacturer, model, and location.
+- Store enabled state and aliases.
 - Store device commands and their transport mappings.
+- Persist logical devices as JSON under `data/devices/`.
 - Allow hardware replacement without rewriting automation rules.
 
 ### Hardware drivers
@@ -99,6 +116,22 @@ LivingRoomReceiver.Power
 - Handle protocol timing and operating-system integration.
 - Contain no scheduling or UI logic.
 - Remain replaceable behind Tower-owned interfaces.
+
+## Persistent storage
+
+Logical device records are stored as formatted JSON:
+
+```text
+data/devices/<device-id>.json
+```
+
+Tower uses the vendored JSON library from:
+
+```text
+external/nlohmann/
+```
+
+`nlohmann::ordered_json` is used so saved field order remains stable and readable.
 
 ## Command resolution example
 
@@ -124,9 +157,10 @@ LIRC / Linux
 ## Separation rules
 
 - `main.cpp` remains a dispatcher only.
+- Command-group dispatchers remain small.
 - Core contains shared infrastructure only.
 - Every subsystem gets its own directory.
-- Third-party libraries stay hidden behind Tower interfaces.
+- Third-party libraries stay under `external/` and remain hidden behind Tower interfaces.
 - Persistent data stays under `data/`.
 - Documentation stays under `docs/`.
 - Device metadata must not be embedded in drivers.

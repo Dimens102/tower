@@ -13,6 +13,7 @@ Command parseCommand(const char* text)
     if (std::strcmp(text, "learn-kernel") == 0) return Command::LearnKernel;
     if (std::strcmp(text, "replay") == 0) return Command::Replay;
     if (std::strcmp(text, "config") == 0) return Command::Config;
+    if (std::strcmp(text, "device") == 0) return Command::Device;
 
     return Command::Unknown;
 }

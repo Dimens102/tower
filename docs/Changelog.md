@@ -1,5 +1,18 @@
 # Tower Changelog
 
+## v0.7.0
+
+- Replaced the custom `.device` key/value format with JSON device records.
+- Added vendored `nlohmann/json` 3.12.0 under `external/nlohmann/`.
+- Added ordered JSON output for stable, readable device files.
+- Added the structured `Device` model.
+- Added the structured `DeviceCommand` model.
+- Added persistent device aliases.
+- Implemented device list, show, create, set, alias, and delete commands.
+- Split device CLI operations into dedicated handler source files.
+- Reduced `device.cpp` to a command dispatcher.
+- Verified JSON persistence with the Denon and TV device records.
+
 ## v0.6.0
 
 - Implemented real GPIO chip opening through libgpiod.
