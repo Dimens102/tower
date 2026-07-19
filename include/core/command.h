@@ -10,6 +10,7 @@ enum class Command
     Replay,
     Config,
     Device,
+	LogicalCommand,
     Unknown
 };
 

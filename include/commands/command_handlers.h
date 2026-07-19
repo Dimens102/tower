@@ -8,3 +8,4 @@ int runLearnKernelCommand();
 int runReplayCommand(int argc, char* argv[]);
 int runConfigCommand();
 int runDeviceCommand(int argc, char* argv[]);
+int runLogicalCommand(int argc, char* argv[]);

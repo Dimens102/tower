@@ -19,7 +19,9 @@ void print_usage()
         << "  tower learn-kernel\n"
         << "  tower replay\n"
         << "  tower config\n"
-        << "  tower device\n";
+        << "  tower device\n"
+        << "  tower command\n";
+		
 }
 
 int main(int argc, char* argv[])
@@ -54,6 +56,9 @@ int main(int argc, char* argv[])
 
         case Command::Device:
             return runDeviceCommand(argc, argv);
+			
+        case Command::LogicalCommand:
+            return runLogicalCommand(argc, argv);	
 
         default:
             std::cerr << "Unknown command\n\n";

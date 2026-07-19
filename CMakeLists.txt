@@ -20,6 +20,12 @@ add_executable(tower
     src/commands/receive.cpp
     src/commands/config.cpp
     src/commands/device.cpp
+    src/commands/command.cpp
+	src/commands/command_list.cpp
+    src/commands/command_create.cpp
+	src/commands/command_show.cpp
+    src/commands/command_set.cpp
+	src/commands/command_delete.cpp
 	src/commands/device_list.cpp
 	src/commands/device_show.cpp
 	src/commands/device_create.cpp
@@ -27,9 +33,9 @@ add_executable(tower
 	src/commands/device_alias.cpp
     src/commands/device_delete.cpp
     src/devices/device.cpp
+	src/devices/device_database.cpp	
 	src/devices/device_editor.cpp
     src/ir/ir_database.cpp
-    src/devices/device_database.cpp
     src/ir/ir_transmitter_database.cpp
     src/ir/ir_sender.cpp
     src/ir/ir_receiver.cpp

@@ -14,6 +14,7 @@ Command parseCommand(const char* text)
     if (std::strcmp(text, "replay") == 0) return Command::Replay;
     if (std::strcmp(text, "config") == 0) return Command::Config;
     if (std::strcmp(text, "device") == 0) return Command::Device;
+    if (std::strcmp(text, "command") == 0) return Command::LogicalCommand;	
 
     return Command::Unknown;
 }
