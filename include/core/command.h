@@ -11,6 +11,7 @@ enum class Command
     Config,
     Device,
 	LogicalCommand,
+    Execute,
     Unknown
 };
 

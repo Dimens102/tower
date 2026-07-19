@@ -20,7 +20,8 @@ void print_usage()
         << "  tower replay\n"
         << "  tower config\n"
         << "  tower device\n"
-        << "  tower command\n";
+        << "  tower command\n"
+        << "  tower execute <device-id> <command-id>\n";
 		
 }
 
@@ -58,7 +59,10 @@ int main(int argc, char* argv[])
             return runDeviceCommand(argc, argv);
 			
         case Command::LogicalCommand:
-            return runLogicalCommand(argc, argv);	
+            return runLogicalCommand(argc, argv);
+			
+        case Command::Execute:
+            return runExecuteCommand(argc, argv);			
 
         default:
             std::cerr << "Unknown command\n\n";

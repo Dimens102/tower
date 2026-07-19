@@ -38,12 +38,23 @@ bool IRReceiver::receive(IRCode& code)
             return false;
         }
 
+        if (firstEvent.edge != GPIOEdge::Falling)
+        {
+            continue;
+        }
+
         if (!gpio.waitForEdge(
                 gpioPin,
                 secondEvent,
                 IR_START_EDGE_TIMEOUT_MS))
         {
             std::cout << "Ignored isolated noise edge.\n";
+            continue;
+        }
+
+        if (secondEvent.edge != GPIOEdge::Rising)
+        {
+            std::cout << "Ignored invalid IR start edge sequence.\n";
             continue;
         }
 
@@ -55,6 +66,8 @@ bool IRReceiver::receive(IRCode& code)
                         (secondEvent.timestampNs - firstEvent.timestampNs) / 1000);
 
         code.pulses.push_back(startPulse);
+
+        std::cout << "Start pulse: " << startPulse << " us\n";
 
         unsigned long long previousTimestamp = secondEvent.timestampNs;
 
@@ -74,9 +87,13 @@ bool IRReceiver::receive(IRCode& code)
                 static_cast<unsigned int>(
                     (nextEvent.timestampNs - previousTimestamp) / 1000));
 
+            std::cout << code.pulses.back() << " ";
+
             previousTimestamp = nextEvent.timestampNs;
         }
-
+		
+        std::cout << "\n";
+		
         std::cout << "Captured "
                   << code.pulses.size()
                   << " pulse lengths.\n";

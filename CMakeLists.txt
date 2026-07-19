@@ -26,6 +26,7 @@ add_executable(tower
 	src/commands/command_show.cpp
     src/commands/command_set.cpp
 	src/commands/command_delete.cpp
+	src/commands/execute.cpp
 	src/commands/device_list.cpp
 	src/commands/device_show.cpp
 	src/commands/device_create.cpp
