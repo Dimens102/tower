@@ -38,6 +38,7 @@ add_executable(tower
 	src/devices/device_editor.cpp
     src/ir/ir_database.cpp
     src/ir/ir_transmitter_database.cpp
+	src/ir/ir_runtime_database.cpp
     src/ir/ir_sender.cpp
     src/ir/ir_receiver.cpp
     src/ir/ir_kernel_receiver.cpp

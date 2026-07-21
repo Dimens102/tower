@@ -1,0 +1,5 @@
+name=Tower-IR-TX-004
+device_name=Small black IR LED
+hardware=ID4
+gpio=20
+status=active

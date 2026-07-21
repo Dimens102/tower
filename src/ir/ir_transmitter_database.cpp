@@ -32,16 +32,16 @@ bool IRTransmitterDatabase::load(const std::string& name, IRTransmitter& transmi
 
         if (key == "name")
             transmitter.name = value;
-        else if (key == "device_name")
-            transmitter.deviceName = value;
+        else if (key == "friendly_name")
+            transmitter.friendlyName = value;
         else if (key == "hardware")
             transmitter.hardware = value;
         else if (key == "gpio")
             transmitter.gpio = std::stoi(value);
+        else if (key == "location")
+            transmitter.location = value;
         else if (key == "status")
             transmitter.status = value;
-        else if (key == "lirc_device")
-            transmitter.lircDevice = value;
     }
 
     return true;

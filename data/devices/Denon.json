@@ -7,5 +7,15 @@
     "location": "",
     "enabled": true,
     "aliases": [],
-    "commands": []
+    "commands": [
+        {
+            "id": "Power",
+            "name": "Power",
+            "transport": "IR",
+            "transportDevice": "Denon",
+            "transportCommand": "Power",
+            "transmitter": "Tower-IR-TX-001",
+            "enabled": true
+        }
+    ]
 }

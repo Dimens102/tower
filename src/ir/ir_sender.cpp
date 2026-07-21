@@ -1,27 +1,41 @@
 #include "ir/ir_sender.h"
+#include "ir/ir_runtime_database.h"
 
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <sstream>
-#include <fstream>
 
 bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter)
 {
-    if (transmitter.lircDevice.empty())
+    IRRuntimeDatabase runtimeDatabase;
+
+    auto lircDevice =
+        runtimeDatabase.getLircDeviceForGpio(transmitter.gpio);
+
+    if (!lircDevice)
     {
-        std::cerr << "No lirc_device configured for transmitter: "
-                  << transmitter.name << "\n";
+        std::cerr << "No runtime LIRC device found for GPIO "
+                  << transmitter.gpio
+                  << " (" << transmitter.name << ")\n";
+
         return false;
     }
 
+    std::cout << "Resolved GPIO "
+              << transmitter.gpio
+              << " -> "
+              << *lircDevice
+              << "\n";
+
     if (code.protocol == "raw")
     {
-        return sendRaw(code, transmitter);
+        return sendRaw(code, transmitter, *lircDevice);
     }
 
     if (code.protocol == "nec")
     {
-        return sendNEC(code, transmitter);
+        return sendNEC(code, transmitter, *lircDevice);
     }
 
     std::cerr << "Unsupported IR protocol: "
@@ -30,24 +44,28 @@ bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter)
     return false;
 }
 
-bool IRSender::sendNEC(const IRCode& code, const IRTransmitter& transmitter)
+bool IRSender::sendNEC(const IRCode& code,
+                       const IRTransmitter& transmitter,
+                       const std::string& lircDevice)
 {
     std::ostringstream command;
 
     command << "sudo ir-ctl"
-            << " -d " << transmitter.lircDevice
+            << " -d " << lircDevice
             << " -S nec:" << code.command;
 
     std::cout << "Sending NEC on "
               << transmitter.name
               << " via "
-              << transmitter.lircDevice
+              << lircDevice
               << "\n";
 
     return std::system(command.str().c_str()) == 0;
 }
 
-bool IRSender::sendRaw(const IRCode& code, const IRTransmitter& transmitter)
+bool IRSender::sendRaw(const IRCode& code,
+                       const IRTransmitter& transmitter,
+                       const std::string& lircDevice)
 {
     const std::string tempFile = "/tmp/tower-ir-send.txt";
 
@@ -60,39 +78,37 @@ bool IRSender::sendRaw(const IRCode& code, const IRTransmitter& transmitter)
     }
 
     for (size_t i = 0; i < code.pulses.size(); ++i)
-{
-    if (i > 0)
     {
-        out << " ";
-    }
+        if (i > 0)
+        {
+            out << " ";
+        }
 
-    if ((i % 2) == 0)
-    {
-        out << "+";
-    }
-    else
-    {
-        out << "-";
-    }
+        if ((i % 2) == 0)
+        {
+            out << "+";
+        }
+        else
+        {
+            out << "-";
+        }
 
-    out << code.pulses[i];
-	
-}
+        out << code.pulses[i];
+    }
 
     out << "\n";
-	
     out.close();
 
     std::ostringstream command;
 
     command << "sudo ir-ctl"
-            << " -d " << transmitter.lircDevice
+            << " -d " << lircDevice
             << " --send=" << tempFile;
 
     std::cout << "Sending RAW on "
               << transmitter.name
               << " via "
-              << transmitter.lircDevice
+              << lircDevice
               << "\n";
 
     return std::system(command.str().c_str()) == 0;

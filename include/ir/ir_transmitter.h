@@ -4,10 +4,12 @@
 
 struct IRTransmitter
 {
-     std::string name;
-     std::string deviceName;
-     std::string hardware;
-     int gpio = 22;
-     std::string status;
-     std::string lircDevice;
+    std::string name;
+    std::string friendlyName;
+    std::string hardware;
+    int gpio = -1;
+    std::string location;
+    std::string status;
+	    // Temporary until runtime GPIO discovery is implemented.
+    std::string lircDevice;
 };

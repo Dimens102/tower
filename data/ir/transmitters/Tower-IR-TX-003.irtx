@@ -1,0 +1,6 @@
+name=Tower-IR-TX-003
+device_name=Small clear IR LED
+hardware=ID3
+gpio=25
+status=active
+

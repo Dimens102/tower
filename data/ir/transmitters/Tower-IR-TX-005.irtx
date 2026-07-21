@@ -1,0 +1,5 @@
+name=Tower-IR-TX-005
+device_name=Medium black IR LED
+hardware=ID5
+gpio=21
+status=active
