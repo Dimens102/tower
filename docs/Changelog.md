@@ -88,3 +88,35 @@
   - ADS1115 (0x48)
   - BME688 (0x76)
 - Prepared the architecture for future RF RSSI integration without coupling RF logic into the ADC driver.
+
+
+---
+
+## RF monitor work in progress (unreleased)
+
+This checkpoint preserves the unfinished RF receiver diagnostics work for later development.
+
+Implemented locally:
+
+- Added command registration and dispatch for `tower monitor`.
+- Added an initial RF monitor command using `/dev/gpiochip0`.
+- Configured the provisional RF DATA input as GPIO4 with rising and falling edge detection.
+- Configured the provisional RSSI source as ADS1115 channel AIN0.
+- Added one-second GPIO edge-count reporting to the monitor command.
+- Extended `tower receive` to initialize the ADS1115, read AIN0, and report RSSI voltage.
+- Extended `tower receive` to report elapsed microseconds between consecutive GPIO edges.
+
+This work is intentionally unfinished and is not assigned a release version yet.
+
+Still required:
+
+- Sample and report RSSI inside `tower monitor`.
+- Establish and measure the RSSI noise floor.
+- Define signal-start and signal-end thresholds.
+- Buffer complete pulse trains instead of printing individual intervals only.
+- Associate RSSI measurements with each capture.
+- Store capture metadata and pulse data.
+- Add protocol detection or decoding.
+- Replace provisional hard-coded GPIO and ADS1115 channel assignments with documented configuration.
+- Confirm the final Aurel RX-4MM5-F ENABLE wiring.
+- Add clean shutdown and capture summaries.

@@ -3,37 +3,58 @@
 #include <iostream>
 
 #include "core/gpio.h"
+#include "sensors/ads1115.h"
 
 int runReceiveCommand()
 {
     GPIO gpio;
+	
+	tower::sensors::ADS1115 ads;
+
+    if (!ads.initialize())
+    {
+        return 1;
+    }
 
     if (!gpio.openChip("/dev/gpiochip0"))
     {
         return 1;
     }
 
-    if (!gpio.requestInput(23, GPIOEdge::Both))
+    if (!gpio.requestInput(4, GPIOEdge::Both))
     {
         return 1;
     }
 
-    std::cout << "Waiting for GPIO23 edges. Press Ctrl+C to stop.\n";
+    std::cout << "Waiting for GPIO4 edges. Press Ctrl+C to stop.\n";
 
     int count = 0;
+	
+	unsigned long long previousTimestamp = 0;
 
     while (true)
     {
+		double rssi;
+
+        if (ads.readChannel(0, rssi))
+        {
+            std::cout << "RSSI: " << rssi << " V\n";
+        }
+
         GPIOEvent event;
 
-        if (gpio.waitForEdge(23, event, 1000))
+        if (gpio.waitForEdge(4, event, 1000))
         {
             ++count;
-            std::cout << "Edge " << count
-                      << " line=" << event.line
-                      << " edge=" << (event.edge == GPIOEdge::Rising ? "rising" : "falling")
-                      << " timestamp_ns=" << event.timestampNs
-                      << "\n";
+            if (previousTimestamp != 0)
+            {
+                std::cout
+                    << (event.edge == GPIOEdge::Rising ? "RISING  " : "FALLING ")
+                    << (event.timestampNs - previousTimestamp) / 1000
+                    << " us\n";
+            }
+
+previousTimestamp = event.timestampNs;
         }
     }
 

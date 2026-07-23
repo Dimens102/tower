@@ -258,3 +258,63 @@ RF Receiver
 ```
 
 The ADS1115 remains independent from the RF subsystem and contains no RF protocol logic.
+
+
+---
+
+## Unreleased RF Monitor Checkpoint
+
+The current unfinished RF diagnostics use two independent hardware inputs:
+
+```text
+Aurel RX-4MM5-F
+├── DATA ──> Raspberry Pi GPIO4
+└── RSSI ──> ADS1115 AIN0
+```
+
+The assignments above are provisional until the physical wiring is permanently documented.
+
+The implementation currently has two experimental command paths:
+
+```text
+tower monitor
+├── Count DATA edges during each one-second interval
+└── ADS1115 initialized, but RSSI not yet sampled
+
+tower receive
+├── Read RSSI voltage from ADS1115 AIN0
+└── Print time between DATA edges from GPIO4
+```
+
+This is a development checkpoint, not the final RF receiver architecture.
+
+The intended completed flow remains:
+
+```text
+ADS1115 AIN0
+    |
+    v
+Measure noise floor and detect RF energy
+    |
+    v
+Open a capture window
+    |
+    +------ GPIO4 edge timestamps
+    |
+    v
+Build one complete RF capture
+    |
+    v
+Attach RSSI and timing metadata
+    |
+    v
+Decode, compare, store, or replay
+```
+
+Architectural rules:
+
+- The ADS1115 driver remains generic and contains no RF-specific logic.
+- The RF receiver layer combines GPIO DATA with analogue RSSI.
+- CLI commands should invoke RF receiver services rather than permanently owning capture logic.
+- Pulse capture, protocol decoding, storage, and device mapping remain separate responsibilities.
+- GPIO4 and AIN0 must eventually come from documented hardware configuration rather than being duplicated as hard-coded values.

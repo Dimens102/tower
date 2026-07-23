@@ -340,3 +340,38 @@ Integrate device-oriented IR learning
 - `tower commands list`
 - Structured logging
 - Backup/export of the Tower database
+
+
+---
+
+# Preserved RF Monitor Work in Progress
+
+The unfinished RF monitor implementation has been preserved as a local checkpoint so development can resume later without losing the experiment.
+
+Completed in the checkpoint:
+
+[x] Register `tower monitor`.
+[x] Dispatch `tower monitor` from the CLI.
+[x] Open the GPIO chip.
+[x] Request both edge types on provisional GPIO4.
+[x] Count RF DATA edges per second.
+[x] Initialize the ADS1115 from the RF diagnostic commands.
+[x] Read provisional RSSI input from ADS1115 AIN0 in `tower receive`.
+[x] Report pulse intervals in microseconds in `tower receive`.
+
+Required when development resumes:
+
+[ ] Confirm and document the final RF DATA GPIO.
+[ ] Confirm and document the Aurel ENABLE connection.
+[ ] Move hardware assignments into configuration.
+[ ] Add RSSI sampling to `tower monitor`.
+[ ] Measure the idle noise floor.
+[ ] Determine reliable start and end thresholds.
+[ ] Capture complete pulse trains.
+[ ] Correlate pulse data with RSSI measurements.
+[ ] Generate capture summaries.
+[ ] Persist learned captures and metadata.
+[ ] Detect repeated frames.
+[ ] Add protocol identification and decoding.
+[ ] Decide the final roles of monitor, receive, and learn commands.
+[ ] Refactor experimental command-loop logic into the RF receiver subsystem.

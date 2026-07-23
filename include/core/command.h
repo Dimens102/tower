@@ -4,6 +4,7 @@ enum class Command
 {
     Version,
     Receive,
+	Monitor,
     Send,
     Learn,
     LearnKernel,

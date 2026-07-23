@@ -1495,3 +1495,78 @@ Current output includes:
   - AIN3 Voltage
 
 Future revisions will attach logical names to analogue channels (for example RF RSSI or Battery Monitor) while keeping the ADS1115 driver generic.
+
+
+---
+
+# tower monitor
+
+Status: Work in progress
+
+The unfinished `tower monitor` command is registered in the command parser and main dispatcher.
+
+Current provisional hardware mapping:
+
+```text
+RF DATA = GPIO4
+RF RSSI = ADS1115 AIN0
+```
+
+Current behavior:
+
+- Opens `/dev/gpiochip0`.
+- Initializes the ADS1115.
+- Requests rising and falling edge events on GPIO4.
+- Counts GPIO edges.
+- Prints the number of detected edges once per second.
+
+Current limitation:
+
+Although the command initializes the ADS1115 and identifies AIN0 as the RSSI input, it does not yet read or display the RSSI voltage. The local RSSI variable is currently unused.
+
+The command is therefore a basic digital activity monitor, not yet a complete RF signal monitor.
+
+Planned completion:
+
+- Continuously sample AIN0.
+- Establish a noise-floor baseline.
+- Display current, peak, and average RSSI.
+- Detect the beginning and end of an RF transmission.
+- Count and buffer edge timings during the detected transmission.
+- Produce a capture summary.
+- Pass complete captures to the future RF learning and decoding layer.
+
+---
+
+# tower receive - local RF diagnostic changes
+
+Status: Work in progress
+
+The local `tower receive` implementation has been extended beyond its earlier GPIO-edge test.
+
+Current provisional hardware mapping:
+
+```text
+RF DATA = GPIO4
+RF RSSI = ADS1115 AIN0
+```
+
+Current behavior:
+
+- Initializes the ADS1115.
+- Opens `/dev/gpiochip0`.
+- Requests both edge types on GPIO4.
+- Reads and prints AIN0 voltage as RSSI.
+- Prints the interval between consecutive GPIO edges in microseconds.
+
+This is still diagnostic output only. It does not yet:
+
+- Frame a complete RF transmission.
+- Maintain an RSSI noise floor.
+- Apply signal-strength thresholds.
+- Buffer or save pulse trains.
+- Store RSSI metadata.
+- Decode a protocol.
+- Create a reusable learned RF command.
+
+The final responsibility split between `tower monitor`, `tower receive`, and a future RF learning command must be decided when development resumes.

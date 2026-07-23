@@ -57,3 +57,42 @@ RF protocol encoding belongs in the RF driver/protocol layer.
 Friendly names, locations, and logical commands belong in the device database.
 
 Automation rules should never contain transmitter IDs, raw timings, or GPIO details directly.
+
+
+---
+
+## RF receiver diagnostics checkpoint (unreleased)
+
+The local work-in-progress receiver diagnostics target the Aurel RX-4MM5-F.
+
+Provisional input mapping:
+
+```text
+DATA = GPIO4
+RSSI = ADS1115 AIN0
+```
+
+Current diagnostic capabilities:
+
+- Rising and falling GPIO-edge detection.
+- Edge-count reporting per second through `tower monitor`.
+- RSSI voltage output through the modified `tower receive`.
+- Pulse-interval output in microseconds through the modified `tower receive`.
+
+These capabilities do not yet constitute protocol learning or decoding.
+
+A future capture record should include at least:
+
+- Capture timestamp.
+- GPIO DATA pulse timings.
+- Total capture duration.
+- Edge count.
+- RSSI noise floor.
+- RSSI peak.
+- RSSI average.
+- Detection threshold used.
+- Repeat count or repeated-frame candidates.
+- Decoder result and confidence, when available.
+- Hardware input mapping used for the capture.
+
+Before protocol work continues, Tower must first reliably determine transmission boundaries by combining RSSI activity with the digital edge stream.
