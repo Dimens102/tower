@@ -1470,3 +1470,28 @@ Interfaces should edit and invoke Tower objects. They must not contain schedulin
 [ ] Bluetooth devices
 
 ---
+
+
+---
+
+# tower sensor
+
+Status: Working
+
+The `tower sensor` command now reports all registered sensors.
+
+Current output includes:
+
+- BME688
+  - Temperature
+  - Humidity
+  - Pressure
+  - Gas Resistance
+
+- ADS1115
+  - AIN0 Voltage
+  - AIN1 Voltage
+  - AIN2 Voltage
+  - AIN3 Voltage
+
+Future revisions will attach logical names to analogue channels (for example RF RSSI or Battery Monitor) while keeping the ADS1115 driver generic.

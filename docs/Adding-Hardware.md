@@ -96,3 +96,30 @@ This document will later be expanded with procedures for:
 - Environmental Sensors
 - Relays
 - Other Tower hardware
+
+---
+
+# ADS1115 (Verified)
+
+## Hardware
+
+Verified I²C address:
+
+```text
+0x48
+```
+
+Current implementation:
+
+- Four single-ended analogue input channels.
+- Generic ADC driver for Tower.
+- Shared by future hardware requiring analogue measurements.
+
+The ADS1115 is intentionally independent of protocol implementations. Future RF receivers, battery monitors, light sensors and similar devices should reuse this driver rather than implementing their own analogue conversion logic.
+
+Future planned use:
+
+- RF RSSI
+- Battery monitoring
+- Current sensing
+- Analogue sensors

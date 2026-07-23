@@ -231,3 +231,30 @@ LIRC / Linux
 - Protocol code must not perform database writes directly.
 - Sensor drivers must not contain UI, scheduling, or automation logic.
 - UI code must not perform GPIO, I²C, or LIRC access directly.
+
+
+---
+
+## v0.9.4 - ADS1115 Analogue Sensor Architecture
+
+The sensor subsystem now supports both environmental sensors and generic analogue acquisition devices.
+
+Current architecture:
+
+```text
+SensorManager
+├── BME688
+└── ADS1115
+```
+
+The ADS1115 is treated as a generic ADC rather than an RF-specific device. This allows future hardware (battery monitoring, light sensors, potentiometers, current sensors, RSSI, etc.) to reuse the same implementation.
+
+The future RF receiver will consume two independent inputs:
+
+```text
+RF Receiver
+├── GPIO DATA
+└── ADS1115 RSSI
+```
+
+The ADS1115 remains independent from the RF subsystem and contains no RF protocol logic.

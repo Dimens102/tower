@@ -76,3 +76,15 @@
 - Initial Tower project skeleton.
 - Added CMake build.
 - Added first tower executable.
+
+
+## v0.9.4
+
+- Added ADS1115 analogue-to-digital converter support.
+- Extended the generic SensorReading model with analogue channel support.
+- SensorManager now supports both environmental and analogue sensors.
+- Added four-channel voltage reporting to the `tower sensor` command.
+- Verified simultaneous operation of:
+  - ADS1115 (0x48)
+  - BME688 (0x76)
+- Prepared the architecture for future RF RSSI integration without coupling RF logic into the ADC driver.
