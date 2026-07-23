@@ -9,6 +9,7 @@ enum class Command
     LearnKernel,
     Replay,
     Config,
+	Sensor,
     Device,
 	LogicalCommand,
     Execute,

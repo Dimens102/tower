@@ -7,6 +7,7 @@ int runLearnCommand(int argc, char* argv[]);
 int runLearnKernelCommand();
 int runReplayCommand(int argc, char* argv[]);
 int runConfigCommand();
+int runSensorCommand();
 int runDeviceCommand(int argc, char* argv[]);
 int runLogicalCommand(int argc, char* argv[]);
 int runExecuteCommand(int argc, char* argv[]);

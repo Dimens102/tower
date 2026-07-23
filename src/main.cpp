@@ -19,6 +19,7 @@ void print_usage()
         << "  tower learn-kernel\n"
         << "  tower replay\n"
         << "  tower config\n"
+		<< "  tower sensor\n"
         << "  tower device\n"
         << "  tower command\n"
         << "  tower execute <device-id> <command-id>\n";
@@ -54,6 +55,9 @@ int main(int argc, char* argv[])
 
         case Command::Config:
             return runConfigCommand();
+			
+		case Command::Sensor:
+            return runSensorCommand();
 
         case Command::Device:
             return runDeviceCommand(argc, argv);

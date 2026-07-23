@@ -1,5 +1,39 @@
 # Tower Changelog
 
+## v0.9.3
+
+- Added the `tower sensor` command.
+- Added the generic `Sensor` interface.
+- Added `SensorReading` for temperature, humidity, pressure, gas resistance, validity, and timestamps.
+- Added `SensorManager` for sensor registration, initialization, updates, and reading access.
+- Added BME688 environmental sensor support over Linux I²C.
+- Vendored the official Bosch BME68x Sensor API under `external/bme68x/`.
+- Verified live BME688 readings for temperature, humidity, pressure, and gas resistance.
+- Verified the BME688 at I²C address `0x76` on the Raspberry Pi 3 A+.
+
+## v0.9.2
+
+- Added the initial sensor subsystem structure.
+- Added dedicated `include/sensors/` and `src/sensors/` directories.
+- Added the sensor interface, reading model, manager, and BME688 wrapper skeleton.
+- Isolated sensor hardware access behind Tower-owned classes.
+
+## v0.9.1
+
+- Modernized the CMake project configuration.
+- Added recursive source and header discovery with `CONFIGURE_DEPENDS`.
+- Added explicit C and C++ project languages.
+- Added project version metadata.
+- Added private include directories and target-based library linking.
+- Added automatic compilation of new source files placed under `src/`.
+
+## v0.9.0
+
+- Removed static `/dev/lircX` device configuration from IR transmitter records.
+- Added runtime LIRC-device discovery based on the configured transmitter GPIO.
+- Kept transmitter definition files limited to physical hardware metadata.
+- Verified multiple LIRC transmitters without hard-coded Linux device numbers.
+
 ## v0.7.0
 
 - Replaced the custom `.device` key/value format with JSON device records.

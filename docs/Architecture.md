@@ -11,13 +11,14 @@
 
 - Keep hardware access hidden behind core classes.
 - No subsystem should talk directly to Linux GPIO except the GPIO class.
-- RF, IR, scheduling, web, and voice must remain separate modules.
+- RF, IR, sensors, scheduling, web, and voice must remain separate modules.
 - Compile after every meaningful code change.
 - Commit only after a working milestone.
 - Keep storage, protocol handling, and hardware access in separate layers.
 - User interfaces must not contain automation logic.
 - Automations must reference logical device commands, not filenames.
 - New transports must be addable without redesigning the automation engine.
+- New sensors must be addable through the shared sensor interface.
 - CLI command groups should use small, dedicated handler files instead of monolithic implementations.
 
 ## Current core layers
@@ -25,11 +26,66 @@
 ```text
 Tower CLI
   -> Command parser and command-group dispatchers
-  -> Device Database / RFReceiver / IRReceiver / IRSender / future modules
-  -> GPIO abstraction / LIRC abstraction
-  -> libgpiod / Linux input / LIRC
+  -> Device Database / SensorManager / RFReceiver / IRReceiver / IRSender
+  -> Sensor drivers / GPIO abstraction / LIRC abstraction
+  -> Bosch BME68x API / libgpiod / Linux input / LIRC / Linux I²C
   -> Linux hardware devices
 ```
+
+## Current sensor architecture
+
+```text
+CLI / future scheduler / automation / web interface
+                         |
+                         v
+                   SensorManager
+                         |
+             +-----------+-----------+
+             |                       |
+             v                       v
+           BME688              Future sensors
+             |
+             v
+       Bosch BME68x API
+             |
+             v
+          Linux I²C
+```
+
+Sensor drivers implement the shared `Sensor` interface.
+
+Each sensor provides:
+
+- initialization;
+- availability state;
+- measurement updates;
+- a stable sensor name;
+- a `SensorReading` containing its latest values.
+
+Current sensor files:
+
+```text
+include/sensors/sensor.h
+include/sensors/sensor_reading.h
+include/sensors/sensor_manager.h
+include/sensors/bme688.h
+
+src/sensors/sensor_manager.cpp
+src/sensors/bme688.cpp
+```
+
+The current sensor CLI command is:
+
+```text
+tower sensor
+```
+
+It initializes the registered BME688 and reports:
+
+- temperature in degrees Celsius;
+- relative humidity;
+- atmospheric pressure in hPa;
+- gas resistance in ohms.
 
 ## Current device command structure
 
@@ -117,6 +173,14 @@ LivingRoomReceiver.Power
 - Contain no scheduling or UI logic.
 - Remain replaceable behind Tower-owned interfaces.
 
+### Sensor subsystem
+
+- Keep sensor-specific driver code behind the shared `Sensor` interface.
+- Let `SensorManager` own registered sensor instances and request updates.
+- Expose normalized readings through `SensorReading`.
+- Keep CLI, automation, display, and future API code independent of Bosch or Linux I²C details.
+- Permit future sensors such as ADS1115-connected analogue sensors without changing consumers of sensor data.
+
 ## Persistent storage
 
 Logical device records are stored as formatted JSON:
@@ -165,4 +229,5 @@ LIRC / Linux
 - Documentation stays under `docs/`.
 - Device metadata must not be embedded in drivers.
 - Protocol code must not perform database writes directly.
-- UI code must not perform GPIO or LIRC access directly.
+- Sensor drivers must not contain UI, scheduling, or automation logic.
+- UI code must not perform GPIO, I²C, or LIRC access directly.
