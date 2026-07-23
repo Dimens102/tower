@@ -142,22 +142,15 @@ bool BME688::update()
     }
 
 #ifdef BME68X_USE_FPU
-    m_reading.temperatureC = data.temperature;
-    m_reading.humidityPercent = data.humidity;
-    m_reading.pressureHpa = data.pressure / 100.0;
-    m_reading.gasResistanceOhms = data.gas_resistance;
+    m_reading.measurements.push_back({"Temperature", "C", data.temperature});
+    m_reading.measurements.push_back({"Humidity", "%", data.humidity});
+    m_reading.measurements.push_back({"Pressure", "hPa", data.pressure / 100.0});
+    m_reading.measurements.push_back({"Gas", "ohm", data.gas_resistance});
 #else
-    m_reading.temperatureC =
-        static_cast<double>(data.temperature) / 100.0;
-
-    m_reading.humidityPercent =
-        static_cast<double>(data.humidity) / 1000.0;
-
-    m_reading.pressureHpa =
-        static_cast<double>(data.pressure) / 100.0;
-
-    m_reading.gasResistanceOhms =
-        static_cast<double>(data.gas_resistance);
+    m_reading.measurements.push_back({"Temperature", "C", static_cast<double>(data.temperature) / 100.0});
+    m_reading.measurements.push_back({"Humidity", "%", static_cast<double>(data.humidity) / 1000.0});
+    m_reading.measurements.push_back({"Pressure", "hPa", static_cast<double>(data.pressure) / 100.0});
+    m_reading.measurements.push_back({"Gas", "ohm", static_cast<double>(data.gas_resistance)});
 #endif
 
     m_reading.timestamp = std::chrono::steady_clock::now();

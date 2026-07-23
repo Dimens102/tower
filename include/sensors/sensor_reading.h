@@ -2,16 +2,21 @@
 
 #include <chrono>
 #include <string>
+#include <vector>
 
 namespace tower::sensors
 {
 
+struct SensorMeasurement
+{
+    std::string name;
+    std::string unit;
+    double value = 0.0;
+};
+
 struct SensorReading
 {
-    double temperatureC = 0.0;
-    double humidityPercent = 0.0;
-    double pressureHpa = 0.0;
-    double gasResistanceOhms = 0.0;
+    std::vector<SensorMeasurement> measurements;
 
     bool valid = false;
 
