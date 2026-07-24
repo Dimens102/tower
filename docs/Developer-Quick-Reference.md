@@ -42,6 +42,7 @@ Repository
   - running;
   - testing;
   - verifying specific line ranges or output.
+- Always give the correct amount of indentations when pasting info, don't assume the amount.
 
 ----------
 ~/Development/rf-tower

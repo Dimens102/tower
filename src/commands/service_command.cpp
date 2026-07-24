@@ -1,35 +1,17 @@
 #include "commands/command_handlers.h"
-
-#include <chrono>
-#include <csignal>
-#include <iostream>
-#include <thread>
-
-namespace
-{
-
-volatile std::sig_atomic_t keepRunning = 1;
-
-void handleSignal(int)
-{
-    keepRunning = 0;
-}
-
-} // namespace
+#include "service/TowerService.h"
 
 int runServiceCommand()
 {
-    std::signal(SIGINT, handleSignal);
-    std::signal(SIGTERM, handleSignal);
+    TowerService service;
 
-    std::cout << "Tower service starting.\n";
-    std::cout << "Press Ctrl+C to stop.\n";
-
-    while (keepRunning)
+    if (!service.start())
     {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        return 1;
     }
 
-    std::cout << "Tower service stopping.\n";
+    service.run();
+    service.stop();
+
     return 0;
 }
