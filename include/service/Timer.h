@@ -17,6 +17,12 @@ public:
         bool repeating,
         Callback callback);
 
+    bool hasExpired(TimePoint now) const;
+    bool isRepeating() const;
+
+    void execute();
+    void reschedule(TimePoint now);
+
 private:
     TimePoint expiresAt_;
     Duration interval_;
