@@ -2,4 +2,5 @@
 
 void Scheduler::update()
 {
+    timerManager_.update();
 }
