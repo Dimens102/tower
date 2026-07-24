@@ -1,5 +1,7 @@
 #pragma once
 
+#include "service/Scheduler.h"
+
 class TowerService
 {
 public:
@@ -8,5 +10,7 @@ public:
     void stop();
 
 private:
+    Scheduler scheduler_;
     void update();
+
 };

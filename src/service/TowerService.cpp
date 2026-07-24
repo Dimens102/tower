@@ -29,6 +29,7 @@ bool TowerService::start()
 
 void TowerService::update()
 {
+    scheduler_.update();
 }
 
 void TowerService::run()
