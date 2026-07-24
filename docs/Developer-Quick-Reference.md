@@ -28,7 +28,7 @@ tl      ls -lah
 Repository
 ----------
 
-## WinSCP Editing Workflow
+## WinSCP Editing Workflow prompt instructions for ChatGPT
 
 - The user edits source code using WinSCP + Notepad++.
 - Prefer giving repository-relative file paths (for example `src/main.cpp`) instead of `nano` commands.
@@ -43,6 +43,8 @@ Repository
   - testing;
   - verifying specific line ranges or output.
 - Always give the correct amount of indentations when pasting info, don't assume the amount.
+- When giving advice on a improvement also add the first steps to make that improvement in the text, this saves the user asking for the actual steps which will take another 40sec processing time.
+- Same with explaining about a Commit you want to make, at the end ALWAYS add the first step for this improvement to keep the work flow high.
 
 ----------
 ~/Development/rf-tower
