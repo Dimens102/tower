@@ -27,14 +27,20 @@ bool TowerService::start()
     return true;
 }
 
+void TowerService::update()
+{
+}
+
 void TowerService::run()
 {
     std::cout << "Press Ctrl+C to stop.\n";
 
     while (keepRunning)
-    {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
+{
+    update();
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
 }
 
 void TowerService::stop()

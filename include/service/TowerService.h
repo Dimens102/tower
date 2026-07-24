@@ -6,4 +6,7 @@ public:
     bool start();
     void run();
     void stop();
+
+private:
+    void update();
 };
