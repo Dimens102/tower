@@ -1,6 +1,8 @@
 #pragma once
 
-#include "service/Callback.h"
+#include "service/Timer.h"
+
+#include <vector>
 
 class TimerManager
 {
@@ -8,5 +10,5 @@ public:
     void update();
 
 private:
-    Callback callback_;
+    std::vector<Timer> timers_;
 };
