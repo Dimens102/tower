@@ -1,5 +1,6 @@
 #pragma once
 
+#include "service/DeviceManager.h"
 #include "service/TimerManager.h"
 
 class Scheduler
@@ -9,4 +10,5 @@ public:
 
 private:
     TimerManager timerManager_;
+    DeviceManager deviceManager_;
 };
