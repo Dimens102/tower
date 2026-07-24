@@ -151,7 +151,7 @@ The phone application must use the same stable API as other clients.
 
 ## 6. Local display
 
-A display connected to the Raspberry Pi should normally show environmental
+The display should normally show environmental
 and system information such as:
 
 - Time.
@@ -159,6 +159,21 @@ and system information such as:
 - Humidity.
 - Air pressure.
 - Tower status.
+
+The display should also support temporary user-requested
+information through voice commands.
+
+Examples include:
+
+- Current temperature.
+- Current humidity.
+- Air quality.
+- Running programs or services.
+- Current automation status.
+- Network status.
+
+After a configurable timeout the display should automatically
+return to its normal information screen.
 
 When Tower receives, learns, or transmits a command, the display should
 temporarily show relevant event information, such as:
@@ -245,6 +260,14 @@ Sensor definitions should contain:
 - Unit.
 - Location.
 - Hardware or source.
+
+Hardware or source may be either local or remote.
+
+Examples include:
+
+- Local BME688.
+- Remote Raspberry Pi temperature service.
+- HTTP weather provider.
 - Current value.
 - Last update time.
 - Validity or availability state.
@@ -326,9 +349,9 @@ without being directly connected to transport code.
 The intended implementation order is:
 
 1. Establish the logical device and command data model.
-2. Complete reliable IR and RF learning and playback.
-3. Implement logical command lookup and shared command execution.
-4. Add the automation-engine skeleton.
+2. Establish the shared execution engine (Scheduler, TimerManager and callbacks).
+3. Complete reliable IR and RF learning and playback.
+4. Implement logical command lookup and shared command execution.
 5. Add sensor definitions and readings.
 6. Add schedules and condition-based rules.
 7. Add the local network API and PC client.
