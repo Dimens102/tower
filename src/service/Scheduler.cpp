@@ -2,14 +2,23 @@
 
 #include <utility>
 
-void Scheduler::addTimer(
+void Scheduler::after(
     Duration delay,
-    bool repeating,
     Callback callback)
 {
     timerManager_.addTimer(
         delay,
-        repeating,
+        false,
+        std::move(callback));
+}
+
+void Scheduler::every(
+    Duration interval,
+    Callback callback)
+{
+    timerManager_.addTimer(
+        interval,
+        true,
         std::move(callback));
 }
 

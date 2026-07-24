@@ -12,9 +12,12 @@ class Scheduler
 public:
     using Duration = std::chrono::milliseconds;
 
-    void addTimer(
+    void after(
         Duration delay,
-        bool repeating,
+        Callback callback);
+
+    void every(
+        Duration interval,
         Callback callback);
 
     void update();
