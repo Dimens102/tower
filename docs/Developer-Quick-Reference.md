@@ -1,5 +1,7 @@
 Tower Developer Quick Reference
 
+## Programmed Quick Links
+
 Build
 -----
 tb      Build Tower
@@ -24,5 +26,22 @@ tt      tree -L 2
 tl      ls -lah
 
 Repository
+----------
+
+## WinSCP Editing Workflow
+
+- The user edits source code using WinSCP + Notepad++.
+- Prefer giving repository-relative file paths (for example `src/main.cpp`) instead of `nano` commands.
+- When requesting code changes, specify:
+  - the file path;
+  - the exact code to add/change;
+  - optionally the approximate location.
+- Asking the user to upload a file is possible.
+- Use terminal commands for:
+  - building;
+  - running;
+  - testing;
+  - verifying specific line ranges or output.
+
 ----------
 ~/Development/rf-tower

@@ -4,15 +4,16 @@ enum class Command
 {
     Version,
     Receive,
-	Monitor,
+    Monitor,
+    Service,
     Send,
     Learn,
     LearnKernel,
     Replay,
     Config,
-	Sensor,
+    Sensor,
     Device,
-	LogicalCommand,
+    LogicalCommand,
     Execute,
     Unknown
 };

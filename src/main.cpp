@@ -15,6 +15,7 @@ void print_usage()
         << "  tower version\n"
         << "  tower receive\n"
 		<< "  tower monitor\n"
+		<< "  tower service\n"
         << "  tower send\n"
         << "  tower learn\n"
         << "  tower learn-kernel\n"
@@ -43,8 +44,11 @@ int main(int argc, char* argv[])
         case Command::Receive:
             return runReceiveCommand();
 			
-		case Command::Monitor:
+        case Command::Monitor:
             return runMonitorCommand();
+			
+        case Command::Service:
+            return runServiceCommand();
 
         case Command::Send:
             return runSendCommand(argc, argv);

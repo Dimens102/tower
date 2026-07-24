@@ -3,6 +3,7 @@
 int runVersionCommand();
 int runReceiveCommand();
 int runMonitorCommand();
+int runServiceCommand();
 int runSendCommand(int argc, char* argv[]);
 int runLearnCommand(int argc, char* argv[]);
 int runLearnKernelCommand();
