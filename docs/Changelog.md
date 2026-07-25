@@ -139,3 +139,59 @@ Still required:
 - Replace provisional hard-coded GPIO and ADS1115 channel assignments with documented configuration.
 - Confirm the final Aurel RX-4MM5-F ENABLE wiring.
 - Add clean shutdown and capture summaries.
+
+## v0.10.1
+
+### Runtime managed-device unification
+
+This release completes the migration from the dedicated sensor lifecycle to the
+shared managed-device architecture.
+
+#### Added
+
+- Introduced `ManagedDevice` as the common runtime lifecycle abstraction.
+- Added `RemoteSource` as a managed runtime category.
+- Introduced a shared runtime lifecycle for both local and remote data sources.
+
+#### Changed
+
+- `Sensor` now derives from `ManagedDevice`.
+- `BME688` now participates in the shared managed-device lifecycle.
+- `RemoteTemperatureSource` has been renamed to `TemperatureSensor`.
+- `TemperatureSensor` now derives from `RemoteSource`.
+- `DeviceManager` now owns initialization and updates of managed runtime devices.
+- The `tower sensor` command now uses `DeviceManager` instead of a dedicated sensor manager.
+
+#### Removed
+
+- Removed the dedicated `SensorManager`.
+- Removed the duplicate sensor lifecycle implementation.
+
+#### Verified
+
+The following functionality was verified after the migration:
+
+- Clean project compilation.
+- `tower sensor` successfully reports:
+  - BME688 temperature
+  - BME688 humidity
+  - BME688 pressure
+  - BME688 gas resistance
+  - ADS1115 analogue voltages
+- `tower service` starts and shuts down correctly.
+- No remaining references to `SensorManager` exist in the source tree.
+
+#### Architectural result
+
+The runtime hierarchy is now:
+
+```text
+ManagedDevice
+├── Sensor
+│   └── BME688
+└── RemoteSource
+    └── TemperatureSensor
+```
+
+This milestone establishes a single lifecycle model for long-running runtime
+components while keeping the logical `Device` database architecture unchanged.

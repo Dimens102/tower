@@ -443,3 +443,42 @@ Status: 20%
 [ ] Prepare sensor events for the Automation Engine
 
 This milestone will complete the transition from individual sensor implementations to a unified service-based sensor architecture.
+
+---
+
+# Runtime Managed-Device Migration (Completed)
+
+This milestone completed the migration of the local sensor subsystem into the
+shared managed-device architecture.
+
+Completed:
+
+[x] Introduce `ManagedDevice` as the common runtime lifecycle abstraction.
+[x] Convert the `Sensor` hierarchy to the managed-device lifecycle.
+[x] Convert the BME688 to a managed device.
+[x] Introduce the `RemoteSource` runtime category.
+[x] Rename `RemoteTemperatureSource` to `TemperatureSensor`.
+[x] Migrate sensor ownership to `DeviceManager`.
+[x] Remove the legacy `SensorManager`.
+[x] Preserve the existing `tower sensor` diagnostics.
+
+Current runtime hierarchy:
+
+```text
+ManagedDevice
+├── Sensor
+│   └── BME688
+└── RemoteSource
+    └── TemperatureSensor
+```
+
+This milestone intentionally does **not** include:
+
+- Controller abstraction
+- ADS1115 migration to Controller
+- PCF8574 integration
+- RF receiver integration
+- IR receiver integration
+
+Those changes are reserved for the next architectural milestone to keep this
+commit focused on lifecycle unification only.

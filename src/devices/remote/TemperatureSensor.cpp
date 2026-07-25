@@ -1,4 +1,4 @@
-#include "devices/RemoteTemperatureSource.h"
+#include "devices/remote/TemperatureSensor.h"
 
 #include "logging/Logger.h"
 #include "nlohmann/json.hpp"
@@ -14,6 +14,7 @@
 
 namespace
 {
+
 using json = nlohmann::json;
 
 std::optional<TemperatureReading> parseReading(
@@ -41,13 +42,13 @@ std::optional<TemperatureReading> parseReading(
             document["sensor_id"].get<std::string>();
 
         const std::int64_t temperatureMillidegrees =
-            document["temperature_millidegrees_c"].get<std::int64_t>();
+            document["temperature_millidegrees_c"]
+                .get<std::int64_t>();
 
         const std::string timestamp =
             document["timestamp_utc"].get<std::string>();
 
         std::tm parsedTime{};
-
         std::istringstream timestampStream(timestamp);
 
         timestampStream >> std::get_time(
@@ -81,9 +82,10 @@ std::optional<TemperatureReading> parseReading(
         return std::nullopt;
     }
 }
-}
 
-RemoteTemperatureSource::RemoteTemperatureSource(
+} // namespace
+
+TemperatureSensor::TemperatureSensor(
     std::string url,
     Duration pollInterval)
     : url_(std::move(url)),
@@ -92,21 +94,46 @@ RemoteTemperatureSource::RemoteTemperatureSource(
 {
 }
 
-void RemoteTemperatureSource::update()
+bool TemperatureSensor::initialize()
+{
+    nextPoll_ = Clock::now();
+
+    return true;
+}
+
+bool TemperatureSensor::update()
 {
     const Clock::time_point now = Clock::now();
 
     if (now < nextPoll_)
     {
-        return;
+        return true;
     }
 
-    poll();
+    const bool success = poll();
 
     nextPoll_ = now + pollInterval_;
+
+    return success;
 }
 
-void RemoteTemperatureSource::poll()
+bool TemperatureSensor::available() const
+{
+    return latestReading_.has_value();
+}
+
+const std::string& TemperatureSensor::name() const
+{
+    return name_;
+}
+
+const std::optional<TemperatureReading>&
+TemperatureSensor::latestReading() const
+{
+    return latestReading_;
+}
+
+bool TemperatureSensor::poll()
 {
     const std::optional<std::string> response =
         httpClient_.get(url_);
@@ -114,10 +141,10 @@ void RemoteTemperatureSource::poll()
     if (!response)
     {
         Logger::warning(
-            "RemoteTemperature",
+            name_,
             "Unable to retrieve temperature from " + url_);
 
-        return;
+        return false;
     }
 
     const std::optional<TemperatureReading> reading =
@@ -126,10 +153,10 @@ void RemoteTemperatureSource::poll()
     if (!reading)
     {
         Logger::warning(
-            "RemoteTemperature",
+            name_,
             "Received an invalid temperature response");
 
-        return;
+        return false;
     }
 
     latestReading_ = *reading;
@@ -145,12 +172,8 @@ void RemoteTemperatureSource::poll()
         << " C";
 
     Logger::info(
-        "RemoteTemperature",
+        name_,
         message.str());
-}
 
-const std::optional<TemperatureReading>&
-RemoteTemperatureSource::latestReading() const
-{
-    return latestReading_;
+    return true;
 }

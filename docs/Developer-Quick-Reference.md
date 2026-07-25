@@ -47,6 +47,7 @@ Repository
 - When giving advice on a improvement also add the first steps to make that improvement in the text, this saves the user asking for the actual steps which will take another 40sec processing time.
 - Same with explaining about a Commit you want to make, at the end ALWAYS add the first step for this improvement to keep the work flow high.
 - From now on, for this project I'll treat the docs like source code:
+  - Each document has its own fuction, try and preserve that
   - preserve existing content;
   - append new milestones;
   - mark completed items;

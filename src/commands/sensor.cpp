@@ -1,12 +1,13 @@
 #include "commands/command_handlers.h"
 
+#include "sensors/ads1115.h"
+#include "sensors/bme688.h"
+#include "sensors/sensor.h"
+#include "service/DeviceManager.h"
+
 #include <iomanip>
 #include <iostream>
 #include <memory>
-
-#include "sensors/ads1115.h"
-#include "sensors/bme688.h"
-#include "sensors/sensor_manager.h"
 
 namespace
 {
@@ -23,7 +24,7 @@ void printReading(const tower::sensors::Sensor& sensor)
         return;
     }
 
-        for (const auto& value : reading.measurements)
+    for (const auto& value : reading.measurements)
     {
         std::cout
             << std::left
@@ -42,29 +43,38 @@ void printReading(const tower::sensors::Sensor& sensor)
 
 int runSensorCommand()
 {
-    tower::sensors::SensorManager sensorManager;
+    DeviceManager deviceManager;
 
-    sensorManager.registerSensor(
+    deviceManager.addDevice(
         std::make_unique<tower::sensors::BME688>());
 
-    sensorManager.registerSensor(
+    deviceManager.addDevice(
         std::make_unique<tower::sensors::ADS1115>());
 
-    if (!sensorManager.initialize())
+    if (!deviceManager.initialize())
     {
         std::cerr
             << "One or more sensors failed to initialize.\n";
         return 1;
     }
 
-    sensorManager.update();
+    deviceManager.update();
 
     std::cout << std::fixed << std::setprecision(3);
 
     bool success = true;
 
-    for (const auto& sensor : sensorManager.sensors())
+    for (const auto& device : deviceManager.devices())
     {
+        const auto* sensor =
+            dynamic_cast<const tower::sensors::Sensor*>(
+                device.get());
+
+        if (sensor == nullptr)
+        {
+            continue;
+        }
+
         printReading(*sensor);
 
         if (!sensor->reading().valid)

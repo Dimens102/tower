@@ -99,6 +99,7 @@ bool BME688::initialize()
 bool BME688::update()
 {
     m_reading.valid = false;
+	m_reading.measurements.clear();
 
     if (!m_available || m_fd < 0)
     {

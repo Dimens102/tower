@@ -1,6 +1,6 @@
 #include "service/TowerService.h"
 
-#include "devices/RemoteTemperatureSource.h"
+#include "devices/remote/TemperatureSensor.h"
 #include "logging/Logger.h"
 
 #include <chrono>
@@ -10,18 +10,20 @@
 
 namespace
 {
+
 volatile std::sig_atomic_t keepRunning = 1;
 
 void handleSignal(int)
 {
     keepRunning = 0;
 }
-}
+
+} // namespace
 
 TowerService::TowerService()
 {
     scheduler_.addDevice(
-        std::make_unique<RemoteTemperatureSource>(
+        std::make_unique<TemperatureSensor>(
             "http://192.168.2.26:8765/temperature",
             std::chrono::seconds(30)));
 }

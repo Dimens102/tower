@@ -506,3 +506,209 @@ The current service architecture is intended to become the foundation for future
 - scheduled tasks.
 
 All future long-running components should integrate through the shared service infrastructure instead of implementing independent execution loops.
+
+## New Work Day block 26-7-2026 bellow
+
+---
+
+# Runtime Managed-Device Unification
+
+Tower now uses one shared runtime lifecycle model for local sensors and remote
+data sources.
+
+This change unifies previously separate execution paths without replacing the
+existing logical device database.
+
+## Logical devices and runtime devices
+
+Tower contains two distinct device concepts.
+
+### Logical devices
+
+Logical devices represent user-facing home-automation objects stored in the
+device database.
+
+Examples:
+
+```text
+LivingRoomReceiver
+DellProjector
+BedroomLight
+```
+
+Logical devices contain metadata, commands, aliases, and transport mappings.
+They are persisted under:
+
+```text
+data/devices/
+```
+
+### Runtime managed devices
+
+Runtime managed devices are live software components owned and executed by the
+Tower service.
+
+Examples:
+
+```text
+BME688
+TemperatureSensor
+```
+
+They represent active local hardware, remote sources, or other long-running
+service components.
+
+The runtime managed-device framework does not replace the logical device
+database. The two systems have different responsibilities.
+
+## Shared lifecycle
+
+All runtime managed devices derive from:
+
+```text
+ManagedDevice
+```
+
+The common lifecycle interface contains:
+
+```cpp
+initialize()
+update()
+available()
+name()
+```
+
+This allows the service infrastructure to initialize, schedule, update, and
+inspect different runtime components through one stable interface.
+
+## Current hierarchy
+
+```text
+ManagedDevice
+├── Sensor
+│   └── BME688
+└── RemoteSource
+    └── TemperatureSensor
+```
+
+`Sensor` remains the shared interface for components that expose normalized
+`SensorReading` data.
+
+`RemoteSource` represents managed data sources whose values originate outside
+the local Tower process.
+
+## Runtime execution flow
+
+```text
+TowerService
+    |
+    v
+Scheduler
+    |
+    v
+DeviceManager
+    |
+    v
+ManagedDevice
+    |
+    +-------------------+
+    |                   |
+    v                   v
+ Sensor            RemoteSource
+    |                   |
+    v                   v
+ BME688        TemperatureSensor
+```
+
+The responsibilities are divided as follows:
+
+### TowerService
+
+- Owns the lifetime of the running Tower service.
+- Constructs and connects shared runtime infrastructure.
+- Registers runtime managed devices.
+- Coordinates startup and clean shutdown.
+
+### Scheduler
+
+- Provides periodic execution for managed runtime work.
+- Uses the shared timer infrastructure.
+- Remains independent of individual sensor or source implementations.
+
+### DeviceManager
+
+- Owns registered `ManagedDevice` instances.
+- Initializes managed devices.
+- Updates managed devices.
+- Exposes registered devices to the scheduler and diagnostic command paths.
+
+### ManagedDevice implementations
+
+- Hide implementation-specific hardware or communication details.
+- Report whether they are currently available.
+- Perform their own update operation.
+- Expose a stable runtime name.
+
+## SensorManager retirement
+
+The previous `SensorManager` duplicated lifecycle responsibilities that now
+belong to `DeviceManager`.
+
+It has therefore been removed.
+
+Before:
+
+```text
+SensorManager
+├── BME688
+└── ADS1115
+```
+
+After:
+
+```text
+DeviceManager
+├── BME688
+└── TemperatureSensor
+```
+
+The `tower sensor` diagnostic command now uses `DeviceManager` while continuing
+to expose sensor readings through the shared `Sensor` interface.
+
+## Completed migration
+
+This architecture change completes the following work:
+
+- Introduced `ManagedDevice` as the common runtime lifecycle abstraction.
+- Made `Sensor` derive from `ManagedDevice`.
+- Added `RemoteSource` as a managed runtime category.
+- Renamed `RemoteTemperatureSource` to `TemperatureSensor`.
+- Converted `TemperatureSensor` to the managed runtime lifecycle.
+- Converted the BME688 to the managed runtime lifecycle.
+- Migrated sensor ownership and updates to `DeviceManager`.
+- Removed the obsolete `SensorManager`.
+- Preserved the working `tower sensor` diagnostic command.
+- Verified clean service startup and shutdown through `tower service`.
+
+## Architectural boundary
+
+This milestone intentionally does not yet integrate:
+
+```text
+ADS1115
+PCF8574
+RFReceiver
+IRReceiver
+RFSender
+IRSender
+```
+
+Their exact runtime roles will be handled in a separate architecture milestone.
+
+Long-running receivers may later participate in the managed runtime lifecycle.
+Request-driven transmitters may remain transport services rather than being
+forced into the same inheritance hierarchy.
+
+This separation prevents unrelated hardware abstractions from being added to
+the runtime hierarchy before their ownership and lifecycle requirements are
+defined.

@@ -2,21 +2,17 @@
 
 #include <string>
 
+#include "service/ManagedDevice.h"
 #include "sensors/sensor_reading.h"
 
 namespace tower::sensors
 {
 
-class Sensor
+class Sensor : public ManagedDevice
 {
 public:
-    virtual ~Sensor() = default;
+    ~Sensor() override = default;
 
-    virtual bool initialize() = 0;
-    virtual bool update() = 0;
-
-    virtual bool available() const = 0;
-    virtual const std::string& name() const = 0;
     virtual const SensorReading& reading() const = 0;
 };
 
