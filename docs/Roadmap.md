@@ -375,3 +375,71 @@ Required when development resumes:
 [ ] Add protocol identification and decoding.
 [ ] Decide the final roles of monitor, receive, and learn commands.
 [ ] Refactor experimental command-loop logic into the RF receiver subsystem.
+
+---
+
+# Service Infrastructure Milestone (Completed)
+
+This milestone established the long-running execution framework that future Tower subsystems will build upon.
+
+Completed:
+
+[x] TowerService
+[x] Scheduler
+[x] Callback framework
+[x] Timer
+[x] TimerManager
+[x] DeviceManager
+[x] ManagedDevice framework
+[x] Centralized Logger
+[x] Reusable HttpClient
+[x] TemperatureReading model
+[x] RemoteTemperatureSource
+[x] Remote HTTP temperature polling
+
+Current architecture:
+
+```text
+TowerService
+    |
+    v
+Scheduler
+    |
+    v
+DeviceManager
+    |
+    v
+ManagedDevice
+```
+
+The Scheduler now periodically executes registered managed devices, allowing both local and remote hardware to operate through the same execution framework.
+
+The first managed device is:
+
+```text
+RemoteTemperatureSource
+```
+
+Future managed devices will include:
+
+- BME688
+- RF Receiver
+- Weather services
+- MQTT clients
+- HTTP devices
+
+---
+
+# Next Milestone
+
+Status: 20%
+
+## Sensor Framework
+
+[ ] Migrate local sensors to the ManagedDevice framework
+[ ] Integrate the local BME688
+[ ] Create a shared sensor registration system
+[ ] Add sensor history
+[ ] Prepare sensor events for the Automation Engine
+
+This milestone will complete the transition from individual sensor implementations to a unified service-based sensor architecture.

@@ -318,3 +318,191 @@ Architectural rules:
 - CLI commands should invoke RF receiver services rather than permanently owning capture logic.
 - Pulse capture, protocol decoding, storage, and device mapping remain separate responsibilities.
 - GPIO4 and AIN0 must eventually come from documented hardware configuration rather than being duplicated as hard-coded values.
+
+---
+
+# v0.10.0 - Service-Oriented Architecture
+
+The Tower project now includes its first long-running execution engine. Rather than individual command implementations owning their own execution loops, background processing is now coordinated through a shared service architecture.
+
+Current execution flow:
+
+```text
+TowerService
+    |
+    v
+Scheduler
+    |
+    v
+DeviceManager
+    |
+    v
+ManagedDevice
+```
+
+This architecture provides a common foundation for all long-running background functionality.
+
+## Service Layer
+
+The `TowerService` owns the lifetime of the application.
+
+Responsibilities include:
+
+- Constructing shared infrastructure.
+- Registering managed devices.
+- Starting the scheduler.
+- Coordinating clean shutdown.
+
+Future subsystems should integrate through the service layer rather than creating independent execution loops.
+
+---
+
+## Scheduler
+
+The Scheduler is responsible for executing periodic background work.
+
+Responsibilities:
+
+- Register managed devices.
+- Execute devices at configurable polling intervals.
+- Own the shared timer infrastructure.
+- Provide a single scheduling implementation for all background tasks.
+
+The scheduler should remain independent from the specific work performed by managed devices.
+
+---
+
+## Device Manager
+
+The DeviceManager owns all registered managed devices.
+
+Responsibilities:
+
+- Store managed devices.
+- Initialize managed devices.
+- Provide access to registered devices.
+- Allow the scheduler to iterate over active devices.
+
+Future managed devices should register through the DeviceManager instead of being managed directly by the service.
+
+---
+
+## ManagedDevice
+
+The previous service abstraction named `Device` has been renamed to `ManagedDevice`.
+
+This removes a naming conflict with the existing hardware `Device` model used by the device database.
+
+Every managed device now follows the same execution model and can be scheduled uniformly.
+
+Current managed devices:
+
+```text
+RemoteTemperatureSource
+```
+
+Future managed devices may include:
+
+```text
+BME688
+RFReceiver
+WeatherService
+MQTTClient
+HTTPDevice
+```
+
+---
+
+## Logging Architecture
+
+A reusable logging subsystem has been introduced.
+
+Current design:
+
+```text
+TowerService
+       |
+       +------ Logger
+                    |
+          +---------+---------+
+          |                   |
+          v                   v
+     Scheduler       ManagedDevice
+                              |
+                              v
+                 RemoteTemperatureSource
+```
+
+The logger provides:
+
+- timestamps;
+- log levels;
+- component names;
+- thread-safe console output.
+
+Subsystems should log through the shared Logger rather than writing directly to `std::cout`.
+
+---
+
+## HTTP Client
+
+Network communication is now abstracted behind a reusable `HttpClient`.
+
+Current flow:
+
+```text
+ManagedDevice
+      |
+      v
+HttpClient
+      |
+      v
+HTTP Server
+```
+
+The HTTP client currently supports HTTP GET requests and provides a reusable foundation for future REST integrations and remote hardware.
+
+---
+
+## Remote Temperature Source
+
+The first managed device implemented using the new architecture is `RemoteTemperatureSource`.
+
+Execution flow:
+
+```text
+Scheduler
+      |
+      v
+RemoteTemperatureSource
+      |
+      v
+HttpClient
+      |
+      v
+Remote Raspberry Pi
+      |
+      v
+TemperatureReading
+```
+
+The remote temperature source periodically retrieves JSON data over HTTP and converts it into a reusable `TemperatureReading`.
+
+This demonstrates that both local and remote hardware can be integrated through the same managed-device architecture.
+
+---
+
+## Architectural Direction
+
+The current service architecture is intended to become the foundation for future Tower subsystems including:
+
+- local sensors;
+- remote sensors;
+- RF receiver;
+- automation;
+- REST API;
+- web interface;
+- MQTT;
+- scheduled tasks.
+
+All future long-running components should integrate through the shared service infrastructure instead of implementing independent execution loops.

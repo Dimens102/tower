@@ -59,3 +59,108 @@ Both local and remote sensors will be managed through the same DeviceManager inf
 The remaining RF receiver and IR transmitter improvements are considered hardware refinement tasks rather than blockers.
 
 Development of the overall Tower platform—including automation, scheduling, sensors, networking, voice control and user interfaces—will continue while these hardware improvements are investigated in parallel.
+
+---
+
+# Service Infrastructure
+
+The project now includes the first version of the long-running Tower execution engine.
+
+Current execution flow:
+
+```text
+TowerService
+    |
+    v
+Scheduler
+    |
+    v
+DeviceManager
+    |
+    v
+ManagedDevice instances
+```
+
+The service owns the application's lifetime while the scheduler periodically updates registered managed devices.
+
+## Scheduler
+
+The Scheduler provides a common execution framework for long-running background tasks.
+
+Current responsibilities:
+
+- Register managed devices.
+- Execute devices at configurable polling intervals.
+- Own the shared TimerManager.
+- Eliminate the need for individual command loops inside device implementations.
+
+This scheduler will become the foundation for future:
+
+- automation;
+- periodic sensor polling;
+- scheduled tasks;
+- background services.
+
+## Managed Devices
+
+The original service abstraction named `Device` has been renamed to `ManagedDevice`.
+
+This avoids a naming conflict with the existing hardware `Device` model used by the device database.
+
+Every managed device now exposes a common lifecycle and can be registered with the `DeviceManager` for automatic scheduling.
+
+Current managed devices:
+
+- RemoteTemperatureSource
+
+Future managed devices may include:
+
+- BME688 environmental sensor
+- RF receiver
+- Weather services
+- MQTT clients
+- Additional network-connected sensors
+
+## Logging
+
+A reusable logging subsystem has been introduced.
+
+Current features include:
+
+- timestamped messages;
+- log levels;
+- component names;
+- thread-safe console output.
+
+The logger is intended to become the standard logging interface for all Tower subsystems.
+
+## HTTP Networking
+
+Tower now includes a reusable HTTP client built on libcurl.
+
+Current capabilities:
+
+- HTTP GET requests;
+- response retrieval;
+- error reporting.
+
+The HTTP client is designed for reuse by future REST clients, remote sensors, web integrations and network-connected devices.
+
+## Remote Temperature Source
+
+The first network-connected managed device has been implemented.
+
+`RemoteTemperatureSource` periodically retrieves JSON temperature data from a Raspberry Pi over HTTP.
+
+This demonstrates that Tower can integrate remote hardware while exposing the data through the same managed-device architecture that will also support local hardware.
+
+## Current Development Focus
+
+With the core execution engine now operational, development can continue toward:
+
+- shared sensor framework;
+- local BME688 integration;
+- Automation Engine expansion;
+- additional managed devices;
+- REST API;
+- Web interface.

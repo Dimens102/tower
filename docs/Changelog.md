@@ -90,6 +90,25 @@
 - Prepared the architecture for future RF RSSI integration without coupling RF logic into the ADC driver.
 
 
+## v0.10.0
+
+- Added the long-running `TowerService` execution engine.
+- Added the `Scheduler` for periodic execution of managed devices.
+- Added the reusable `Callback` framework.
+- Added the `Timer` class.
+- Added the `TimerManager`.
+- Added the `DeviceManager` for registration and management of background devices.
+- Renamed the service abstraction from `Device` to `ManagedDevice` to avoid a naming conflict with the existing hardware `Device` model.
+- Added the centralized `Logger` subsystem with timestamps, log levels and component names.
+- Added the reusable `HttpClient` based on libcurl.
+- Added the `TemperatureReading` model.
+- Added the `RemoteTemperatureSource` managed device.
+- Added periodic HTTP polling of a remote Raspberry Pi temperature sensor.
+- Verified JSON temperature retrieval over HTTP.
+- Established the first service-oriented execution architecture for long-running background components.
+
+---
+
 ---
 
 ## RF monitor work in progress (unreleased)
