@@ -5,12 +5,14 @@
 class TowerService
 {
 public:
+    TowerService();
+
     bool start();
     void run();
     void stop();
 
 private:
-    Scheduler scheduler_;
     void update();
 
+    Scheduler scheduler_;
 };

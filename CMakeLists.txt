@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(tower VERSION 0.1.0 LANGUAGES C CXX)
 
+find_package(CURL REQUIRED)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -26,6 +28,7 @@ target_include_directories(tower PRIVATE
 )
 
 target_link_libraries(tower PRIVATE
+    CURL::libcurl
     gpiod
     i2c
 )

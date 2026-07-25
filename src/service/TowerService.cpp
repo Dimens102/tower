@@ -1,8 +1,11 @@
 #include "service/TowerService.h"
 
+#include "devices/RemoteTemperatureSource.h"
+#include "logging/Logger.h"
+
 #include <chrono>
 #include <csignal>
-#include <iostream>
+#include <memory>
 #include <thread>
 
 namespace
@@ -15,6 +18,14 @@ void handleSignal(int)
 }
 }
 
+TowerService::TowerService()
+{
+    scheduler_.addDevice(
+        std::make_unique<RemoteTemperatureSource>(
+            "http://192.168.2.26:8765/temperature",
+            std::chrono::seconds(30)));
+}
+
 bool TowerService::start()
 {
     keepRunning = 1;
@@ -22,7 +33,9 @@ bool TowerService::start()
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
 
-    std::cout << "Tower service starting.\n";
+    Logger::info(
+        "TowerService",
+        "Tower service starting");
 
     return true;
 }
@@ -34,7 +47,9 @@ void TowerService::update()
 
 void TowerService::run()
 {
-    std::cout << "Press Ctrl+C to stop.\n";
+    Logger::info(
+        "TowerService",
+        "Press Ctrl+C to stop");
 
     while (keepRunning)
     {
@@ -47,5 +62,7 @@ void TowerService::run()
 
 void TowerService::stop()
 {
-    std::cout << "Tower service stopping.\n";
+    Logger::info(
+        "TowerService",
+        "Tower service stopping");
 }

@@ -3,9 +3,11 @@
 #include "service/AutomationEngine.h"
 #include "service/Callback.h"
 #include "service/DeviceManager.h"
+#include "service/ManagedDevice.h"
 #include "service/TimerManager.h"
 
 #include <chrono>
+#include <memory>
 
 class Scheduler
 {
@@ -19,6 +21,9 @@ public:
     void every(
         Duration interval,
         Callback callback);
+
+    void addDevice(
+        std::unique_ptr<ManagedDevice> device);
 
     void update();
 

@@ -22,6 +22,13 @@ void Scheduler::every(
         std::move(callback));
 }
 
+void Scheduler::addDevice(
+    std::unique_ptr<ManagedDevice> device)
+{
+    deviceManager_.addDevice(
+        std::move(device));
+}
+
 void Scheduler::update()
 {
     timerManager_.update();
