@@ -25,7 +25,7 @@ Status: 88%
 [x] Vendored JSON library
 [x] Modular device command handlers
 [ ] GPIO output
-[ ] Driver Manager
+[x] Driver Manager
 [ ] Logging system
 [ ] Configuration system
 [ ] Tower daemon/service
@@ -50,7 +50,9 @@ Status: 25%
 
 ## I²C
 
+[x] ADS1115 controller
 [ ] Generic I²C driver
+[ ] PCF8574 controller
 
 ## UART
 
@@ -482,3 +484,4 @@ This milestone intentionally does **not** include:
 
 Those changes are reserved for the next architectural milestone to keep this
 commit focused on lifecycle unification only.
+

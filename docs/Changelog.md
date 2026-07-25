@@ -195,3 +195,29 @@ ManagedDevice
 
 This milestone establishes a single lifecycle model for long-running runtime
 components while keeping the logical `Device` database architecture unchanged.
+
+## v0.10.2
+
+### Added
+
+- Introduced the `Controller` runtime category.
+- Added the `Controller` base class derived from `ManagedDevice`.
+- Added controller design documentation.
+
+### Changed
+
+- Migrated `ADS1115` from the `Sensor` runtime category to the new `Controller` runtime category.
+- Moved ADS1115 source files from `sensors/` to `controllers/`.
+- Updated all references, namespaces, and include paths.
+
+### Verified
+
+- Project builds successfully.
+- Environmental sensor functionality remains operational.
+- ADS1115 monitoring continues to function correctly for RF RSSI measurements.
+
+### Architectural Result
+
+The runtime architecture now distinguishes between hardware that measures the physical environment (`Sensor`) and hardware that extends or controls platform capabilities (`Controller`).
+
+This establishes the foundation for future controller implementations such as the PCF8574 and PCA9685 while preserving the common `ManagedDevice` lifecycle.

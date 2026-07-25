@@ -712,3 +712,54 @@ forced into the same inheritance hierarchy.
 This separation prevents unrelated hardware abstractions from being added to
 the runtime hierarchy before their ownership and lifecycle requirements are
 defined.
+
+# Controller Runtime Category
+
+The runtime architecture now distinguishes between hardware that produces measurements and hardware that provides infrastructure capabilities.
+
+Current runtime hierarchy:
+
+```text
+ManagedDevice
+├── Sensor
+├── Controller
+└── RemoteSource
+```
+
+## Sensor
+
+Sensors represent devices whose primary responsibility is producing measurements from the physical world.
+
+Examples:
+
+- BME688
+- Future environmental sensors
+
+## Controller
+
+Controllers represent hardware infrastructure devices that expose capabilities to the rest of the system.
+
+Rather than representing environmental measurements, controllers provide additional hardware resources to the RadioTower platform.
+
+Examples include:
+
+- ADS1115 (analog inputs)
+- PCF8574 (GPIO expansion)
+- PCA9685 (PWM expansion)
+
+Controllers participate in the same runtime lifecycle as all managed devices:
+
+- initialize()
+- update()
+- available()
+- name()
+
+## ADS1115 Migration
+
+The ADS1115 has been migrated from the `Sensor` runtime category into the new `Controller` category.
+
+Although the ADS1115 performs analog-to-digital conversion, its primary role within the RadioTower project is extending the Raspberry Pi's hardware capabilities by providing additional analog input channels.
+
+The ADS1115 currently supplies RSSI measurements for the RF receiver and serves as the first implementation of the Controller runtime category.
+
+This migration establishes the architectural foundation for future hardware expansion devices while preserving the common ManagedDevice lifecycle.

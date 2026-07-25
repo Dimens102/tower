@@ -1,6 +1,6 @@
 #include "commands/command_handlers.h"
 
-#include "sensors/ads1115.h"
+#include "controllers/ads1115.h"
 #include "sensors/bme688.h"
 #include "sensors/sensor.h"
 #include "service/DeviceManager.h"
@@ -49,7 +49,7 @@ int runSensorCommand()
         std::make_unique<tower::sensors::BME688>());
 
     deviceManager.addDevice(
-        std::make_unique<tower::sensors::ADS1115>());
+        std::make_unique<tower::controllers::ADS1115>());
 
     if (!deviceManager.initialize())
     {

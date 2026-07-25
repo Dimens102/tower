@@ -4,12 +4,13 @@
 #include <cstdint>
 #include <string>
 
-#include "sensors/sensor.h"
+#include "controllers/controller.h"
+#include "sensors/sensor_reading.h"
 
-namespace tower::sensors
+namespace tower::controllers
 {
 
-class ADS1115 : public Sensor
+class ADS1115 : public Controller
 {
 public:
     explicit ADS1115(
@@ -23,7 +24,7 @@ public:
 
     bool available() const override;
     const std::string& name() const override;
-    const SensorReading& reading() const override;
+    const tower::sensors::SensorReading& reading() const;
 
     bool readChannel(std::size_t channel, double& voltage);
 
@@ -40,7 +41,7 @@ private:
     int m_fd = -1;
     bool m_available = false;
 
-    SensorReading m_reading{};
+    tower::sensors::SensorReading m_reading{};
 };
 
-} // namespace tower::sensors
+} // namespace tower::controllers

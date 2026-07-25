@@ -3,13 +3,13 @@
 #include <iostream>
 
 #include "core/gpio.h"
-#include "sensors/ads1115.h"
+#include "controllers/ads1115.h"
 
 int runReceiveCommand()
 {
     GPIO gpio;
 	
-	tower::sensors::ADS1115 ads;
+	tower::controllers::ADS1115 ads;
 
     if (!ads.initialize())
     {

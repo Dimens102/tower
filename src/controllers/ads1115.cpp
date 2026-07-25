@@ -1,4 +1,4 @@
-#include "sensors/ads1115.h"
+#include "controllers/ads1115.h"
 
 #include <chrono>
 #include <fcntl.h>
@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <utility>
 
-namespace tower::sensors
+namespace tower::controllers
 {
 
 namespace
@@ -127,7 +127,7 @@ const std::string& ADS1115::name() const
     return m_name;
 }
 
-const SensorReading& ADS1115::reading() const
+const tower::sensors::SensorReading& ADS1115::reading() const
 {
     return m_reading;
 }
@@ -255,4 +255,4 @@ bool ADS1115::waitForConversion()
     return false;
 }
 
-} // namespace tower::sensors
+} // namespace tower::controllers
