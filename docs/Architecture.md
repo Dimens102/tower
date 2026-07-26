@@ -763,3 +763,101 @@ Although the ADS1115 performs analog-to-digital conversion, its primary role wit
 The ADS1115 currently supplies RSSI measurements for the RF receiver and serves as the first implementation of the Controller runtime category.
 
 This migration establishes the architectural foundation for future hardware expansion devices while preserving the common ManagedDevice lifecycle.
+
+---
+
+# Temperature Source Architecture
+
+Temperature access is divided by source while retaining one top-level command group:
+
+```text
+tower temperature local
+    -> BME688
+    -> Direct I2C measurement
+
+tower temperature remote ID1
+tower temperature remote aquarium
+    -> TemperatureSensor
+    -> HTTP measurement and stored hourly history
+```
+
+## Local temperature
+
+The local command creates a BME688 instance and performs one forced measurement.
+
+```text
+Tower CLI
+    |
+    v
+BME688
+    |
+    v
+Linux I2C
+    |
+    v
+Local temperature
+```
+
+`tower temperature local` displays only the temperature value.
+
+The broader `tower sensor` diagnostic remains available for all BME688 measurements:
+
+- Temperature
+- Humidity
+- Pressure
+- Gas resistance
+
+## Remote temperature
+
+The remote temperature path uses the managed `TemperatureSensor`.
+
+```text
+TowerService
+    |
+    v
+Scheduler
+    |
+    v
+DeviceManager
+    |
+    v
+TemperatureSensor
+    |
+    v
+HttpClient
+    |
+    v
+Remote Raspberry Pi
+```
+
+The current remote source has:
+
+```text
+Permanent source ID : ID1
+Friendly name       : aquarium
+Hardware sensor ID  : 28-000008c84830
+```
+
+`ID1` is the permanent remote-source identifier.
+
+`aquarium` is a friendly name and may be changed without changing the permanent identity of the source.
+
+The remote source is polled every 30 seconds. Valid readings are cached and one history entry is stored per hour in:
+
+```text
+runtime/temperature/temperature_history.csv
+```
+
+The history retains up to 504 entries, representing three weeks at one entry per hour. The temperature command groups history entries by ISO week when displaying them.
+
+## Service autostart
+
+The operating-system service launches:
+
+```text
+tower service
+```
+
+during system boot.
+
+This allows remote temperature polling and hourly history storage to continue without an interactive terminal or logged-in user.

@@ -24,6 +24,8 @@ TowerService::TowerService()
 {
     scheduler_.addDevice(
         std::make_unique<TemperatureSensor>(
+            "ID1",
+            "aquarium",
             "http://192.168.2.26:8765/temperature",
             std::chrono::seconds(30)));
 }

@@ -12,6 +12,7 @@ enum class Command
     Replay,
     Config,
     Sensor,
+	Temperature,
     Device,
     LogicalCommand,
     Execute,

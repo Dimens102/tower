@@ -221,3 +221,28 @@ components while keeping the logical `Device` database architecture unchanged.
 The runtime architecture now distinguishes between hardware that measures the physical environment (`Sensor`) and hardware that extends or controls platform capabilities (`Controller`).
 
 This establishes the foundation for future controller implementations such as the PCF8574 and PCA9685 while preserving the common `ManagedDevice` lifecycle.
+
+### Temperature commands and persistent remote history
+
+#### Added
+
+- Added `tower temperature local` for a direct BME688 temperature reading.
+- Added `tower temperature remote <ID or name>` for remote temperature readings and history.
+- Added permanent remote source ID `ID1`.
+- Added friendly remote source name `aquarium`.
+- Added `TemperatureHistory` with hourly CSV storage.
+- Added week-grouped temperature history output.
+- Added `docs/Commands.md` as the full-name Tower CLI reference.
+
+#### Changed
+
+- Updated the Tower autostart service so the long-running `tower service` process starts during system boot and continuously polls the remote source.
+- Extended the temperature command handler to validate and route `local` and `remote` arguments.
+- Configured remote temperature history to retain up to 504 hourly readings.
+
+#### Verified
+
+- `tower temperature local` reports the Tower's local BME688 temperature.
+- `tower temperature remote ID1` reports the aquarium temperature and stored history.
+- `tower temperature remote aquarium` resolves to the same permanent source as `ID1`.
+- Remote temperature history continues to populate while the Tower service runs.

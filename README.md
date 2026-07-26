@@ -39,20 +39,39 @@ Commercial remotes are still capable of operating devices using reflected IR fro
 
 Further hardware optimisation of the IR transmitter remains an ongoing task.
 
-## Sensor Development
+## Temperature and Sensor Support
 
-Environmental monitoring will be implemented incrementally.
+Environmental monitoring is operational through both local and remote temperature sources.
 
-The first sensor device will be a **RemoteTemperatureSource**, retrieving temperature measurements from a Raspberry Pi 2B over HTTP while maintaining a local cache and historical database.
-
-The second planned sensor device is a locally connected **BME688**, providing measurements including:
+The Tower's locally connected **BME688** provides:
 
 - Temperature
 - Humidity
 - Air pressure
-- Air quality
+- Gas resistance
 
-Both local and remote sensors will be managed through the same DeviceManager infrastructure.
+The remote **TemperatureSensor** retrieves aquarium temperature measurements from a Raspberry Pi 2B over HTTP. It is configured with:
+
+- Permanent source ID `ID1`
+- Friendly name `aquarium`
+- DS18B20 hardware sensor ID `28-000008c84830`
+- A 30-second polling interval
+- Hourly history storage under `runtime/temperature/`
+- A maximum history of 504 hourly readings, representing three weeks
+
+The long-running Tower service polls the remote sensor and maintains its history. The operating-system service starts Tower automatically during system boot.
+
+Current temperature commands:
+
+```text
+tower temperature local
+tower temperature remote ID1
+tower temperature remote aquarium
+```
+
+The local command reads the BME688 directly. Both remote identifiers resolve to the same source. ID1 is the permanent identifier and remains stable if the friendly name changes.
+
+See docs/Commands.md for the complete Tower command reference.
 
 ## Project Philosophy
 
@@ -111,7 +130,10 @@ Every managed device now exposes a common lifecycle and can be registered with t
 
 Current managed devices:
 
-- RemoteTemperatureSource
+- BME688
+- ADS1115
+- PCF8574
+- TemperatureSensor (`ID1`, friendly name `aquarium`)
 
 Future managed devices may include:
 

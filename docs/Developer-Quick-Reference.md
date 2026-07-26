@@ -1,5 +1,8 @@
 Tower Developer Quick Reference
 
+For the user-facing Tower CLI reference using complete executable names, see
+`docs/Commands.md`.
+
 ## Programmed Quick Links
 
 Build

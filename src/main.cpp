@@ -22,6 +22,7 @@ void print_usage()
         << "  tower replay\n"
         << "  tower config\n"
 		<< "  tower sensor\n"
+		<< "  tower temperature\n"
         << "  tower device\n"
         << "  tower command\n"
         << "  tower execute <device-id> <command-id>\n";
@@ -66,6 +67,9 @@ int main(int argc, char* argv[])
 			
 		case Command::Sensor:
             return runSensorCommand();
+			
+		case Command::Temperature:
+		    return runTemperatureCommand(argc, argv);
 
         case Command::Device:
             return runDeviceCommand(argc, argv);

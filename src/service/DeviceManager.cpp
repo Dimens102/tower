@@ -27,10 +27,7 @@ void DeviceManager::update()
 {
     for (auto& device : devices_)
     {
-        if (device->available())
-        {
-            device->update();
-        }
+        device->update();
     }
 }
 

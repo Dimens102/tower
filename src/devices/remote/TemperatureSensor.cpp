@@ -86,11 +86,19 @@ std::optional<TemperatureReading> parseReading(
 } // namespace
 
 TemperatureSensor::TemperatureSensor(
+    std::string sourceId,
+    std::string displayName,
     std::string url,
     Duration pollInterval)
-    : url_(std::move(url)),
+	: sourceId_(std::move(sourceId)),
+      displayName_(std::move(displayName)),
+      url_(std::move(url)),
       pollInterval_(pollInterval),
-      nextPoll_(Clock::now())
+      nextPoll_(Clock::now()),
+      history_(
+          "runtime/temperature/temperature_history.csv",
+          504),
+      nextHistoryStore_(Clock::now())
 {
 }
 
@@ -133,6 +141,16 @@ TemperatureSensor::latestReading() const
     return latestReading_;
 }
 
+const std::string& TemperatureSensor::sourceId() const
+{
+    return sourceId_;
+}
+
+const std::string& TemperatureSensor::displayName() const
+{
+    return displayName_;
+}
+
 bool TemperatureSensor::poll()
 {
     const std::optional<std::string> response =
@@ -160,6 +178,22 @@ bool TemperatureSensor::poll()
     }
 
     latestReading_ = *reading;
+
+    const Clock::time_point now = Clock::now();
+
+    if (now >= nextHistoryStore_)
+    {
+        if (history_.store(*latestReading_))
+        {
+            nextHistoryStore_ = now + Hours(1);
+        }
+        else
+        {
+            Logger::warning(
+                name_,
+                "Unable to store temperature history");
+        }
+    }
 
     std::ostringstream message;
 
