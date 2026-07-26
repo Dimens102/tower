@@ -140,6 +140,12 @@ tower replay <device-name> <command-name> <transmitter-name>
 
 Loads a saved IR code and sends it through the selected IR transmitter.
 
+Known IR replay command:
+
+```bash
+tower replay Denon VolumeUp Tower-IR-TX-001
+```
+
 ## Radio Frequency
 
 ```bash
@@ -147,6 +153,54 @@ tower send <device-name> <on|off>
 ```
 
 Loads a stored RF power-device definition and transmits its ON or OFF signal.
+
+### Latest database activation commands
+
+#### Old KAKU
+
+Zoutlamp (`Tower-RF-Power-M1-001`):
+
+```bash
+tower send Tower-RF-Power-M1-001 on
+tower send Tower-RF-Power-M1-001 off
+```
+
+Kat PC Monitor (`Tower-RF-Power-M1-002`):
+
+```bash
+tower send Tower-RF-Power-M1-002 on
+tower send Tower-RF-Power-M1-002 off
+```
+
+#### Modern KAKU
+
+Hoofd Buro Lamp Links (`Tower-RF-Power-M2-001`):
+
+```bash
+tower send Tower-RF-Power-M2-001 on
+tower send Tower-RF-Power-M2-001 off
+```
+
+Hoofd Buro Lamp Rechts (`Tower-RF-Power-M2-002`):
+
+```bash
+tower send Tower-RF-Power-M2-002 on
+tower send Tower-RF-Power-M2-002 off
+```
+
+Logitech Z5500 (`Tower-RF-Power-M2-003`):
+
+```bash
+tower send Tower-RF-Power-M2-003 on
+tower send Tower-RF-Power-M2-003 off
+```
+
+DIY Buro Lamp (`Tower-RF-Power-M2-004`):
+
+```bash
+tower send Tower-RF-Power-M2-004 on
+tower send Tower-RF-Power-M2-004 off
+```
 
 ```bash
 tower receive

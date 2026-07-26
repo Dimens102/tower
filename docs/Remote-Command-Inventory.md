@@ -134,7 +134,7 @@ Tower CLI
 ## Current device command structure
 
 ```text
-src/commands/device.cpp
+src/core/commands/device.cpp
     -> device_list.cpp
     -> device_show.cpp
     -> device_create.cpp
@@ -541,13 +541,13 @@ tower device delete <device-id>
 The device command implementation is split into dedicated handlers:
 
 ```text
-src/commands/device.cpp
-src/commands/device_list.cpp
-src/commands/device_show.cpp
-src/commands/device_create.cpp
-src/commands/device_set.cpp
-src/commands/device_alias.cpp
-src/commands/device_delete.cpp
+src/core/commands/device.cpp
+src/core/commands/device_list.cpp
+src/core/commands/device_show.cpp
+src/core/commands/device_create.cpp
+src/core/commands/device_set.cpp
+src/core/commands/device_alias.cpp
+src/core/commands/device_delete.cpp
 ```
 
 ## Commands

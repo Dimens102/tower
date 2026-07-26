@@ -3,7 +3,7 @@
 #include "devices/TemperatureReading.h"
 #include "devices/remote/TemperatureHistory.h"
 #include "devices/remote/RemoteSource.h"
-#include "network/HttpClient.h"
+#include "core/network/HttpClient.h"
 
 #include <chrono>
 #include <optional>

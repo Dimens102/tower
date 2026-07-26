@@ -1,6 +1,6 @@
 #include "devices/remote/TemperatureSensor.h"
 
-#include "logging/Logger.h"
+#include "core/logging/Logger.h"
 #include "nlohmann/json.hpp"
 
 #include <chrono>

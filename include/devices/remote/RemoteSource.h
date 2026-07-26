@@ -1,6 +1,6 @@
 #pragma once
 
-#include "service/ManagedDevice.h"
+#include "core/service/ManagedDevice.h"
 
 class RemoteSource : public ManagedDevice
 {

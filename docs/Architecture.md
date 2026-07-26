@@ -65,13 +65,13 @@ Each sensor provides:
 Current sensor files:
 
 ```text
-include/sensors/sensor.h
-include/sensors/sensor_reading.h
-include/sensors/sensor_manager.h
-include/sensors/bme688.h
+include/devices/sensors/sensor.h
+include/devices/sensors/sensor_reading.h
+include/devices/sensors/sensor_manager.h
+include/devices/sensors/bme688.h
 
-src/sensors/sensor_manager.cpp
-src/sensors/bme688.cpp
+src/devices/sensors/sensor_manager.cpp
+src/devices/sensors/bme688.cpp
 ```
 
 The current sensor CLI command is:
@@ -90,7 +90,7 @@ It initializes the registered BME688 and reports:
 ## Current device command structure
 
 ```text
-src/commands/device.cpp
+src/core/commands/device.cpp
     -> device_list.cpp
     -> device_show.cpp
     -> device_create.cpp

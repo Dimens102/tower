@@ -1,6 +1,6 @@
 
 #include <iostream>
-#include "commands/command_handlers.h"
+#include "core/commands/command_handlers.h"
 #include "core/command.h"
 #include "core/gpio.h"
 #include "version.h"
