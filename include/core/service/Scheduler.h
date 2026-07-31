@@ -13,6 +13,7 @@ class Scheduler
 {
 public:
     using Duration = std::chrono::milliseconds;
+	bool initialize();
 
     void after(
         Duration delay,

@@ -1,5 +1,6 @@
 name=Tower-IR-TX-004
-device_name=Small black IR LED
+device_name=Big Clear 5mm 940nm IR LED UnknownBrand
 hardware=ID4
-gpio=20
+controller=tower-pico
+output=4
 status=active

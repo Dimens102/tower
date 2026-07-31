@@ -14,7 +14,7 @@ These documents act as design contracts that guide future development and help m
 
 | Document | Status | Description |
 |----------|--------|-------------|
-| Controller.md | Phase 1 Complete | Runtime-managed hardware controllers. ADS1115 has been migrated to the Controller runtime category. Future controllers include the PCF8574, PCA9685, and other hardware expansion devices. |
+| Controller.md | Implemented | Local ADS1115 controller and Wi-Fi-connected Tower Pico remote controller. |
 
 ---
 

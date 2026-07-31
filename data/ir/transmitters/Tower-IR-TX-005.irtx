@@ -1,5 +1,6 @@
 name=Tower-IR-TX-005
-device_name=Medium black IR LED
+device_name=Medium Clear 10mm 300mW IR LED UnknownBrand
 hardware=ID5
-gpio=21
+controller=tower-pico
+output=5
 status=active

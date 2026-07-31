@@ -1,0 +1,6 @@
+name=Tower-IR-TX-006
+device_name=Small Clear 3mm 940nm IR LED Refurbished KPN
+hardware=ID6
+controller=tower-pico
+output=6
+status=active

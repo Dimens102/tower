@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <chrono>
 
 #include "bme68x.h"
 #include "devices/sensors/sensor.h"
@@ -52,6 +53,9 @@ private:
     bme68x_dev m_device{};
     bme68x_conf m_configuration{};
     bme68x_heatr_conf m_heaterConfiguration{};
+	
+	std::chrono::milliseconds m_updateInterval_{5000};
+    std::chrono::steady_clock::time_point m_nextUpdate_{};
 
     SensorReading m_reading{};
 };

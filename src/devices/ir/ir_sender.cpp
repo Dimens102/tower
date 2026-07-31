@@ -1,5 +1,6 @@
 #include "devices/ir/ir_sender.h"
 #include "devices/ir/ir_runtime_database.h"
+#include "devices/remote/controllers/pico_controller.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -8,6 +9,11 @@
 
 bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter)
 {
+    if (transmitter.controller == "tower-pico")
+    {
+        return sendViaPico(code, transmitter);
+    }
+
     IRRuntimeDatabase runtimeDatabase;
 
     auto lircDevice =
@@ -42,6 +48,67 @@ bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter)
               << code.protocol << "\n";
 
     return false;
+}
+
+bool IRSender::sendViaPico(
+    const IRCode& code,
+    const IRTransmitter& transmitter)
+{
+    if (code.protocol != "raw")
+    {
+        std::cerr
+            << "Pico IR transmission currently requires raw pulse data.\n";
+        return false;
+    }
+
+    if (transmitter.output < 1 || transmitter.output > 6)
+    {
+        std::cerr
+            << "Invalid Pico output "
+            << transmitter.output
+            << " for "
+            << transmitter.name
+            << ". Expected 1 through 6.\n";
+        return false;
+    }
+
+    tower::remote::controllers::PicoController pico;
+
+    if (!pico.initialize())
+    {
+        std::cerr
+            << "Tower Pico did not respond at "
+            << pico.host()
+            << ":42101.\n";
+        return false;
+    }
+
+    std::cout
+        << "Sending RAW on "
+        << transmitter.name
+        << " via Tower Pico "
+        << pico.host()
+        << " output "
+        << transmitter.output
+        << "\n";
+
+    if (!pico.sendIrRaw(
+            static_cast<std::size_t>(transmitter.output),
+            code.pulses))
+    {
+        std::cerr
+            << "Tower Pico rejected or did not confirm the IR command";
+
+        if (!pico.lastResponse().empty())
+        {
+            std::cerr << ": " << pico.lastResponse();
+        }
+
+        std::cerr << "\n";
+        return false;
+    }
+
+    return true;
 }
 
 bool IRSender::sendNEC(const IRCode& code,

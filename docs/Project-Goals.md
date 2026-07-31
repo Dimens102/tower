@@ -191,6 +191,32 @@ information screen.
 The display is an output interface and should consume Tower events rather
 than being directly coupled to IR or RF code.
 
+### Current implementation
+
+Tower currently uses an HD44780-compatible 20x4 LCD connected through
+an I2C backpack at address `0x27`.
+
+The normal display shows:
+
+- Room temperature.
+- Aquarium temperature from remote source `ID1`.
+- Room humidity.
+- Air pressure.
+
+The LCD backlight is controlled by a push button connected between
+GPIO26 and ground. GPIO26 uses an internal pull-up resistor.
+
+Button behaviour:
+
+- A single press enables the backlight for 30 seconds.
+- A second single press restarts the 30-second timeout.
+- A double press within one second locks the backlight on.
+- Another double press switches the backlight off.
+- A single press while locked on returns it to timed operation.
+
+Both rising and falling GPIO edges are used to debounce the physical
+button and ensure that one physical press is counted only once.
+
 # Required shared architecture
 
 The six goals require the following shared layers.

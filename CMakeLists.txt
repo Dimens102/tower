@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(tower VERSION 0.10.3 LANGUAGES C CXX)
+project(tower VERSION 0.10.5 LANGUAGES C CXX)
 
 find_package(CURL REQUIRED)
 
@@ -25,6 +25,10 @@ target_include_directories(tower PRIVATE
     include
     external
     external/bme68x
+)
+
+target_compile_definitions(tower PRIVATE
+    TOWER_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
 )
 
 target_link_libraries(tower PRIVATE

@@ -15,3 +15,4 @@ cmake_install.cmake
 *.log
 *.zip
 runtime/
+pico/wifi_config.py

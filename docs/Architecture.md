@@ -696,7 +696,6 @@ This milestone intentionally does not yet integrate:
 
 ```text
 ADS1115
-PCF8574
 RFReceiver
 IRReceiver
 RFSender
@@ -744,7 +743,7 @@ Rather than representing environmental measurements, controllers provide additio
 Examples include:
 
 - ADS1115 (analog inputs)
-- PCF8574 (GPIO expansion)
+- Tower Pico (remote IR outputs)
 - PCA9685 (PWM expansion)
 
 Controllers participate in the same runtime lifecycle as all managed devices:
@@ -763,6 +762,16 @@ Although the ADS1115 performs analog-to-digital conversion, its primary role wit
 The ADS1115 currently supplies RSSI measurements for the RF receiver and serves as the first implementation of the Controller runtime category.
 
 This migration establishes the architectural foundation for future hardware expansion devices while preserving the common ManagedDevice lifecycle.
+
+## Remote Tower Pico Controller
+
+The Pico 2 W remains a Controller even though its hardware is not attached
+directly to the Tower Raspberry Pi. Its files are separated under
+`devices/remote/controllers/` to make that transport boundary explicit.
+
+Tower sends raw IR pulse sequences over TCP to the reserved Pico address
+`192.168.2.30:42101`. The Pico owns the 38 kHz carrier generation and maps Tower
+outputs 1 through 6 to GP0 through GP5.
 
 ---
 
@@ -861,3 +870,36 @@ tower service
 during system boot.
 
 This allows remote temperature polling and hourly history storage to continue without an interactive terminal or logged-in user.
+
+---
+
+# Local Display Architecture
+
+The local display is an HD44780-compatible 20x4 LCD connected through an I2C
+backpack at address `0x27`.
+
+`TowerService` owns the display lifecycle and refreshes the normal status screen
+once per second. It reads normalized BME688 measurements and the latest cached
+reading from remote temperature source `ID1`, then shows:
+
+- Room temperature.
+- Aquarium temperature.
+- Room humidity.
+- Air pressure.
+
+The backlight button is connected between GPIO26 and ground and uses the
+internal pull-up resistor. GPIO access remains behind the shared `GPIO`
+abstraction. Both rising and falling edges are observed so one physical press is
+counted once.
+
+Backlight behavior is handled by `TowerService`:
+
+- Single press: backlight on for 30 seconds.
+- Double press: lock the backlight on.
+- Another double press: switch the backlight off.
+- Single press while locked on: return to timed operation.
+
+The LCD driver owns only HD44780/I2C communication. It does not retrieve sensor
+data or implement service behavior. Future command, automation, or network
+status screens should provide data to the display layer without adding those
+responsibilities to the LCD driver.

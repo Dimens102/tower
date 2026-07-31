@@ -45,6 +45,7 @@ Repository
   - running;
   - testing;
   - verifying specific line ranges or output.
+- If you past a large textblock for the docs files never use grave accent 3 times use /// instead.
 - Always give the correct amount of indentations when pasting info, don't assume the amount.
 - If you have multiple files that need edits give the files in the correct path order, meaning edit all files in src folder first then move to include folder to edit.
 - When giving advice on a improvement also add the first steps to make that improvement in the text, this saves the user asking for the actual steps which will take another 40sec processing time.

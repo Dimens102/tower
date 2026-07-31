@@ -73,6 +73,10 @@ The local command reads the BME688 directly. Both remote identifiers resolve to 
 
 See docs/Commands.md for the complete Tower command reference.
 
+Tower resolves its project root when it starts, so installed commands can be
+run from any working directory. `TOWER_ROOT` can override the compiled project
+path if the repository is moved.
+
 ## Project Philosophy
 
 The remaining RF receiver and IR transmitter improvements are considered hardware refinement tasks rather than blockers.
@@ -132,8 +136,8 @@ Current managed devices:
 
 - BME688
 - ADS1115
-- PCF8574
 - TemperatureSensor (`ID1`, friendly name `aquarium`)
+- Tower Pico remote controller (`192.168.2.30`)
 
 Future managed devices may include:
 
@@ -167,6 +171,17 @@ Current capabilities:
 - error reporting.
 
 The HTTP client is designed for reuse by future REST clients, remote sensors, web integrations and network-connected devices.
+
+## Tower Pico Remote Controller
+
+The Raspberry Pi Pico 2 W is integrated as a remote controller over the normal
+Wi-Fi network. Tower connects to the reserved address `192.168.2.30` on TCP
+port `42101`.
+
+`Tower-IR-TX-001` is assigned to Pico output 1, which maps to GP0. Outputs 2
+through 6 map to GP1 through GP5. See
+[`docs/Pico-Remote-Controller.md`](docs/Pico-Remote-Controller.md) for setup,
+upload, power, and testing instructions.
 
 ## Remote Temperature Source
 

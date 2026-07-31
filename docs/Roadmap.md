@@ -52,7 +52,6 @@ Status: 25%
 
 [x] ADS1115 controller
 [ ] Generic I²C driver
-[ ] PCF8574 controller
 
 ## UART
 
@@ -478,10 +477,8 @@ This milestone intentionally does **not** include:
 
 - Controller abstraction
 - ADS1115 migration to Controller
-- PCF8574 integration
 - RF receiver integration
 - IR receiver integration
 
 Those changes are reserved for the next architectural milestone to keep this
 commit focused on lifecycle unification only.
-

@@ -85,3 +85,10 @@ The web interface and phone app should:
 - request command execution
 
 They should not implement scheduling, conditions, protocol encoding, or hardware access.
+
+## Local display boundary
+
+The automation engine must not control the LCD or GPIO26 directly. It may expose
+automation status and execution events for the display layer to show, while
+`TowerService` and the display components remain responsible for presentation
+and backlight behavior.

@@ -48,7 +48,10 @@ void GPIO::closeChip()
     }
 }
 
-bool GPIO::requestInput(int line, GPIOEdge edge)
+bool GPIO::requestInput(
+    int line,
+    GPIOEdge edge,
+    GPIOBias bias)
 {
     if (chip == nullptr)
     {
@@ -76,6 +79,34 @@ bool GPIO::requestInput(int line, GPIOEdge edge)
     }
 
     gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
+	
+	switch (bias)
+{
+    case GPIOBias::PullUp:
+        gpiod_line_settings_set_bias(
+            settings,
+            GPIOD_LINE_BIAS_PULL_UP);
+        break;
+
+    case GPIOBias::PullDown:
+        gpiod_line_settings_set_bias(
+            settings,
+            GPIOD_LINE_BIAS_PULL_DOWN);
+        break;
+
+    case GPIOBias::Disabled:
+        gpiod_line_settings_set_bias(
+            settings,
+            GPIOD_LINE_BIAS_DISABLED);
+        break;
+
+    case GPIOBias::Default:
+    default:
+        gpiod_line_settings_set_bias(
+            settings,
+            GPIOD_LINE_BIAS_AS_IS);
+        break;
+}
 
     switch (edge)
     {

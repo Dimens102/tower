@@ -9,6 +9,10 @@ public:
     bool send(const IRCode& code, const IRTransmitter& transmitter);
 
 private:
+    bool sendViaPico(
+                 const IRCode& code,
+                 const IRTransmitter& transmitter);
+
     bool sendRaw(const IRCode& code,
                  const IRTransmitter& transmitter,
                  const std::string& lircDevice);

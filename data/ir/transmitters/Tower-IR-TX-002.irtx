@@ -1,6 +1,6 @@
 name=Tower-IR-TX-002
-device_name=Right IR Blaster
+device_name=Small Blue 3mm 940nm TSAL4400
 hardware=ID2
-gpio=23
+controller=tower-pico
+output=2
 status=active
-lirc_device=/dev/lirc1

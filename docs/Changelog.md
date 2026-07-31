@@ -1,5 +1,50 @@
 # Tower Changelog
 
+## Local display work (unreleased)
+
+### Added
+
+- Added an HD44780-compatible 20x4 LCD through an I2C backpack at address
+  `0x27`.
+- Added the normal status screen with room temperature, aquarium temperature,
+  room humidity, and air pressure.
+- Added GPIO26 push-button control for the LCD backlight.
+
+### Changed
+
+- A single button press enables the backlight for 30 seconds.
+- A double press locks the backlight on; another double press switches it off.
+- Added rising- and falling-edge handling to debounce the physical button.
+
+### Verified
+
+- The project builds successfully.
+- Timed, permanently-on, and off backlight modes work through the running
+  `rf-tower.service`.
+
+## v0.10.4
+
+### Added
+
+- Added the Pico 2 W as a Wi-Fi-connected remote Controller.
+- Added `devices/remote/controllers/` for network-connected controller
+  implementations.
+- Added the TCP `PING` and raw IR `SEND` protocol on port `42101`.
+- Added MicroPython firmware and a private Wi-Fi configuration template under
+  `pico/`.
+- Added fixed Tower routing to the reserved Pico address `192.168.2.30`.
+
+### Changed
+
+- Routed `Tower-IR-TX-001` through Pico output 1 / GP0.
+- Extended IR transmitter records with `controller` and `output` fields while
+  preserving local GPIO/LIRC transmitters.
+- Made the executable select the Tower project root automatically so relative
+  `data/` and `runtime/` paths work outside the project directory.
+- Removed stale controller command and design documentation that had no matching
+  v0.10.3 implementation.
+- Updated the project version to `0.10.4`.
+
 ## v0.10.3
 
 - Restructured the source and header trees into dedicated `core/` and `devices/` categories.
@@ -35,7 +80,7 @@
 
 The runtime architecture now distinguishes between hardware that measures the physical environment (`Sensor`) and hardware that extends or controls platform capabilities (`Controller`).
 
-This establishes the foundation for future controller implementations such as the PCF8574 and PCA9685 while preserving the common `ManagedDevice` lifecycle.
+This establishes the foundation for future controller implementations while preserving the common `ManagedDevice` lifecycle.
 
 ### Temperature commands and persistent remote history
 
@@ -255,3 +300,22 @@ Still required:
 - Initial Tower project skeleton.
 - Added CMake build.
 - Added first tower executable.
+
+## v0.10.4
+
+### Added
+
+- Added the Raspberry Pi Pico 2 W as a Wi-Fi-connected remote Controller.
+- Added `devices/remote/controllers/` for network-connected controller implementations.
+- Added TCP communication using `PING` and raw IR `SEND` commands on port `42101`.
+- Added Pico MicroPython firmware under `pico/main.py`.
+- Added `pico/wifi_config.example.py` for local Wi-Fi configuration.
+- Added Tower routing to the reserved Pico address `192.168.2.30`.
+
+### Changed
+
+- Routed `Tower-IR-TX-001` through Pico output 1 / GP0.
+- Extended IR transmitter records with `controller` and `output` fields while preserving local GPIO/LIRC transmitters.
+- Made Tower automatically locate the project root so `data/` and `runtime/` work when Tower is started outside the project directory.
+- Removed stale PCF8574/controller documentation that had no matching implementation in v0.10.3.
+- Updated the Tower version to `0.10.4`.

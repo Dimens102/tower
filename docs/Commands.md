@@ -4,6 +4,17 @@ This document uses the complete executable name `tower`. Personal shell shortcut
 
 Run `tower` without arguments to display the program's built-in usage summary.
 
+## Install the Latest Build
+
+~~~bash
+sudo cmake --install build
+~~~
+
+Run this from the Tower project directory after a successful build.
+
+It installs the latest compiled executable as `/usr/local/bin/tower`, allowing `tower` to run from any directory.
+
+
 ## Temperature
 
 ### Read the Tower's local temperature
@@ -54,7 +65,7 @@ The service owns the scheduler and managed runtime devices, including the remote
 
 The installed operating-system service runs this command automatically during system boot. This allows remote polling and hourly history collection to continue without an interactive terminal.
 
-## Sensors and Controllers
+## Sensors
 
 ```bash
 tower sensor
@@ -64,27 +75,8 @@ Runs the current sensor diagnostics.
 
 It initializes the BME688 and ADS1115 through `DeviceManager`. Environmental measurements are provided by the BME688.
 
-```bash
-tower controller status
-```
-
-Reads the complete PCF8574 port and displays the state of pins P0 through P7.
-
-```bash
-tower controller read <pin>
-```
-
-Reads one PCF8574 pin.
-
-`<pin>` must be a number from `0` through `7`.
-
-```bash
-tower controller test-output <pin>
-```
-
-Drives one PCF8574 pin LOW for one second and then releases it HIGH again.
-
-This is a hardware diagnostic command.
+The Tower Pico is used automatically when an IR transmitter definition contains
+`controller=tower-pico`; it does not add a separate top-level command.
 
 ## Logical Devices
 

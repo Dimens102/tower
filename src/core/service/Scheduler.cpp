@@ -2,6 +2,11 @@
 
 #include <utility>
 
+bool Scheduler::initialize()
+{
+    return deviceManager_.initialize();
+}
+
 void Scheduler::after(
     Duration delay,
     Callback callback)

@@ -14,6 +14,14 @@ enum class GPIOEdge
     Both
 };
 
+enum class GPIOBias
+{
+    Default,
+    PullUp,
+    PullDown,
+    Disabled
+};
+
 struct GPIORequest
 {
     gpiod_line_request* handle;
@@ -37,7 +45,10 @@ public:
     bool openChip(const std::string& chipPath);
     void closeChip();
 
-    bool requestInput(int line, GPIOEdge edge = GPIOEdge::None);
+    bool requestInput(
+        int line,
+        GPIOEdge edge = GPIOEdge::None,
+        GPIOBias bias = GPIOBias::Default);
     bool requestOutput(int line, bool initialValue = false);
 
     bool read(int line) const;

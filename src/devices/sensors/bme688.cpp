@@ -92,19 +92,31 @@ bool BME688::initialize()
         return false;
     }
 
+    m_nextUpdate_ = std::chrono::steady_clock::now();
     m_available = true;
     return true;
 }
 
 bool BME688::update()
 {
-    m_reading.valid = false;
-	m_reading.measurements.clear();
-
     if (!m_available || m_fd < 0)
     {
         return false;
     }
+	
+	const auto now =
+    std::chrono::steady_clock::now();
+
+    if (now < m_nextUpdate_)
+    {
+        return true;
+    }
+
+    m_nextUpdate_ =
+        now + m_updateInterval_;
+		
+	m_reading.valid = false;
+	m_reading.measurements.clear();
 
     if (bme68x_set_op_mode(BME68X_FORCED_MODE, &m_device) != BME68X_OK)
     {
