@@ -9,18 +9,36 @@
 - Added the normal status screen with room temperature, aquarium temperature,
   room humidity, and air pressure.
 - Added GPIO26 push-button control for the LCD backlight.
+- Added an ordered LCD startup sequence that reports the LCD, Raspberry Pi,
+  sensors and scheduler, Tower Pico, and GPIO26 status before the normal
+  display becomes active.
+- Added a real Tower Pico startup health check using the existing TCP
+  `PING`/`PONG` protocol at `192.168.2.30:42101`.
+- Added an exclusive non-blocking service lock at
+  `/tmp/rf-tower-service.lock` to prevent multiple `tower service` processes
+  from controlling the same LCD and GPIO hardware.
 
 ### Changed
 
 - A single button press enables the backlight for 30 seconds.
 - A double press locks the backlight on; another double press switches it off.
 - Added rising- and falling-edge handling to debounce the physical button.
+- Shortened the Raspberry Pi startup label to `Raspberry PI 3 A+` so it fits
+  on the display.
+- Grouped each startup diagnostic as a clean `checking` followed by its result:
+  sensors and scheduler, Tower Pico, then GPIO26.
 
 ### Verified
 
 - The project builds successfully.
 - Timed, permanently-on, and off backlight modes work through the running
   `rf-tower.service`.
+- The systemd service retains the exclusive lock for its complete lifetime.
+- A second `tower service` invocation exits immediately with
+  `Tower service is already running; refusing to start another instance`
+  before it can initialize the LCD or GPIO.
+- The Tower Pico startup check reports the result of a real network
+  `PING`/`PONG` transaction.
 
 ## v0.10.4
 

@@ -871,6 +871,20 @@ during system boot.
 
 This allows remote temperature polling and hourly history storage to continue without an interactive terminal or logged-in user.
 
+### Single-instance protection
+
+`TowerService::start()` opens `/tmp/rf-tower-service.lock` and obtains an
+exclusive non-blocking `flock`. The open file descriptor remains owned by the
+`TowerService` instance for the complete service lifetime.
+
+If another `tower service` process starts while the lock is held, startup
+returns `false` immediately. The command exits with a failure status before
+initializing the LCD, scheduler, Pico connection, or GPIO. This prevents two
+processes from writing to the same display or handling the same button.
+
+The lock file may remain present after shutdown; ownership is determined by the
+active kernel lock, not by the presence of the file itself.
+
 ---
 
 # Local Display Architecture
@@ -886,6 +900,21 @@ reading from remote temperature source `ID1`, then shows:
 - Aquarium temperature.
 - Room humidity.
 - Air pressure.
+
+During service startup, the display shows diagnostics in this order:
+
+1. LCD initialization and Tower startup.
+2. `Raspberry PI 3 A+` and the Raspberry Pi CPU temperature.
+3. Sensor and scheduler check, followed by its result.
+4. Tower Pico check, followed by `connected` or `unavailable`.
+5. GPIO26 input and pull-up check, followed by its result.
+6. Tower boot-complete and creator screens.
+7. Normal environmental status screen.
+
+The Tower Pico status is not a cosmetic reachability label.
+`PicoController::initialize()` connects to `192.168.2.30:42101`, sends
+`PING`, and requires the response `PONG`. Pico unavailability produces a
+warning but does not prevent the rest of Tower from starting.
 
 The backlight button is connected between GPIO26 and ground and uses the
 internal pull-up resistor. GPIO access remains behind the shared `GPIO`

@@ -1,22 +1,30 @@
 #include "core/service/TowerService.h"
 
-#include "devices/remote/TemperatureSensor.h"
 #include "core/logging/Logger.h"
+#include "devices/remote/TemperatureSensor.h"
+#include "devices/remote/controllers/pico_controller.h"
+#include "version.h"
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <csignal>
-#include <memory>
-#include <thread>
-
+#include <fstream>
 #include <iomanip>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
 
 namespace
 {
 
 volatile std::sig_atomic_t keepRunning = 1;
+constexpr std::chrono::seconds bootPhaseDuration{5};
 
 void handleSignal(int)
 {
@@ -65,6 +73,60 @@ std::string formatValue(
     return output.str();
 }
 
+std::string readPiModel()
+{
+    std::ifstream input(
+        "/proc/device-tree/model",
+        std::ios::binary);
+
+    if (!input)
+    {
+        return "Raspberry Pi";
+    }
+
+    std::string model(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>());
+
+    model.erase(
+        std::remove(
+            model.begin(),
+            model.end(),
+            '\0'),
+        model.end());
+
+    if (model.empty())
+    {
+        return "Raspberry Pi";
+    }
+
+    return "Raspberry PI 3 A+";
+}
+
+std::string readCpuTemperature()
+{
+    std::ifstream input(
+        "/sys/class/thermal/thermal_zone0/temp");
+
+    long millidegrees = 0;
+
+    if (!(input >> millidegrees))
+    {
+        return "[cpu] temperature --";
+    }
+
+    std::ostringstream output;
+
+    output
+        << "[cpu] "
+        << std::fixed
+        << std::setprecision(1)
+        << static_cast<double>(millidegrees) / 1000.0
+        << "C";
+
+    return output.str();
+}
+
 } // namespace
 
 TowerService::TowerService()
@@ -94,7 +156,36 @@ TowerService::TowerService()
 
 bool TowerService::start()
 {
-    keepRunning = 1;
+    serviceLockFd_ =
+        ::open(
+            "/tmp/rf-tower-service.lock",
+            O_CREAT | O_RDWR,
+            0644);
+
+    if (serviceLockFd_ < 0)
+    {
+        Logger::warning(
+            "TowerService",
+            "Failed to open service lock file");
+
+        return false;
+    }
+
+    if (::flock(
+            serviceLockFd_,
+            LOCK_EX | LOCK_NB) != 0)
+    {
+        ::close(serviceLockFd_);
+        serviceLockFd_ = -1;
+
+        Logger::warning(
+            "TowerService",
+            "Tower service is already running; refusing to start another instance");
+
+        return false;
+    }
+	
+	keepRunning = 1;
 
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
@@ -103,24 +194,38 @@ bool TowerService::start()
         "TowerService",
         "Tower service starting");
 
-	if (!scheduler_.initialize())
-    {
-        Logger::warning(
-            "TowerService",
-            "One or more managed devices failed to initialize");
-    }
+    const bool lcdAvailable =
+        lcd_.initialize();
 
-    if (lcd_.initialize())
+    if (lcdAvailable)
     {
-        lcd_.show(
-            "Room  Tower Aquarium",
-            "--.-C Temp     --.-C",
-            "--.-% Hum",
-            "----  Press");
+        lcd_.setBacklight(true);
+        backlightOn_ = true;
+
+        showBootStatus(
+            "[lcd] 0x27 OK",
+            "[tower] starting");
 
         Logger::info(
             "TowerService",
             "LCD1602 initialized at address 0x27");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+
+        showBootStatus(
+            readPiModel(),
+            readCpuTemperature());
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+
+        showBootStatus(
+            "[sensor] checking...",
+            "[svc] scheduler...");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
     }
     else
     {
@@ -128,39 +233,188 @@ bool TowerService::start()
             "TowerService",
             "LCD1602 initialization failed");
     }
-    
-	if (gpio_.openChip("/dev/gpiochip0") &&
-    gpio_.requestInput(
-        26,
-        GPIOEdge::Both,
-        GPIOBias::PullUp))
-{
-    buttonAvailable_ = true;
 
-    lcd_.setBacklight(false);
-    backlightOn_ = false;
+    const bool devicesReady =
+        scheduler_.initialize();
 
-    Logger::info(
-        "TowerService",
-        "LCD button initialized on GPIO26");
+    if (!devicesReady)
+    {
+        Logger::warning(
+            "TowerService",
+            "One or more managed devices failed to initialize");
+    }
+
+    if (lcdAvailable)
+    {
+        showBootStatus(
+            devicesReady
+                ? "[sensor] devices OK"
+                : "[sensor] device WARN",
+            "[svc] scheduler OK");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+    }
+
+    if (lcdAvailable)
+    {
+        showBootStatus(
+            "[pico] checking...",
+            "192.168.2.30");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+    }
+
+    tower::remote::controllers::PicoController pico;
+    const bool picoAvailable =
+        pico.initialize();
+
+    if (picoAvailable)
+    {
+        Logger::info(
+            "TowerService",
+            "Tower Pico connected at " +
+                pico.host());
+    }
+    else
+    {
+        Logger::warning(
+            "TowerService",
+            "Tower Pico unavailable at " +
+                pico.host());
+    }
+
+    if (lcdAvailable)
+    {
+        showBootStatus(
+            picoAvailable
+                ? "[pico] connected"
+                : "[pico] unavailable",
+            pico.host());
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+    }
+
+    if (lcdAvailable)
+    {
+        showBootStatus(
+            "[gpio] 26 checking",
+            "[bias] pull-up");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+    }
+
+    if (gpio_.openChip("/dev/gpiochip0") &&
+        gpio_.requestInput(
+            26,
+            GPIOEdge::Both,
+            GPIOBias::PullUp))
+    {
+        buttonAvailable_ = true;
+
+        Logger::info(
+            "TowerService",
+            "LCD button initialized on GPIO26");
     }
     else
     {
         Logger::warning(
             "TowerService",
             "Failed to initialize LCD button on GPIO26");
-}
-	
+    }
+
+    if (lcdAvailable)
+    {
+        showBootStatus(
+            buttonAvailable_
+                ? "[gpio] 26 IN OK"
+                : "[gpio] 26 WARN",
+            "[bias] pull-up");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+
+        lcd_.show(
+            std::string("Tower v") +
+                TOWER_VERSION +
+                " BOOTED",
+            "All systems ready",
+            "",
+            "");
+
+        std::this_thread::sleep_for(
+            bootPhaseDuration);
+
+        lcd_.show(
+            "",
+            std::string("Tower v") +
+                TOWER_VERSION,
+            "",
+            " Created by Dimens");
+
+        bootScreenActive_ = true;
+        bootScreenEndsAt_ =
+            std::chrono::steady_clock::now() +
+            std::chrono::seconds(20);
+    }
+
     return true;
 }
 
 void TowerService::update()
 {
     scheduler_.update();
-	updateBacklightButton();
 
     const auto now =
         std::chrono::steady_clock::now();
+
+    if (bootScreenActive_)
+    {
+        if (now < bootScreenEndsAt_)
+        {
+            return;
+        }
+
+        bootScreenActive_ = false;
+
+        if (buttonAvailable_)
+        {
+            GPIOEvent ignoredEvent{};
+
+            while (gpio_.waitForEdge(
+                26,
+                ignoredEvent,
+                0))
+            {
+            }
+
+            buttonReleased_ = true;
+            buttonPressArmed_ = true;
+            lastButtonEdgeAt_ = {};
+        }
+
+        updateDisplay();
+
+        nextDisplayUpdate_ =
+            now + std::chrono::seconds(1);
+
+        if (buttonAvailable_)
+        {
+            lcd_.setBacklight(false);
+            backlightOn_ = false;
+
+            Logger::info(
+                "TowerService",
+                "Boot screen finished; LCD backlight disabled");
+        }
+
+        return;
+    }
+
+    updateBacklightButton();
 
     if (now >= nextDisplayUpdate_)
     {
@@ -169,6 +423,24 @@ void TowerService::update()
         nextDisplayUpdate_ =
             now + std::chrono::seconds(1);
     }
+}
+
+void TowerService::showBootStatus(
+    const std::string& status,
+    const std::string& detail)
+{
+    if (!lcd_.available())
+    {
+        return;
+    }
+
+    lcd_.show(
+        std::string("Tower v") +
+            TOWER_VERSION +
+            " BOOT",
+        status,
+        detail,
+        ">> initializing...");
 }
 
 void TowerService::updateDisplay()
@@ -257,7 +529,8 @@ void TowerService::updateBacklightButton()
         1000ULL * 1000ULL * 1000ULL;
 
     const auto handlePress =
-        [this, doublePressNs](unsigned long long timestampNs)
+        [this, doublePressNs](
+            unsigned long long timestampNs)
     {
         const bool isDoublePress =
             waitingForSecondPress_ &&
@@ -314,7 +587,8 @@ void TowerService::updateBacklightButton()
     {
         const auto eventTime =
             std::chrono::steady_clock::time_point(
-                std::chrono::nanoseconds(event.timestampNs));
+                std::chrono::nanoseconds(
+                    event.timestampNs));
 
         if (event.edge == GPIOEdge::Rising)
         {
@@ -328,7 +602,8 @@ void TowerService::updateBacklightButton()
             lastButtonEdgeAt_ ==
                 std::chrono::steady_clock::time_point{} ||
             eventTime - lastButtonEdgeAt_ >=
-                std::chrono::nanoseconds(releaseDebounceNs);
+                std::chrono::nanoseconds(
+                    releaseDebounceNs);
 
         if (buttonReleased_ &&
             buttonPressArmed_ &&

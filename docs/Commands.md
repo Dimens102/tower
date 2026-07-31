@@ -65,6 +65,17 @@ The service owns the scheduler and managed runtime devices, including the remote
 
 The installed operating-system service runs this command automatically during system boot. This allows remote polling and hourly history collection to continue without an interactive terminal.
 
+Only one Tower service process may run at a time. The running process holds an
+exclusive lock on `/tmp/rf-tower-service.lock`. If the systemd service is
+already active, a manual second invocation exits immediately with:
+
+```text
+Tower service is already running; refusing to start another instance
+```
+
+The rejected process does not initialize the LCD, scheduler, Tower Pico, or
+GPIO.
+
 ## Sensors
 
 ```bash

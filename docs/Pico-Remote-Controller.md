@@ -110,3 +110,28 @@ Tower should report that it is sending through `192.168.2.30` output 1.
 - `pico/wifi_config.py`: private local credentials uploaded to the Pico.
 
 The firmware keeps reconnecting if Wi-Fi is temporarily lost.
+
+## Tower service startup check
+
+During `tower service` startup, the LCD shows a Tower Pico check after the
+sensor and scheduler check and before the GPIO26 check.
+
+Tower reuses `PicoController::initialize()` for this check. It connects to
+`192.168.2.30:42101`, sends `PING`, and only reports the Pico as connected when
+the response is exactly `PONG`.
+
+The LCD result is either:
+
+```text
+[pico] connected
+192.168.2.30
+```
+
+or:
+
+```text
+[pico] unavailable
+192.168.2.30
+```
+
+An unavailable Pico is logged as a warning and does not stop the Tower service.
