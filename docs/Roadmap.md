@@ -98,10 +98,14 @@ Status: 45%
 [x] IR database save path
 [x] Verified Denon recordings
 [x] Re-learned Logitech Z5500 power command
+[x] Six-frequency receiver-array discovery
+[x] Synchronized six-receiver capture
+[x] Native protocol decoding and best-receiver selection
+[x] Protocol-aware metadata with raw replay compatibility
+[x] End-to-end array learning and replay verification
 [ ] Interactive learning wizard
-[ ] Protocol-aware storage with raw fallback
 [ ] IR database load/list/remove commands
-[ ] Carrier-frequency handling where supported
+[x] Carrier-frequency handling where supported
 
 ---
 
@@ -122,12 +126,13 @@ Status: 20%
 
 [x] Kernel-decoded NEC learning path
 [x] Raw pulse fallback
-[ ] NEC userspace decoder
+[x] NEC and NECx userspace decoder
 [ ] RC5
 [ ] RC6
-[ ] Sony
-[ ] Panasonic
-[ ] Protocol/scancode normalization
+[x] Sony SIRC-12
+[x] Panasonic/Kaseikyo-Denon
+[x] Siemens/Ruwido
+[x] Protocol/scancode normalization for supported protocols
 
 ---
 
@@ -287,6 +292,10 @@ Integrate device-oriented IR learning
 [x] Add kernel-decoded IR learning support
 [x] Improve raw IR learning and pulse capture
 [x] Add verified Denon and Logitech IR recordings
+[x] Integrate the six-frequency IR receiver array
+[x] Decode and rank receiver-array captures natively
+[x] Connect receiver-array capture and analysis to `tower learn`
+[x] Verify learned-command replay on the real KPN receiver
 [x] Remove temporary IR test recording
 [x] Update RF power device metadata
 [x] Replace `.device` files with JSON
@@ -478,7 +487,7 @@ This milestone intentionally does **not** include:
 - Controller abstraction
 - ADS1115 migration to Controller
 - RF receiver integration
-- IR receiver integration
+- IR receiver integration (completed in v0.10.7)
 
 Those changes are reserved for the next architectural milestone to keep this
 commit focused on lifecycle unification only.

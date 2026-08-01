@@ -13,6 +13,9 @@ Command parseCommand(const char* text)
     if (std::strcmp(text, "send") == 0) return Command::Send;
     if (std::strcmp(text, "learn") == 0) return Command::Learn;
     if (std::strcmp(text, "learn-kernel") == 0) return Command::LearnKernel;
+    if (std::strcmp(text, "ir-receivers") == 0) return Command::IRReceivers;
+    if (std::strcmp(text, "ir-capture") == 0) return Command::IRCapture;
+    if (std::strcmp(text, "ir-analyze") == 0) return Command::IRAnalyze;
     if (std::strcmp(text, "replay") == 0) return Command::Replay;
     if (std::strcmp(text, "config") == 0) return Command::Config;
 	if (std::strcmp(text, "sensor") == 0) return Command::Sensor;

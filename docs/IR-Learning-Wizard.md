@@ -4,11 +4,27 @@ The IR learning wizard should create complete, useful device-database entries ra
 
 ## Command
 
-Current minimal command:
+Current validated receiver-array command:
 
 ```text
 tower learn <device> <command>
 ```
+
+Optional capture duration and protected replacement:
+
+```text
+tower learn <device> <command> [seconds] [--force]
+```
+
+Learning captures all six receivers simultaneously, decodes every recording,
+selects the best clean protocol-matched receiver, and saves one validated raw
+initial frame for replay. The saved `.ir` file also records the decoded
+protocol, address, command, carrier, receiver, and source capture directory.
+
+An existing command is never changed unless `--force` is supplied. Forced
+replacement first creates a `.tower-learn-backup` copy. Failed or unsupported
+captures remain under `captures/ir/` for analysis and do not change the command
+database.
 
 Future interactive entry point:
 
@@ -28,13 +44,13 @@ Which command are you recording?
 Press the remote button now...
 ```
 
-Tower then:
+Tower currently:
 
-1. Initializes the receiver.
-2. Captures the signal.
+1. Verifies and initializes all six receivers.
+2. Captures the signal simultaneously through the receiver array.
 3. Detects a protocol when possible.
 4. Validates the capture.
-5. Saves through the database layer.
+5. Atomically saves through the database layer.
 6. Confirms the saved logical device and command.
 
 ## Device types

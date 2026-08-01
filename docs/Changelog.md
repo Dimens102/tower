@@ -1,5 +1,54 @@
 # Tower Changelog
 
+## v0.10.7 - Successful IR receiver integration
+
+### Added
+
+- Added the six-receiver IR array with 30, 33, 36, 38, 40, and 56 kHz
+  demodulating receivers.
+- Added dynamic GPIO-to-`/dev/lircX` discovery through sysfs so changing Linux
+  LIRC device numbers do not affect the configured receiver identities.
+- Added `tower ir-receivers` to verify the complete array and show its current
+  live LIRC mappings.
+- Added `tower ir-capture` for synchronized raw capture through all six
+  receivers.
+- Added `tower ir-analyze` for native capture-group decoding and best-receiver
+  selection.
+- Added native Siemens/Ruwido, NEC, NECx, Sony SIRC-12, and
+  Kaseikyo-Denon decoding.
+- Added protocol, address, command, carrier, receiver, and source-capture
+  metadata to newly learned raw IR records while preserving compatibility with
+  existing `.ir` files.
+- Added receiver discovery, capture subprocess, protocol decoder, receiver
+  ranking, and IR database round-trip regression tests.
+
+### Changed
+
+- Replaced the old single-receiver raw learning path with synchronized
+  six-receiver capture and analysis.
+- `tower learn <device> <command> [seconds] [--force]` now requires a clean,
+  stable supported decode, selects the best receiver, extracts one validated
+  initial frame, and saves it atomically for replay.
+- Existing learned commands are protected by default. Forced replacement only
+  occurs after a successful capture and creates a `.tower-learn-backup` first.
+- Silent receivers are reported as `NO-SIGNAL`; normal `mode2` startup
+  diagnostics are no longer treated as capture errors.
+- Updated the project and runtime version to `0.10.7`.
+
+### Verified
+
+- All six installed receivers resolve correctly despite reversed live LIRC
+  numbering from `/dev/lirc5` through `/dev/lirc0`.
+- A real KPN Power capture selected GPIO25 / TSOP38256 at 56 kHz and decoded
+  12 of 12 frames as Siemens address `0x250`, command `0x0B`.
+- Tower saved one validated 35-timing frame with complete decode and receiver
+  metadata.
+- `tower replay KPN PowerArrayTest Tower-IR-TX-001` successfully switched the
+  KPN receiver off, proving capture, analysis, storage, loading, and replay
+  compatibility end to end.
+- The short transmission range was isolated to the unfinished transmitter
+  array hardware and does not invalidate the receiver integration.
+
 ## Local display work (unreleased)
 
 ### Added

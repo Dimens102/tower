@@ -126,10 +126,47 @@ The current implementation validates and resolves the command but does not yet t
 ## Infrared
 
 ```bash
+tower ir-receivers
+```
+
+Lists the six configured IR receivers and their dynamically discovered live
+`/dev/lircX` mappings. All six must be available before array capture or
+learning can start.
+
+```bash
+tower ir-capture <device-name> <command-name> [seconds]
+```
+
+Captures all six receivers simultaneously into a timestamped directory under
+`captures/ir/`. This diagnostic command retains the individual raw `.mode2`
+recordings without saving a learned command.
+
+```bash
+tower ir-analyze [capture-directory|latest]
+```
+
+Analyzes a saved receiver-array capture, reports each receiver's frame quality
+and decode, and selects the best clean capture. With no argument, the latest
+capture is used.
+
+```bash
 tower learn <device-name> <command-name>
 ```
 
-Captures an IR code through the userspace receiver and saves it.
+Captures through all six IR receivers, requires a clean stable decode, selects
+the best receiver, and saves a validated raw frame plus decode metadata.
+
+```bash
+tower learn <device-name> <command-name> [seconds] [--force]
+```
+
+Existing commands are protected. `--force` replaces one only after successful
+capture and analysis, and first writes a `.tower-learn-backup` copy.
+
+The native analyzer currently supports Siemens/Ruwido, NEC, NECx, Sony
+SIRC-12, and Kaseikyo-Denon. Newly learned records remain raw-replay compatible
+and also contain protocol, address, command, carrier, receiver, and source
+capture metadata.
 
 ```bash
 tower learn-kernel

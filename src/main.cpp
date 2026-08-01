@@ -84,8 +84,11 @@ void print_usage()
 		<< "  tower monitor\n"
 		<< "  tower service\n"
         << "  tower send\n"
-        << "  tower learn\n"
+        << "  tower learn <device-name> <command-name> [seconds] [--force]\n"
         << "  tower learn-kernel\n"
+        << "  tower ir-receivers\n"
+        << "  tower ir-capture <device-name> <command-name> [seconds]\n"
+        << "  tower ir-analyze [capture-directory|latest]\n"
         << "  tower replay\n"
         << "  tower config\n"
 		<< "  tower sensor\n"
@@ -136,6 +139,15 @@ int main(int argc, char* argv[])
 
         case Command::LearnKernel:
             return runLearnKernelCommand();
+
+        case Command::IRReceivers:
+            return runIRReceiversCommand();
+
+        case Command::IRCapture:
+            return runIRCaptureCommand(argc, argv);
+
+        case Command::IRAnalyze:
+            return runIRAnalyzeCommand(argc, argv);
 
         case Command::Config:
             return runConfigCommand();
