@@ -1,5 +1,44 @@
 # Tower Changelog
 
+## v0.10.9 - First PC bridge and RF remote
+
+### Added
+
+- Added an authenticated LAN HTTP API to the existing `tower service` process.
+- Added `GET /api/v1/rf/devices` to list RF devices from the existing
+  `.rf` files, including their friendly `device_name` labels and stored status.
+- Added `POST /api/v1/rf/send` to perform `on` and `off` actions through the
+  same RF command service used by the existing CLI `send` command.
+- Added a Windows PowerShell Forms remote that retrieves the RF device list
+  from Tower and creates On/Off buttons dynamically.
+- Added `%APPDATA%\Tower\client.json` storage for the PC address and API token.
+
+### Changed
+
+- Refactored `tower send <RF-device> <on|off>` to call the shared
+  `RFCommandService`; its command syntax and RF sender remain unchanged.
+- Updated the project and runtime version to `0.10.9`.
+
+## v0.10.8 - Logical command execution
+
+### Added
+
+- Added a shared `CommandExecutor` that executes an already-resolved logical
+  command through the existing IR or RF sender.
+- Added structured execution results for future automation and HTTP API use.
+
+### Changed
+
+- Extended the existing `tower execute <device-id> <command-id>` resolver so it
+  now transmits after displaying the stored mapping.
+- Preserved `tower replay <device> <command> <transmitter>` for direct IR tests.
+- Preserved `tower send <RF-device> <on|off>` for direct RF tests.
+- IR execution uses the transmitter stored in the logical command mapping; no
+  transmitter is hard-coded.
+- Disabled devices and commands, incomplete mappings, invalid RF actions, and
+  failed transport loads now return a non-zero exit code.
+- Updated the runtime version to `0.10.8`.
+
 ## v0.10.7 - Successful IR receiver integration
 
 ### Added

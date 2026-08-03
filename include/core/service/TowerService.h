@@ -4,6 +4,7 @@
 #include <string>
 
 #include "core/gpio.h"
+#include "core/network/TowerApiServer.h"
 #include "core/service/Scheduler.h"
 #include "devices/displays/LCD1602.h"
 #include "devices/remote/TemperatureSensor.h"
@@ -53,5 +54,6 @@ private:
     std::chrono::steady_clock::time_point lastButtonEdgeAt_{};
     std::chrono::steady_clock::time_point backlightOffAt_{};
 	
-	int serviceLockFd_ = -1;
+    int serviceLockFd_ = -1;
+    TowerApiServer apiServer_;
 };

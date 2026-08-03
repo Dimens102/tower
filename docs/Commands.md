@@ -63,6 +63,15 @@ Starts the long-running Tower execution engine in the foreground.
 
 The service owns the scheduler and managed runtime devices, including the remote temperature source.
 
+From v0.10.9, the service also owns the authenticated PC bridge on TCP port
+`8080`. For a manual test, supply its token when starting the process:
+
+```bash
+TOWER_API_TOKEN='your-private-token' tower service
+```
+
+See `docs/PC-Bridge.md` for the RF endpoints and Windows remote.
+
 The installed operating-system service runs this command automatically during system boot. This allows remote polling and hourly history collection to continue without an interactive terminal.
 
 Only one Tower service process may run at a time. The running process holds an
@@ -119,9 +128,15 @@ These commands manage the logical commands attached to a device record.
 tower execute <device-id> <command-id>
 ```
 
-Resolves a logical device command and displays its configured transport, transport device, transport command, transmitter and enabled state.
+Resolves a logical device command, displays its configured transport, transport
+device, transport command, transmitter and enabled state, and then executes the
+stored mapping. The transmitter remains part of the logical command record; it
+is not supplied as a third CLI argument and is never hard-coded by `execute`.
 
-The current implementation validates and resolves the command but does not yet transmit it.
+Direct transport commands remain available for testing and troubleshooting:
+
+- IR: `tower replay <device-name> <command-name> <transmitter-name>`
+- RF: `tower send <device-name> <on|off>`
 
 ## Infrared
 

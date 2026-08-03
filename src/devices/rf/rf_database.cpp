@@ -3,6 +3,9 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
+#include <filesystem>
+#include <vector>
 
 static void applyKeyValue(RFDevice& device, const std::string& key, const std::string& value)
 {
@@ -18,6 +21,7 @@ static void applyKeyValue(RFDevice& device, const std::string& key, const std::s
     else if (key == "off") device.offCode = std::stoul(value);
     else if (key == "transmitter_id") device.transmitterId = value;
     else if (key == "status") device.status = value;
+    else if (key == "device_name") device.deviceName = value;
 }
 
 bool RFDatabase::loadPowerDevice(const std::string& name, RFDevice& device)
@@ -48,4 +52,39 @@ bool RFDatabase::loadPowerDevice(const std::string& name, RFDevice& device)
     }
 
     return true;
+}
+
+std::vector<RFDevice> RFDatabase::listPowerDevices()
+{
+    std::vector<RFDevice> devices;
+    const std::filesystem::path directory = "data/rf/power";
+
+    if (!std::filesystem::exists(directory))
+    {
+        return devices;
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(directory))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".rf")
+        {
+            continue;
+        }
+
+        RFDevice device;
+        if (loadPowerDevice(entry.path().stem().string(), device))
+        {
+            devices.push_back(std::move(device));
+        }
+    }
+
+    std::sort(
+        devices.begin(),
+        devices.end(),
+        [](const RFDevice& left, const RFDevice& right)
+        {
+            return left.name < right.name;
+        });
+
+    return devices;
 }

@@ -16,4 +16,5 @@ struct RFDevice
     unsigned long offCode = 0;
     std::string transmitterId;
     std::string status;
+    std::string deviceName;
 };

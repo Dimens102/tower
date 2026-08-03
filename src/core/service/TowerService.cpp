@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iterator>
@@ -193,6 +194,14 @@ bool TowerService::start()
     Logger::info(
         "TowerService",
         "Tower service starting");
+
+    const char* apiToken = std::getenv("TOWER_API_TOKEN");
+    if (!apiServer_.start(8080, apiToken == nullptr ? "" : apiToken))
+    {
+        Logger::warning(
+            "TowerService",
+            "PC bridge API did not start");
+    }
 
     const bool lcdAvailable =
         lcd_.initialize();
@@ -647,6 +656,7 @@ void TowerService::run()
 
 void TowerService::stop()
 {
+    apiServer_.stop();
     Logger::info(
         "TowerService",
         "Tower service stopping");
