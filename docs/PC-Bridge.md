@@ -1,6 +1,6 @@
 # Tower PC Bridge
 
-Tower v0.10.9 adds the first PC-facing interface to the long-running
+Tower v0.10.10 provides the first PC-facing interface to the long-running
 `tower service` process. This milestone covers the already-built and tested RF
 power definitions. IR remote and command selection will be added later.
 
@@ -43,4 +43,6 @@ Delete `client.json` to enter a different address or token on the next launch.
 - `GET /api/v1/status` - unauthenticated health check.
 - `GET /api/v1/rf/devices` - authenticated paired-device list.
 - `POST /api/v1/rf/send` - authenticated RF action with JSON fields `device`
-  and `action` (`on` or `off`).
+  and `action` (`on` or `off`). Tower validates both fields, launches the
+  existing `tower send <device> <on|off>` CLI path without a shell, waits for
+  its exit status, and only then reports success.

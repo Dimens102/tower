@@ -1,22 +1,109 @@
 #include "core/network/TowerApiServer.h"
 
-#include "core/service/RFCommandService.h"
 #include "devices/rf/rf_database.h"
 #include "nlohmann/json.hpp"
+#include "version.h"
 
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <limits.h>
 #include <mutex>
 #include <netinet/in.h>
+#include <spawn.h>
 #include <sstream>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+extern char** environ;
 
 namespace
 {
 std::mutex rfMutex;
+
+bool runTowerSendCommand(
+    const std::string& device,
+    const std::string& action,
+    std::string& error)
+{
+    if (action != "on" && action != "off")
+    {
+        error = "Action must be on or off";
+        return false;
+    }
+
+    RFDatabase database;
+    bool knownDevice = false;
+    for (const RFDevice& definition : database.listPowerDevices())
+    {
+        if (definition.name == device)
+        {
+            knownDevice = true;
+            break;
+        }
+    }
+    if (!knownDevice)
+    {
+        error = "RF device not found";
+        return false;
+    }
+
+    char executable[PATH_MAX + 1]{};
+    const ssize_t length =
+        ::readlink("/proc/self/exe", executable, PATH_MAX);
+    if (length <= 0)
+    {
+        error = "Could not resolve Tower executable";
+        return false;
+    }
+    executable[length] = '\0';
+
+    char* arguments[] = {
+        executable,
+        const_cast<char*>("send"),
+        const_cast<char*>(device.c_str()),
+        const_cast<char*>(action.c_str()),
+        nullptr
+    };
+
+    pid_t child = -1;
+    const int spawnResult =
+        ::posix_spawn(
+            &child,
+            executable,
+            nullptr,
+            nullptr,
+            arguments,
+            environ);
+    if (spawnResult != 0)
+    {
+        error = "Could not start tower send: " +
+            std::string(std::strerror(spawnResult));
+        return false;
+    }
+
+    int status = 0;
+    while (::waitpid(child, &status, 0) < 0)
+    {
+        if (errno == EINTR)
+        {
+            continue;
+        }
+        error = "Could not wait for tower send";
+        return false;
+    }
+
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    {
+        error = "tower send failed";
+        return false;
+    }
+
+    error.clear();
+    return true;
+}
 
 void sendResponse(
     int fd,
@@ -175,7 +262,7 @@ void TowerApiServer::handleClient(int clientFd)
 
     if (path == "/api/v1/status" && method == "GET")
     {
-        sendResponse(clientFd, 200, "OK", {{"service", "tower"}, {"status", "ok"}, {"version", "0.10.9"}});
+        sendResponse(clientFd, 200, "OK", {{"service", "tower"}, {"status", "ok"}, {"version", TOWER_VERSION}});
         return;
     }
 
@@ -213,9 +300,8 @@ void TowerApiServer::handleClient(int clientFd)
             const std::string device = json.at("device").get<std::string>();
             const std::string action = json.at("action").get<std::string>();
             std::string error;
-            RFCommandService service;
             std::lock_guard<std::mutex> lock(rfMutex);
-            if (!service.send(device, action, error))
+            if (!runTowerSendCommand(device, action, error))
             {
                 sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", error}});
                 return;

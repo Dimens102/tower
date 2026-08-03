@@ -1,5 +1,21 @@
 # Tower Changelog
 
+## v0.10.10 - PC bridge RF execution correction
+
+### Fixed
+
+- Changed `POST /api/v1/rf/send` to launch the exact existing
+  `tower send <device> <on|off>` command and wait for its exit status.
+- The API now returns success only when the proven CLI command exits
+  successfully; device and action values are validated before launch and no
+  shell is used.
+- Corrected the six RF button labels to their current uses and marked the DIY
+  Buro Lamp as paired.
+
+### Changed
+
+- Updated the project and runtime version to `0.10.10`.
+
 ## v0.10.9 - First PC bridge and RF remote
 
 ### Added
