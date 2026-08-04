@@ -771,7 +771,7 @@ directly to the Tower Raspberry Pi. Its files are separated under
 
 Tower sends raw IR pulse sequences over TCP to the reserved Pico address
 `192.168.2.30:42101`. The Pico owns the 38 kHz carrier generation and maps Tower
-outputs 1 through 6 to GP0 through GP5.
+outputs 1 through 6 to GP1 through GP6.
 
 ---
 

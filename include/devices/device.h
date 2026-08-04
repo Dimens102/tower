@@ -17,7 +17,14 @@ public:
     std::string manufacturer;
     std::string model;
 
+    // Physical handset used to record this logical device's IR commands.
+    std::string remoteName;
+
     std::string location;
+
+    // Default IR output for every command on this device.  Individual
+    // commands retain their transmitter field for exceptional overrides.
+    std::string transmitter;
 
     bool enabled = true;
 

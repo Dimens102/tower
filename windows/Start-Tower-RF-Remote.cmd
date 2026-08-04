@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Tower-RF-Remote.ps1"
+call "%~dp0Start-Tower-Control.cmd"

@@ -1,6 +1,6 @@
 # Tower Roadmap
 
-> Last updated: 2026-07-19
+> Last updated: 2026-08-05
 
 ---
 
@@ -103,7 +103,7 @@ Status: 45%
 [x] Native protocol decoding and best-receiver selection
 [x] Protocol-aware metadata with raw replay compatibility
 [x] End-to-end array learning and replay verification
-[ ] Interactive learning wizard
+[x] Interactive learning wizard
 [ ] IR database load/list/remove commands
 [x] Carrier-frequency handling where supported
 
@@ -197,9 +197,9 @@ Status: 15%
 
 # Automation
 
-Status: 0%
-[ ] Tower daemon/service
-[ ] Scheduler
+Status: 30%
+[x] Tower daemon/service
+[x] Scheduler
 [ ] Event system
 [ ] Rules engine
 [ ] Conditions
@@ -222,12 +222,12 @@ data/ir/Denon/Power.ir
 
 # Interfaces
 
-Status: 5%
+Status: 45%
 [x] Command Line
-[ ] REST API
+[x] REST API
 [ ] Web Interface
 [ ] Mobile Interface
-[ ] PC Integration
+[x] PC Integration
 [ ] Authentication and user accounts
 Interfaces should edit and invoke Tower objects. They must not contain scheduling, protocol, or hardware-access logic.
 

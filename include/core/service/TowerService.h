@@ -1,7 +1,9 @@
 #pragma once
 
 #include <chrono>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "core/gpio.h"
 #include "core/network/TowerApiServer.h"
@@ -28,11 +30,14 @@ private:
         const std::string& status,
         const std::string& detail = "");
 
+    std::vector<TowerApiSensorSnapshot> sensorSnapshots();
+
     Scheduler scheduler_;
     tower::displays::LCD1602 lcd_;
 
     TemperatureSensor* aquariumSensor_ = nullptr;
     tower::sensors::BME688* roomSensor_ = nullptr;
+    std::mutex sensorMutex_;
 
     std::chrono::steady_clock::time_point nextDisplayUpdate_{};
 

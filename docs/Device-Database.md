@@ -28,6 +28,7 @@ Each device currently contains:
 - `manufacturer`
 - `model`
 - `location`
+- `transmitter` (default IR transmitter for the complete remote)
 - `enabled`
 - `aliases`
 - `commands`
@@ -43,6 +44,7 @@ public:
     std::string manufacturer;
     std::string model;
     std::string location;
+    std::string transmitter;
 
     bool enabled = true;
 
@@ -103,7 +105,9 @@ Command aliases have not been implemented yet.
     "type": "avr",
     "manufacturer": "Denon",
     "model": "AVR-X2800H",
+    "remoteName": "Denon AVR Remote",
     "location": "Living Room",
+    "transmitter": "Tower-IR-TX-001",
     "enabled": true,
     "aliases": [
         "Receiver",

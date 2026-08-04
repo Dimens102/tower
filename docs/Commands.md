@@ -112,6 +112,13 @@ tower device delete <device-id>
 
 These commands manage the logical device records stored by Tower.
 
+For an IR device, `transmitter` is a device-level routing setting. Setting it
+updates all IR commands on that device:
+
+```bash
+tower device set KPN transmitter Tower-IR-TX-001
+```
+
 ## Logical Device Commands
 
 ```bash
@@ -139,6 +146,15 @@ Direct transport commands remain available for testing and troubleshooting:
 - RF: `tower send <device-name> <on|off>`
 
 ## Infrared
+
+```bash
+tower learn
+```
+
+Starts the interactive device recording wizard. It asks for the manufacturer,
+physical remote name, logical device name, location, and transmitter routing,
+then records any number of commands with descriptions through the complete
+six-receiver analysis pipeline. Leave the command name empty to finish.
 
 ```bash
 tower ir-receivers

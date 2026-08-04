@@ -1,5 +1,8 @@
 #include "core/network/TowerApiServer.h"
 
+#include "core/service/CommandExecutor.h"
+#include "devices/device.h"
+#include "devices/device_database.h"
 #include "devices/rf/rf_database.h"
 #include "nlohmann/json.hpp"
 #include "version.h"
@@ -16,12 +19,36 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <utility>
 
 extern char** environ;
 
 namespace
 {
-std::mutex rfMutex;
+std::mutex commandMutex;
+
+std::string transportName(TransportType transport)
+{
+    return transport == TransportType::RF ? "RF" : "IR";
+}
+
+std::string executionStatusName(CommandExecutionStatus status)
+{
+    switch (status)
+    {
+        case CommandExecutionStatus::Success: return "success";
+        case CommandExecutionStatus::DeviceNotFound: return "device_not_found";
+        case CommandExecutionStatus::DeviceLoadFailed: return "device_load_failed";
+        case CommandExecutionStatus::DeviceDisabled: return "device_disabled";
+        case CommandExecutionStatus::CommandNotFound: return "command_not_found";
+        case CommandExecutionStatus::CommandDisabled: return "command_disabled";
+        case CommandExecutionStatus::InvalidMapping: return "invalid_mapping";
+        case CommandExecutionStatus::TransportDataNotFound: return "transport_data_not_found";
+        case CommandExecutionStatus::TransportDataInvalid: return "transport_data_invalid";
+        case CommandExecutionStatus::TransmissionFailed: return "transmission_failed";
+    }
+    return "unknown";
+}
 
 bool runTowerSendCommand(
     const std::string& device,
@@ -142,6 +169,12 @@ TowerApiServer::TowerApiServer() = default;
 TowerApiServer::~TowerApiServer()
 {
     stop();
+}
+
+void TowerApiServer::setSensorProvider(
+    std::function<std::vector<TowerApiSensorSnapshot>()> provider)
+{
+    sensorProvider_ = std::move(provider);
 }
 
 bool TowerApiServer::start(std::uint16_t port, const std::string& token)
@@ -290,6 +323,113 @@ void TowerApiServer::handleClient(int clientFd)
         return;
     }
 
+    if (path == "/api/v1/devices" && method == "GET")
+    {
+        nlohmann::json devices = nlohmann::json::array();
+        DeviceDatabase database;
+
+        for (const std::string& deviceId : database.listDevices())
+        {
+            Device device;
+            if (!database.loadDevice(deviceId, device))
+            {
+                continue;
+            }
+
+            nlohmann::json commands = nlohmann::json::array();
+            for (const DeviceCommand& command : device.commands)
+            {
+                commands.push_back({
+                    {"id", command.id},
+                    {"name", command.name.empty() ? command.id : command.name},
+                    {"description", command.description},
+                    {"transport", transportName(command.transport)},
+                    {"enabled", command.enabled}
+                });
+            }
+
+            devices.push_back({
+                {"id", device.id},
+                {"name", device.name.empty() ? device.id : device.name},
+                {"manufacturer", device.manufacturer},
+                {"model", device.model},
+                {"remoteName", device.remoteName},
+                {"location", device.location},
+                {"enabled", device.enabled},
+                {"commands", commands}
+            });
+        }
+
+        sendResponse(clientFd, 200, "OK", {{"devices", devices}});
+        return;
+    }
+
+    if (path == "/api/v1/sensors" && method == "GET")
+    {
+        nlohmann::json sensors = nlohmann::json::array();
+        if (sensorProvider_)
+        {
+            for (const TowerApiSensorSnapshot& sensor : sensorProvider_())
+            {
+                nlohmann::json measurements = nlohmann::json::array();
+                for (const TowerApiSensorMeasurement& measurement : sensor.measurements)
+                {
+                    measurements.push_back({
+                        {"name", measurement.name},
+                        {"unit", measurement.unit},
+                        {"value", measurement.value}
+                    });
+                }
+
+                sensors.push_back({
+                    {"id", sensor.id},
+                    {"name", sensor.name},
+                    {"available", sensor.available},
+                    {"timestampUtc", sensor.timestampUtc},
+                    {"ageSeconds", sensor.ageSeconds},
+                    {"measurements", measurements}
+                });
+            }
+        }
+        sendResponse(clientFd, 200, "OK", {{"sensors", sensors}});
+        return;
+    }
+
+    if (path == "/api/v1/execute" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body = headerEnd == std::string::npos ? std::string{} : request.substr(headerEnd + 4);
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string device = json.at("device").get<std::string>();
+            const std::string command = json.at("command").get<std::string>();
+            std::lock_guard<std::mutex> lock(commandMutex);
+            CommandExecutor executor;
+            const CommandExecutionResult execution = executor.execute(device, command);
+
+            nlohmann::json response = {
+                {"ok", execution.succeeded()},
+                {"device", device},
+                {"command", command},
+                {"transport", transportName(execution.transport)},
+                {"status", executionStatusName(execution.status)},
+                {"message", execution.message}
+            };
+
+            sendResponse(
+                clientFd,
+                execution.succeeded() ? 200 : 400,
+                execution.succeeded() ? "OK" : "Bad Request",
+                response);
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", exception.what()}});
+        }
+        return;
+    }
+
     if (path == "/api/v1/rf/send" && method == "POST")
     {
         const auto headerEnd = request.find("\r\n\r\n");
@@ -300,13 +440,58 @@ void TowerApiServer::handleClient(int clientFd)
             const std::string device = json.at("device").get<std::string>();
             const std::string action = json.at("action").get<std::string>();
             std::string error;
-            std::lock_guard<std::mutex> lock(rfMutex);
+            std::lock_guard<std::mutex> lock(commandMutex);
             if (!runTowerSendCommand(device, action, error))
             {
                 sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", error}});
                 return;
             }
             sendResponse(clientFd, 200, "OK", {{"ok", true}, {"device", device}, {"action", action}});
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", exception.what()}});
+        }
+        return;
+    }
+
+    if (path == "/api/v1/rf/all" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body = headerEnd == std::string::npos ? std::string{} : request.substr(headerEnd + 4);
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string action = json.at("action").get<std::string>();
+            if (action != "on" && action != "off")
+            {
+                sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", "Action must be on or off"}});
+                return;
+            }
+
+            nlohmann::json results = nlohmann::json::array();
+            bool allSucceeded = true;
+            RFDatabase database;
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            for (const RFDevice& device : database.listPowerDevices())
+            {
+                std::string error;
+                const bool succeeded = runTowerSendCommand(device.name, action, error);
+                allSucceeded = allSucceeded && succeeded;
+                results.push_back({
+                    {"device", device.name},
+                    {"name", device.deviceName.empty() ? device.name : device.deviceName},
+                    {"ok", succeeded},
+                    {"error", error}
+                });
+            }
+
+            sendResponse(
+                clientFd,
+                allSucceeded ? 200 : 500,
+                allSucceeded ? "OK" : "Internal Server Error",
+                {{"ok", allSucceeded}, {"action", action}, {"results", results}});
         }
         catch (const std::exception& exception)
         {

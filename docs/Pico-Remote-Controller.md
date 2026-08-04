@@ -17,12 +17,12 @@ automatic discovery is used.
 
 | Tower transmitter | Pico output | Pico pin |
 |---|---:|---|
-| `Tower-IR-TX-001` | 1 | GP0 |
-| `Tower-IR-TX-002` | 2 | GP1 |
-| `Tower-IR-TX-003` | 3 | GP2 |
-| `Tower-IR-TX-004` | 4 | GP3 |
-| `Tower-IR-TX-005` | 5 | GP4 |
-| `Tower-IR-TX-006` | 6 | GP5 |
+| `Tower-IR-TX-001` | 1 | GP1 |
+| `Tower-IR-TX-002` | 2 | GP2 |
+| `Tower-IR-TX-003` | 3 | GP3 |
+| `Tower-IR-TX-004` | 4 | GP4 |
+| `Tower-IR-TX-005` | 5 | GP5 |
+| `Tower-IR-TX-006` | 6 | GP6 |
 
 Only `Tower-IR-TX-001` is moved to the Pico by this release. The remaining
 existing transmitters keep their Raspberry Pi GPIO assignments.
@@ -88,7 +88,7 @@ Only do this after Wi-Fi is working:
 - Adapter `+5 V` goes to Pico `VSYS` (physical pin 39).
 - Adapter ground goes to a Pico `GND` pin.
 - The transmitter board uses the same adapter `+5 V` and ground.
-- Pico GP0 remains connected to the input of `Tower-IR-TX-001`.
+- Pico GP1 remains connected to the input of `Tower-IR-TX-001`.
 - Do not connect this adapter's `+5 V` to the Raspberry Pi 5 V rail.
 
 The shared ground between the Pico and transmitter circuit is required.

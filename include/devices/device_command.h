@@ -13,6 +13,7 @@ class DeviceCommand
 public:
     std::string id;
     std::string name;
+    std::string description;
 
     TransportType transport = TransportType::IR;
 

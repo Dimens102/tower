@@ -56,7 +56,7 @@ controller=tower-pico
 output=1
 ```
 
-Tower Pico outputs 1 through 6 map to GP0 through GP5.
+Tower Pico outputs 1 through 6 map to GP1 through GP6.
 
 ## Notes
 
@@ -98,7 +98,7 @@ If the replacement LED works, the original component is likely not a standard IR
 
 | Name | Output | Device |
 |------|--------|--------|
-| Tower-IR-TX-001 | Tower Pico 1 / GP0 | Left IR Blaster |
+| Tower-IR-TX-001 | Tower Pico 1 / GP1 | Left IR Blaster |
 | Tower-IR-TX-002 | 23 | Small Clear IR LED |
 | Tower-IR-TX-003 | 25 | Small Clear IR LED |
 | Tower-IR-TX-004 | 20 | Small Black IR LED *(hardware verified, emitter not compatible for Denon testing)* |
@@ -177,12 +177,12 @@ wifi_config.py contains the private Wi-Fi credentials and must not be committed 
 Current output mapping:
 
 Pico output	Pico GPIO
-1	GP0
-2	GP1
-3	GP2
-4	GP3
-5	GP4
-6	GP5
+1	GP1
+2	GP2
+3	GP3
+4	GP4
+5	GP5
+6	GP6
 
 A transmitter using the Pico must contain:
 

@@ -2,7 +2,43 @@
 
 The IR learning wizard should create complete, useful device-database entries rather than only dumping raw pulse files.
 
-## Command
+## Interactive wizard
+
+Start the recorder with:
+
+```text
+tower learn
+```
+
+The wizard asks for the manufacturer, the physical remote name, the logical
+device name, its location, and its default transmitter. It then repeatedly asks
+for a stable command name and a description. Leave the command name empty to
+finish the device. Before each eight-second capture, the wizard waits until the operator
+confirms that the remote is aimed at the receiver array.
+
+Every successful recording also creates or updates the matching logical device
+command. Until the completed IR transmitter array is installed and verified,
+the default is the proven `Tower-IR-TX-001` output.
+
+Change the routing for an already configured device with:
+
+```text
+tower device set <device> transmitter Tower-IR-TX-001
+```
+
+This updates all IR commands belonging to that device. The command-level
+`transmitter` field remains available for a deliberate individual override.
+
+New device captures are stored as:
+
+```text
+data/ir/devices/<Device name>/<Command>.ir
+```
+
+Existing records under `data/ir/remotes/<Name>/<Command>.ir` and
+`data/ir/<Name>/<Command>.ir` remain readable for backward compatibility.
+
+## Direct command
 
 Current validated receiver-array command:
 
@@ -26,25 +62,26 @@ replacement first creates a `.tower-learn-backup` copy. Failed or unsupported
 captures remain under `captures/ir/` for analysis and do not change the command
 database.
 
-Future interactive entry point:
+After every recording, the wizard prints the complete six-receiver analysis
+table before deciding whether the command is clean enough to save. This makes
+missing signals or a receiver that consistently reports no valid frames visible
+while the remote is still being recorded.
+
+## Wizard flow
 
 ```text
-tower learn
-```
-
-## Proposed flow
-
-```text
-What type of device?
 Manufacturer?
-Model?
-Friendly device name?
+Remote name?
+Device name?
 Location?
-Which command are you recording?
-Press the remote button now...
+Transmitter? [Tower-IR-TX-001]
+Command name?
+Description?
+Press Enter when ready...
+Press the same remote button several times...
 ```
 
-Tower currently:
+Tower:
 
 1. Verifies and initializes all six receivers.
 2. Captures the signal simultaneously through the receiver array.
@@ -52,6 +89,10 @@ Tower currently:
 4. Validates the capture.
 5. Atomically saves through the database layer.
 6. Confirms the saved logical device and command.
+
+Every `.ir` file contains the command description, winning capture metadata,
+raw replay frame, and the complete six-receiver analyzer result with GPIO,
+receiver model, nominal kHz, frame count, valid frame count, result, and decode.
 
 ## Device types
 
@@ -73,10 +114,9 @@ This list should remain extensible.
 ### Generic device fields
 
 - Internal device ID
-- Device type
 - Manufacturer
-- Model
-- Friendly name
+- Physical remote name
+- Logical device name
 - Location
 - Description or notes
 

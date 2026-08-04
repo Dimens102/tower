@@ -17,6 +17,12 @@ bool setCommandProperty(
         return true;
     }
 
+    if (property == "description")
+    {
+        command.description = value;
+        return true;
+    }
+
     if (property == "transport")
     {
         if (value == "IR")

@@ -1,5 +1,50 @@
 # Tower Changelog
 
+## v0.10.11 - Tower Control and IR recording wizard (2026-08-05)
+
+### Added
+
+- Added interactive `tower learn` device recording wizard.
+- Added per-command descriptions and automatic logical device-command updates.
+- Added complete six-receiver analysis metadata to every newly learned IR file.
+- Added the complete six-receiver analysis table to the terminal after every
+  wizard recording, including recordings that fail validation.
+- Added organized `data/ir/devices/<Device>/<Command>.ir` storage while keeping
+  both earlier IR storage layouts readable.
+- Added device-level manufacturer, physical remote name, location, and
+  transmitter questions to the recording wizard.
+- Added `tower device set <device> transmitter <value>` propagation to all IR
+  commands on that device, while retaining command-level overrides.
+- Added authenticated sensor snapshots for the aquarium sensor and every BME688
+  measurement.
+- Added authenticated logical-device discovery and command execution endpoints.
+- Added one API action that switches every paired RF power device On or Off and
+  returns the result for each device.
+- Replaced the RF-only Windows remote with Tower Control, containing Sensors,
+  RF Power, and dynamically discovered IR Remotes pages.
+- Added combined All On and All Off buttons to the RF Power page.
+
+### Changed
+
+- New IR devices default to the proven `Tower-IR-TX-001` output. Combined-array
+  transmission is deferred until the completed transmitter hardware is tested.
+
+### Fixed
+
+- Detached the Tower Control GUI from its launcher console and made sensor unit
+  symbols safe in Windows PowerShell.
+- Improved the Refresh All button contrast in the dark header.
+
+### Verified
+
+- The complete Pi build linked successfully.
+- The systemd service restarted with the new executable and served authenticated
+  BME688 and aquarium sensor snapshots.
+- RF and logical-device discovery returned the live configured devices.
+- Combined All Off and All On controlled all six paired RF power devices.
+- Tower Control displayed sensors, RF controls, and recorded IR commands on
+  Windows without a visible launcher console.
+
 ## v0.10.10 - PC bridge RF execution correction
 
 ### Fixed

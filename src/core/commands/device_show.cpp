@@ -25,7 +25,9 @@ int runDeviceShow(int argc, char* argv[])
     std::cout << "Type:         " << device.type << "\n";
     std::cout << "Manufacturer: " << device.manufacturer << "\n";
     std::cout << "Model:        " << device.model << "\n";
+    std::cout << "Remote:       " << device.remoteName << "\n";
     std::cout << "Location:     " << device.location << "\n";
+    std::cout << "Transmitter:  " << device.transmitter << "\n";
     std::cout << "Enabled:      "
               << (device.enabled ? "Yes" : "No") << "\n";
 

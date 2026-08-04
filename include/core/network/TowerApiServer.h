@@ -2,8 +2,27 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <thread>
+#include <vector>
+
+struct TowerApiSensorMeasurement
+{
+    std::string name;
+    std::string unit;
+    double value = 0.0;
+};
+
+struct TowerApiSensorSnapshot
+{
+    std::string id;
+    std::string name;
+    bool available = false;
+    std::string timestampUtc;
+    long long ageSeconds = -1;
+    std::vector<TowerApiSensorMeasurement> measurements;
+};
 
 class TowerApiServer
 {
@@ -14,6 +33,9 @@ public:
     bool start(std::uint16_t port, const std::string& token);
     void stop();
 
+    void setSensorProvider(
+        std::function<std::vector<TowerApiSensorSnapshot>()> provider);
+
 private:
     void run();
     void handleClient(int clientFd);
@@ -22,4 +44,5 @@ private:
     int listenFd_ = -1;
     std::string token_;
     std::thread thread_;
+    std::function<std::vector<TowerApiSensorSnapshot>()> sensorProvider_;
 };

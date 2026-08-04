@@ -50,6 +50,7 @@ int runCommandShow(int argc, char* argv[])
 
         std::cout << "ID:                " << command.id << "\n";
         std::cout << "Name:              " << command.name << "\n";
+        std::cout << "Description:       " << command.description << "\n";
         std::cout << "Transport:         "
                   << transportToString(command.transport) << "\n";
         std::cout << "Transport device:  "

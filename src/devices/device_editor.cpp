@@ -36,6 +36,24 @@ bool DeviceEditor::setProperty(
         return true;
     }
 
+    if (property == "remote" || property == "remoteName" ||
+        property == "remote-name")
+    {
+        device.remoteName = value;
+        return true;
+    }
+
+    if (property == "transmitter")
+    {
+        device.transmitter = value;
+        for (DeviceCommand& command : device.commands)
+        {
+            if (command.transport == TransportType::IR)
+                command.transmitter = value;
+        }
+        return true;
+    }
+
     if (property == "enabled")
     {
         device.enabled =

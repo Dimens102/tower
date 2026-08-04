@@ -84,6 +84,7 @@ void print_usage()
 		<< "  tower monitor\n"
 		<< "  tower service\n"
         << "  tower send <device-name> <on|off>\n"
+        << "  tower learn\n"
         << "  tower learn <device-name> <command-name> [seconds] [--force]\n"
         << "  tower learn-kernel\n"
         << "  tower ir-receivers\n"

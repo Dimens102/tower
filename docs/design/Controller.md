@@ -36,8 +36,8 @@ It connects to the normal Wi-Fi network and listens at:
 192.168.2.30:42101
 ```
 
-The Pico controls IR transmitter outputs GP0 through GP5. In Tower configuration
-these are addressed as outputs 1 through 6.
+The Pico controls IR transmitter outputs GP1 through GP6. In Tower
+configuration these are addressed as outputs 1 through 6.
 
 The implementation lives in:
 

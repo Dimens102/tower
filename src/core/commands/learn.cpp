@@ -1,5 +1,7 @@
 #include "core/commands/command_handlers.h"
+#include "core/commands/ir_learning.h"
 
+#include "devices/device_database.h"
 #include "devices/ir/ir_analyzer.h"
 #include "devices/ir/ir_array_capture.h"
 #include "devices/ir/ir_code.h"
@@ -20,6 +22,8 @@
 
 namespace
 {
+constexpr const char* defaultTransmitter = "Tower-IR-TX-001";
+
 std::string safeName(const std::string& value)
 {
     std::string result;
@@ -67,54 +71,117 @@ void printHex(unsigned value, unsigned width)
               << std::setw(width) << std::setfill('0') << value
               << std::dec << std::setfill(' ');
 }
-} // namespace
 
-int runLearnCommand(int argc, char* argv[])
+std::string analysisDecodeText(const IRFileAnalysis& analysis)
 {
-    if (argc < 4 || argc > 6)
+    if (analysis.protocol.empty()) return "-";
+
+    std::ostringstream output;
+    output << analysis.protocol << " 0x" << std::uppercase << std::hex
+           << std::right
+           << std::setw(analysis.address > 0xFFF ? 4 : 3) << std::setfill('0')
+           << analysis.address << "/0x" << std::setw(2) << analysis.command;
+    return output.str();
+}
+
+void printAnalysisTable(
+    const std::filesystem::path& captureDirectory,
+    const std::vector<IRReceiverAnalysis>& analyses)
+{
+    std::cout
+        << "\nIR capture analysis\n\n"
+        << "Capture: " << captureDirectory.string() << "\n\n"
+        << std::left
+        << std::setw(6) << "GPIO"
+        << std::setw(12) << "Receiver"
+        << std::setw(7) << "kHz"
+        << std::setw(8) << "Frames"
+        << std::setw(7) << "Valid"
+        << std::setw(11) << "Result"
+        << "Decode\n"
+        << std::setw(6) << "----"
+        << std::setw(12) << "---------"
+        << std::setw(7) << "---"
+        << std::setw(8) << "------"
+        << std::setw(7) << "-----"
+        << std::setw(11) << "---------"
+        << "-----------------------\n";
+
+    for (const IRReceiverAnalysis& item : analyses)
     {
-        std::cerr << "Usage: tower learn <device-name> <command-name> "
-                     "[seconds] [--force]\n";
-        return 1;
+        std::cout
+            << std::setw(6) << item.gpio
+            << std::setw(12) << item.model
+            << std::setw(7) << item.nominalCarrierKhz
+            << std::setw(8) << item.analysis.frameCount
+            << std::setw(7) << item.analysis.decodedCount
+            << std::setw(11) << item.analysis.result()
+            << analysisDecodeText(item.analysis) << '\n';
+    }
+}
+
+bool updateLogicalCommand(
+    const std::string& deviceName,
+    const std::string& commandName,
+    const std::string& description)
+{
+    DeviceDatabase database;
+    Device device;
+
+    if (!database.deviceExists(deviceName))
+    {
+        device.id = deviceName;
+        device.name = deviceName;
+        device.transmitter = defaultTransmitter;
+        device.enabled = true;
+    }
+    else if (!database.loadDevice(deviceName, device))
+    {
+        return false;
     }
 
-    const std::string deviceName = argv[2];
-    const std::string commandName = argv[3];
+    for (DeviceCommand& command : device.commands)
+    {
+        if (command.id != commandName) continue;
+
+        command.name = commandName;
+        command.description = description;
+        command.transport = TransportType::IR;
+        command.transportDevice = deviceName;
+        command.transportCommand = commandName;
+        if (command.transmitter.empty())
+            command.transmitter = device.transmitter.empty()
+                ? defaultTransmitter : device.transmitter;
+        command.enabled = true;
+        return database.saveDevice(device);
+    }
+
+    DeviceCommand command;
+    command.id = commandName;
+    command.name = commandName;
+    command.description = description;
+    command.transport = TransportType::IR;
+    command.transportDevice = deviceName;
+    command.transportCommand = commandName;
+    command.transmitter = device.transmitter.empty()
+        ? defaultTransmitter : device.transmitter;
+    command.enabled = true;
+    device.commands.push_back(command);
+    return database.saveDevice(device);
+}
+} // namespace
+
+int learnIRCommand(
+    const std::string& deviceName,
+    const std::string& commandName,
+    const std::string& description,
+    double seconds,
+    bool force)
+{
     if (!validDatabaseName(deviceName) || !validDatabaseName(commandName))
     {
         std::cerr << "Device and command names cannot be empty, '.', '..', or contain slashes.\n";
         return 1;
-    }
-
-    double seconds = 8.0;
-    bool force = false;
-    bool durationSet = false;
-    for (int index = 4; index < argc; ++index)
-    {
-        const std::string argument = argv[index];
-        if (argument == "--force")
-        {
-            force = true;
-            continue;
-        }
-        if (durationSet)
-        {
-            std::cerr << "Only one capture duration may be specified.\n";
-            return 1;
-        }
-        try
-        {
-            std::size_t parsed = 0;
-            seconds = std::stod(argument, &parsed);
-            if (parsed != argument.size() || seconds <= 0.0 || seconds > 300.0)
-                throw std::invalid_argument("duration");
-            durationSet = true;
-        }
-        catch (...)
-        {
-            std::cerr << "Capture duration must be between 0 and 300 seconds.\n";
-            return 1;
-        }
     }
 
     IRDatabase database;
@@ -186,6 +253,7 @@ int runLearnCommand(int argc, char* argv[])
         const IRAnalyzer analyzer;
         const std::vector<IRReceiverAnalysis> analyses =
             analyzer.analyzeDirectory(destination);
+        printAnalysisTable(destination, analyses);
         const IRReceiverAnalysis& best = analyses[analyzer.best(analyses)];
         if (best.analysis.result() != "CLEAN")
         {
@@ -198,6 +266,7 @@ int runLearnCommand(int argc, char* argv[])
         IRCode code;
         code.device = deviceName;
         code.command = commandName;
+        code.description = description;
         code.protocol = "raw";
         code.decodedProtocol = best.analysis.protocol;
         code.address = best.analysis.address;
@@ -207,6 +276,20 @@ int runLearnCommand(int argc, char* argv[])
         code.receiverModel = best.model;
         code.sourceCapture = destination.string();
         code.pulses = frame.durations;
+        for (const IRReceiverAnalysis& receiver : analyses)
+        {
+            IRAnalysisRow row;
+            row.gpio = receiver.gpio;
+            row.receiverModel = receiver.model;
+            row.nominalCarrierKhz = receiver.nominalCarrierKhz;
+            row.frameCount = receiver.analysis.frameCount;
+            row.validFrameCount = receiver.analysis.decodedCount;
+            row.result = receiver.analysis.result();
+            row.decodedProtocol = receiver.analysis.protocol;
+            row.address = receiver.analysis.address;
+            row.decodedCommand = receiver.analysis.command;
+            code.analysis.push_back(row);
+        }
 
         if (database.exists(deviceName, commandName))
         {
@@ -225,6 +308,11 @@ int runLearnCommand(int argc, char* argv[])
         }
 
         if (!database.save(deviceName, commandName, code)) return 1;
+        if (!updateLogicalCommand(deviceName, commandName, description))
+        {
+            std::cerr << "Capture was saved, but the logical device command could not be updated.\n";
+            return 1;
+        }
 
         std::cout << "\nLearned successfully\n\n"
                   << "Protocol : " << code.decodedProtocol << "\n"
@@ -248,4 +336,49 @@ int runLearnCommand(int argc, char* argv[])
                   << "\nCapture retained, but no command was saved.\n";
         return 1;
     }
+}
+
+int runLearnCommand(int argc, char* argv[])
+{
+    if (argc == 2) return runLearnWizard();
+
+    if (argc < 4 || argc > 6)
+    {
+        std::cerr << "Usage: tower learn [<device-name> <command-name> "
+                     "[seconds] [--force]]\n";
+        return 1;
+    }
+
+    double seconds = 8.0;
+    bool force = false;
+    bool durationSet = false;
+    for (int index = 4; index < argc; ++index)
+    {
+        const std::string argument = argv[index];
+        if (argument == "--force")
+        {
+            force = true;
+            continue;
+        }
+        if (durationSet)
+        {
+            std::cerr << "Only one capture duration may be specified.\n";
+            return 1;
+        }
+        try
+        {
+            std::size_t parsed = 0;
+            seconds = std::stod(argument, &parsed);
+            if (parsed != argument.size() || seconds <= 0.0 || seconds > 300.0)
+                throw std::invalid_argument("duration");
+            durationSet = true;
+        }
+        catch (...)
+        {
+            std::cerr << "Capture duration must be between 0 and 300 seconds.\n";
+            return 1;
+        }
+    }
+
+    return learnIRCommand(argv[2], argv[3], "", seconds, force);
 }

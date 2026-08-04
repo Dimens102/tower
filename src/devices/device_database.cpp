@@ -61,7 +61,9 @@ bool DeviceDatabase::loadDevice(const std::string& deviceId, Device& device)
         device.type = document.value("type", "");
         device.manufacturer = document.value("manufacturer", "");
         device.model = document.value("model", "");
+        device.remoteName = document.value("remoteName", "");
         device.location = document.value("location", "");
+        device.transmitter = document.value("transmitter", "");
         device.enabled = document.value("enabled", true);
 
         device.aliases.clear();
@@ -87,6 +89,9 @@ bool DeviceDatabase::loadDevice(const std::string& deviceId, Device& device)
                 command.name =
                     commandDocument.value("name", "");
 
+                command.description =
+                    commandDocument.value("description", "");
+
                 command.transport =
                     transportFromString(
                         commandDocument.value("transport", "IR"));
@@ -108,6 +113,27 @@ bool DeviceDatabase::loadDevice(const std::string& deviceId, Device& device)
                     device.commands.push_back(command);
                 }
             }
+        }
+
+        // Compatibility with device files created before the device-level
+        // transmitter setting existed.  Infer it when every mapped IR
+        // command already uses the same transmitter.
+        if (device.transmitter.empty())
+        {
+            std::string inferred;
+            bool conflicting = false;
+            for (const DeviceCommand& command : device.commands)
+            {
+                if (command.transport != TransportType::IR ||
+                    command.transmitter.empty())
+                    continue;
+
+                if (inferred.empty())
+                    inferred = command.transmitter;
+                else if (inferred != command.transmitter)
+                    conflicting = true;
+            }
+            if (!conflicting) device.transmitter = inferred;
         }
     }
     catch (const json::exception& error)
@@ -138,7 +164,9 @@ bool DeviceDatabase::saveDevice(const Device& device)
     document["type"] = device.type;
     document["manufacturer"] = device.manufacturer;
     document["model"] = device.model;
+    document["remoteName"] = device.remoteName;
     document["location"] = device.location;
+    document["transmitter"] = device.transmitter;
     document["enabled"] = device.enabled;
     document["aliases"] = device.aliases;
     document["commands"] = json::array();
@@ -149,6 +177,7 @@ bool DeviceDatabase::saveDevice(const Device& device)
 
         commandDocument["id"] = command.id;
         commandDocument["name"] = command.name;
+        commandDocument["description"] = command.description;
         commandDocument["transport"] =
             transportToString(command.transport);
 

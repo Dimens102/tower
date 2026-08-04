@@ -153,6 +153,12 @@ TowerService::TowerService()
 
     scheduler_.addDevice(
         std::move(roomSensor));
+
+    apiServer_.setSensorProvider(
+        [this]()
+        {
+            return sensorSnapshots();
+        });
 }
 
 bool TowerService::start()
@@ -243,8 +249,11 @@ bool TowerService::start()
             "LCD1602 initialization failed");
     }
 
-    const bool devicesReady =
-        scheduler_.initialize();
+    bool devicesReady = false;
+    {
+        std::lock_guard<std::mutex> lock(sensorMutex_);
+        devicesReady = scheduler_.initialize();
+    }
 
     if (!devicesReady)
     {
@@ -375,7 +384,10 @@ bool TowerService::start()
 
 void TowerService::update()
 {
-    scheduler_.update();
+    {
+        std::lock_guard<std::mutex> lock(sensorMutex_);
+        scheduler_.update();
+    }
 
     const auto now =
         std::chrono::steady_clock::now();
@@ -464,10 +476,11 @@ void TowerService::updateDisplay()
     std::optional<double> roomPressure;
     std::optional<double> aquariumTemperature;
 
+    std::lock_guard<std::mutex> lock(sensorMutex_);
+
     if (roomSensor_ != nullptr)
     {
-        const auto& reading =
-            roomSensor_->reading();
+        const auto& reading = roomSensor_->reading();
 
         roomTemperature =
             findMeasurement(reading, "Temperature");
@@ -522,6 +535,65 @@ void TowerService::updateDisplay()
         secondLine,
         thirdLine,
         fourthLine);
+}
+
+std::vector<TowerApiSensorSnapshot> TowerService::sensorSnapshots()
+{
+    std::lock_guard<std::mutex> lock(sensorMutex_);
+    std::vector<TowerApiSensorSnapshot> snapshots;
+
+    TowerApiSensorSnapshot room;
+    room.id = "room-environment";
+    room.name = "Room Environment";
+
+    if (roomSensor_ != nullptr)
+    {
+        const auto& reading = roomSensor_->reading();
+        room.available = roomSensor_->available() && reading.valid;
+
+        if (room.available)
+        {
+            room.ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - reading.timestamp).count();
+
+            for (const auto& measurement : reading.measurements)
+            {
+                room.measurements.push_back({
+                    measurement.name,
+                    measurement.unit,
+                    measurement.value});
+            }
+        }
+    }
+    snapshots.push_back(std::move(room));
+
+    TowerApiSensorSnapshot aquarium;
+    aquarium.id = "aquarium-temperature";
+    aquarium.name = "Aquarium";
+
+    if (aquariumSensor_ != nullptr && aquariumSensor_->latestReading())
+    {
+        const auto& reading = *aquariumSensor_->latestReading();
+        aquarium.available = true;
+        aquarium.ageSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now() - reading.timestamp).count();
+
+        const std::time_t timestamp =
+            std::chrono::system_clock::to_time_t(reading.timestamp);
+        std::tm utc{};
+        gmtime_r(&timestamp, &utc);
+        std::ostringstream formattedTimestamp;
+        formattedTimestamp << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+        aquarium.timestampUtc = formattedTimestamp.str();
+
+        aquarium.measurements.push_back({
+            "Temperature",
+            "C",
+            reading.temperatureCelsius});
+    }
+    snapshots.push_back(std::move(aquarium));
+
+    return snapshots;
 }
 
 void TowerService::updateBacklightButton()
