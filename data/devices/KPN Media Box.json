@@ -1,0 +1,348 @@
+{
+    "id": "KPN Media Box",
+    "name": "KPN Media Box",
+    "type": "IR Device",
+    "manufacturer": "KPN",
+    "model": "",
+    "remoteName": "Generic Non-Bluetooth Model",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-004",
+    "enabled": true,
+    "aliases": [
+        "KPN",
+        "KPN box",
+        "media box"
+    ],
+    "commands": [
+        {
+            "id": "Power",
+            "name": "Power",
+            "description": "Power On/Off",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Power",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Fast Backward",
+            "name": "Fast Backward",
+            "description": "Fast Backward",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Fast Backward",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Pause-Play",
+            "name": "Pause-Play",
+            "description": "Play/Pause",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Pause-Play",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Fast Forward",
+            "name": "Fast Forward",
+            "description": "Fast Forward",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Fast Forward",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Record",
+            "name": "Record",
+            "description": "Record",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Record",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Red",
+            "name": "Red",
+            "description": "Red Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Red",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Yellow",
+            "name": "Yellow",
+            "description": "Yellow Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Yellow",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Stop",
+            "name": "Stop",
+            "description": "Stop Playing",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Stop",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Green",
+            "name": "Green",
+            "description": "Green Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Green",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Blue",
+            "name": "Blue",
+            "description": "Blue Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Blue",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Up",
+            "name": "Arrow Up",
+            "description": "Arrow Up",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Arrow Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Down",
+            "name": "Arrow Down",
+            "description": "Arrow Down",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Arrow Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow OK",
+            "name": "Arrow OK",
+            "description": "Arrow OK Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Arrow OK",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Left",
+            "name": "Arrow Left",
+            "description": "Arrow Left",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Arrow Left",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Right",
+            "name": "Arrow Right",
+            "description": "Arrow Right",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Arrow Right",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Menu",
+            "name": "Menu",
+            "description": "Menu Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Menu",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "TV Quick",
+            "name": "TV Quick",
+            "description": "TV Quick Menu",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "TV Quick",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Gids",
+            "name": "Gids",
+            "description": "Gids Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Gids",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Radio",
+            "name": "Radio",
+            "description": "Radio Button",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Radio",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Back",
+            "name": "Back",
+            "description": "Back / Last Channel",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Back",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Channel Up",
+            "name": "Channel Up",
+            "description": "Channel Up",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Channel Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Channel Down",
+            "name": "Channel Down",
+            "description": "Channel Down",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Channel Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "1",
+            "name": "1",
+            "description": "Button 1",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "1",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "2",
+            "name": "2",
+            "description": "Button 2",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "2",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "3",
+            "name": "3",
+            "description": "Button 3",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "3",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "4",
+            "name": "4",
+            "description": "Button 4",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "4",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "5",
+            "name": "5",
+            "description": "Button 5",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "5",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "6",
+            "name": "6",
+            "description": "Button 6",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "6",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "7",
+            "name": "7",
+            "description": "Button 7",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "7",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "8",
+            "name": "8",
+            "description": "Button 8",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "8",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "9",
+            "name": "9",
+            "description": "Button 9",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "9",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "0",
+            "name": "0",
+            "description": "Button 0",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "0",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Teletext",
+            "name": "Teletext",
+            "description": "TeleText (Doesn't exist anymore)",
+            "transport": "IR",
+            "transportDevice": "KPN Media Box",
+            "transportCommand": "Teletext",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

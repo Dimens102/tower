@@ -16,3 +16,9 @@ cmake_install.cmake
 *.zip
 runtime/
 pico/wifi_config.py
+
+# Local IR learning/debug artifacts
+captures/ir/
+data/ir/.learn_wizard_defaults
+*.tower-learn-backup
+*.tower-capture-backup

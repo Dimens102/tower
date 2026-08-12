@@ -1,0 +1,19 @@
+device=AVR X2800H
+command=TV Audio
+description=TV Audio Device =
+protocol=raw
+decoded_protocol=Kaseikyo-Denon
+address=0x21
+decoded_command=0x2D
+carrier_khz=37
+receiver_gpio=27
+receiver_model=TSOP34836
+source_capture=captures/ir/20260810T213541Z_AVR-X2800H_TV-Audio
+analysis_header=GPIO|Receiver|kHz|Frames|Valid|Result|Decode
+analysis=17|TSOP38230|30|6|0|FAILED|-
+analysis=18|TSOP38233|33|6|6|CLEAN|Kaseikyo-Denon 0x21/0x2D
+analysis=27|TSOP34836|36|6|6|CLEAN|Kaseikyo-Denon 0x21/0x2D
+analysis=22|TSOP38238|38|6|6|CLEAN|Kaseikyo-Denon 0x21/0x2D
+analysis=23|TSOP38240|40|6|6|CLEAN|Kaseikyo-Denon 0x21/0x2D
+analysis=25|TSOP38256|56|6|0|FAILED|-
+pulses=3367,1665,438,406,441,404,439,1248,440,405,438,1248,439,405,438,1249,438,407,441,405,438,1247,440,405,438,407,441,1250,436,1247,437,407,440,406,437,407,440,405,438,407,440,404,438,406,441,404,439,1247,440,404,439,1247,440,404,439,407,440,405,439,430,411,1250,437,407,440,408,435,1248,438,407,440,1247,436,1248,439,406,437,1251,436,406,437,409,439,406,437,410,438,1246,436,1249,438,408,440,405,438,1248,493,349,441

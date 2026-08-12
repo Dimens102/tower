@@ -1,9 +1,25 @@
 # Tower Changelog
 
-## v0.10.11 - Tower Control and IR recording wizard (2026-08-05)
+## v0.10.12 - IR learning and transmission calibration (2026-08-12)
 
 ### Added
 
+- Added generic device-level IR transmission profiles with calibrated carrier,
+  carrier duty, calibration command, and transmitter qualification results.
+- Added per-transmitter duty overrides so a device can keep a conservative
+  default duty while weaker physical outputs use a higher verified duty.
+- Added confirmed transmitter qualification: `4/5` and `5/5` results are
+  repeated, and only two clean `5/5` batches count as a verified pass.
+- Added multi-transmitter calibration fallback that surveys all six IR outputs
+  when the initially selected transmitter cannot produce a clean result.
+- Added explicit experimental 70/80% fallback duty tests on only the best
+  responding transmitter; normal automatic calibration remains capped at 60%.
+- Added an end-of-wizard IR transmission calibration phase that uses five
+  discrete test taps, detects over-triggering, searches the lowest reliable
+  duty cycle, refines the carrier around the receiver-array candidate, and can
+  qualify all six IR transmitters.
+- Added capture metadata for initial and protocol repeat frames to newly learned
+  IR recordings.
 - Added interactive `tower learn` device recording wizard.
 - Added per-command descriptions and automatic logical device-command updates.
 - Added complete six-receiver analysis metadata to every newly learned IR file.
@@ -26,11 +42,40 @@
 
 ### Changed
 
+- The receiver selected by the six-receiver analyzer now supplies the initial
+  carrier candidate for newly learned commands instead of relying only on a
+  protocol-family carrier constant; runtime calibration can refine it.
+- Runtime IR execution now applies the logical device's calibrated carrier and
+  duty automatically while replay CLI carrier/duty options remain diagnostic
+  overrides.
+- Runtime duty resolution now prefers a CLI diagnostic override, then a
+  transmitter-specific duty override, then the device default duty.
+- Calibration batches now wait five seconds before transmission and send five
+  taps one second apart for clearer human counting without making full
+  qualification runs excessively slow.
+- Carrier refinement reuses the already-proven center-carrier result and tests
+  only adjacent `-1/+1 kHz` candidates; equal scores retain the center carrier.
+- Transmitter qualification is treated as device/protocol-specific rather than
+  assigning one global quality state to a physical IR output.
+- Raised the Pico IR duty software ceiling to 80% for explicit experimental
+  fallback testing. A 100% carrier duty remains intentionally unsupported.
+- Siemens handset toggle state is no longer counted as a protocol repeat frame.
 - New IR devices default to the proven `Tower-IR-TX-001` output. Combined-array
   transmission is deferred until the completed transmitter hardware is tested.
+- Tower now sends each raw recording's stored `carrier_khz` value to the Pico,
+  and the Pico selects that PWM carrier for the individual transmission.
+  Recordings without carrier metadata retain the earlier 38 kHz default.
 
 ### Fixed
 
+- Fixed Siemens/KPN Manchester captures that lost a final SPACE half-bit into
+  the mode2 frame timeout, allowing previously rejected KPN commands such as
+  Fast Forward to decode cleanly.
+- Fixed Siemens toggle-bit handling so handset toggle state is not
+  misclassified as a protocol repeat.
+- Prevented transmitter qualification from immediately replacing a known-good
+  profile because of one noisy five-shot result; proposed qualification data is
+  now built before replacing the live profile.
 - Detached the Tower Control GUI from its launcher console and made sensor unit
   symbols safe in Windows PowerShell.
 - Improved the Refresh All button contrast in the dark header.
@@ -44,6 +89,18 @@
 - Combined All Off and All On controlled all six paired RF power devices.
 - Tower Control displayed sensors, RF controls, and recorded IR commands on
   Windows without a visible launcher console.
+- KPN Media Box commands decode and replay reliably at 56 kHz, including
+  previously failing Siemens commands after Manchester end-half-bit
+  reconstruction.
+- Denon AVR-X2800H transmission was verified at 38 kHz / 40% device default on
+  TX-001 and TX-004, with TX-005 using a verified 50% per-transmitter duty
+  override.
+- TX-006 was verified to work with KPN while remaining ineffective for Denon,
+  demonstrating that physical-transmitter compatibility is device/protocol
+  specific.
+- Real-world Denon range testing showed that room reflections can materially
+  affect apparent transmitter range; moving a projection sheet changed the
+  available reflected path without any software or hardware failure.
 
 ## v0.10.10 - PC bridge RF execution correction
 

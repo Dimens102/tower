@@ -7,11 +7,11 @@
 #include <iostream>
 #include <sstream>
 
-bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter)
+bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter, unsigned int dutyPercent, unsigned int carrierKhz)
 {
     if (transmitter.controller == "tower-pico")
     {
-        return sendViaPico(code, transmitter);
+        return sendViaPico(code, transmitter, dutyPercent, carrierKhz);
     }
 
     IRRuntimeDatabase runtimeDatabase;
@@ -52,8 +52,12 @@ bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter)
 
 bool IRSender::sendViaPico(
     const IRCode& code,
-    const IRTransmitter& transmitter)
+    const IRTransmitter& transmitter,
+    unsigned int dutyPercent,
+    unsigned int carrierOverrideKhz)
 {
+    constexpr unsigned int defaultCarrierKhz = 38;
+
     if (code.protocol != "raw")
     {
         std::cerr
@@ -73,6 +77,9 @@ bool IRSender::sendViaPico(
     }
 
     tower::remote::controllers::PicoController pico;
+    const unsigned int carrierKhz = carrierOverrideKhz > 0
+        ? carrierOverrideKhz
+        : (code.carrierKhz == 0 ? defaultCarrierKhz : code.carrierKhz);
 
     if (!pico.initialize())
     {
@@ -90,11 +97,22 @@ bool IRSender::sendViaPico(
         << pico.host()
         << " output "
         << transmitter.output
-        << "\n";
+        << " at "
+        << carrierKhz
+        << " kHz";
+
+    if (dutyPercent > 0)
+    {
+        std::cout << " at " << dutyPercent << "% duty";
+    }
+
+    std::cout << "\n";
 
     if (!pico.sendIrRaw(
             static_cast<std::size_t>(transmitter.output),
-            code.pulses))
+            carrierKhz,
+            code.pulses,
+            dutyPercent))
     {
         std::cerr
             << "Tower Pico rejected or did not confirm the IR command";

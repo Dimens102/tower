@@ -1,0 +1,674 @@
+{
+    "id": "AVR X2800H",
+    "name": "AVR X2800H",
+    "type": "IR Device",
+    "manufacturer": "Denon",
+    "model": "",
+    "remoteName": "Generic Non-Bluetooth Model",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-004",
+    "irProfile": {
+        "calibrated": true,
+        "carrierKhz": 38,
+        "dutyPercent": 40,
+        "transmitterDutyPercent": {
+            "Tower-IR-TX-005": 50
+        },
+        "calibrationCommand": "Volume Up",
+        "verifiedTransmitters": [
+            "Tower-IR-TX-001",
+            "Tower-IR-TX-004",
+            "Tower-IR-TX-005"
+        ],
+        "unreliableTransmitters": [],
+        "incompatibleTransmitters": [
+            "Tower-IR-TX-002",
+            "Tower-IR-TX-003",
+            "Tower-IR-TX-006"
+        ]
+    },
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Power",
+            "name": "Power",
+            "description": "Power On/Off",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Power",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Volume Up",
+            "name": "Volume Up",
+            "description": "Main Volume Up",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Volume Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Volume Down",
+            "name": "Volume Down",
+            "description": "Main Volume Down",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Volume Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Mute",
+            "name": "Mute",
+            "description": "Mute Audio",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Mute",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Page Up",
+            "name": "Page Up",
+            "description": "Channel/Page Up",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Page Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Page Down",
+            "name": "Page Down",
+            "description": "Channel/Page Down",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Page Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Up",
+            "name": "Arrow Up",
+            "description": "Arrow Up",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Arrow Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Down",
+            "name": "Arrow Down",
+            "description": "Arrow Down",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Arrow Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Enter",
+            "name": "Arrow Enter",
+            "description": "Arrow Center Enter",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Arrow Enter",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Right",
+            "name": "Arrow Right",
+            "description": "Arrow Right",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Arrow Right",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Left",
+            "name": "Arrow Left",
+            "description": "Arrow Left",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Arrow Left",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Info",
+            "name": "Info",
+            "description": "Info",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Info",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Option",
+            "name": "Option",
+            "description": "Option",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Option",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Setup",
+            "name": "Setup",
+            "description": "Setup",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Setup",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Back",
+            "name": "Back",
+            "description": "Back",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Back",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Rewind",
+            "name": "Rewind",
+            "description": "Rewind",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Rewind",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Play-Pause",
+            "name": "Play-Pause",
+            "description": "Play/Pause",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Play-Pause",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Forward",
+            "name": "Forward",
+            "description": "Forward",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Forward",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "HDMI Out",
+            "name": "HDMI Out",
+            "description": "HDMI Out",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "HDMI Out",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Sleep",
+            "name": "Sleep",
+            "description": "Sleep",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Sleep",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "CBL-SAT",
+            "name": "CBL-SAT",
+            "description": "CBL/SAT Device = KPN Media Box",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "CBL-SAT",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "MediaPlayer",
+            "name": "MediaPlayer",
+            "description": "MediaPlayer Device = Main PC",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "MediaPlayer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Blu-ray",
+            "name": "Blu-ray",
+            "description": "Blu-ray Device = Intel*NUC",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Blu-ray",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Game",
+            "name": "Game",
+            "description": "Game Device = Asus*NUC",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Game",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Aux1",
+            "name": "Aux1",
+            "description": "Aux1 Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Aux1",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Aux2",
+            "name": "Aux2",
+            "description": "Aux2 Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Aux2",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "TV Audio",
+            "name": "TV Audio",
+            "description": "TV Audio Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "TV Audio",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "CD",
+            "name": "CD",
+            "description": "CD Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "CD",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Tuner",
+            "name": "Tuner",
+            "description": "Tuner Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Tuner",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "USB",
+            "name": "USB",
+            "description": "USB Device",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "USB",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Phone",
+            "name": "Phone",
+            "description": "Phone Device",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Phone",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Bluetooth",
+            "name": "Bluetooth",
+            "description": "Bluetooth Device",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Bluetooth",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "HEOS",
+            "name": "HEOS",
+            "description": "HEOS Audio Channel",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "HEOS",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "InternetRadio",
+            "name": "InternetRadio",
+            "description": "Internet Radio Built-IN",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "InternetRadio",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "GREEN-Movie",
+            "name": "GREEN-Movie",
+            "description": "Green Movie Button",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "GREEN-Movie",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "RED-Music",
+            "name": "RED-Music",
+            "description": "Red Music Button",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "RED-Music",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Blue-Game",
+            "name": "Blue-Game",
+            "description": "Blue Game Button",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Blue-Game",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Yellow-Pure",
+            "name": "Yellow-Pure",
+            "description": "Yellow Pure Button",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Yellow-Pure",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Unkown Test1",
+            "name": "Unkown Test1",
+            "description": "Test1",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Unkown Test1",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Unknown Test2",
+            "name": "Unknown Test2",
+            "description": "Test2",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Unknown Test2",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-CBL-SAT",
+            "name": "Z2-CBL-SAT",
+            "description": "Zone2 - CBL/SAT Device = KPN TV",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-CBL-SAT",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-MediaPlayer",
+            "name": "Z2-MediaPlayer",
+            "description": "Zone 2 MediaPlayer Device = Main PC",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-MediaPlayer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Blu-ray",
+            "name": "Z2-Blu-ray",
+            "description": "Zone 2 Blu-ray Device = Intel*NUC",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Blu-ray",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Game",
+            "name": "Z2-Game",
+            "description": "Zone 2 Game Device = Asus*NUC",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Game",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Aux1",
+            "name": "Z2-Aux1",
+            "description": "Zone 2 Aux 1 Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Aux1",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Aux2",
+            "name": "Z2-Aux2",
+            "description": "Zone 2 Aux2 Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Aux2",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-TV Audio",
+            "name": "Z2-TV Audio",
+            "description": "Zone 2 TV Audio Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-TV Audio",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-CD",
+            "name": "Z2-CD",
+            "description": "Zone 2 CD Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-CD",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Tuner",
+            "name": "Z2-Tuner",
+            "description": "Zone 2 Tuner Device =",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Tuner",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-USB",
+            "name": "Z2-USB",
+            "description": "Zone 2 USB Device",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-USB",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Phono",
+            "name": "Z2-Phono",
+            "description": "Zone 2 Phono Device",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Phono",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Bluetooth",
+            "name": "Z2-Bluetooth",
+            "description": "Zone 2 Bluetooth Device",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Bluetooth",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-HEOS",
+            "name": "Z2-HEOS",
+            "description": "Zone 2 HEOS Channel",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-HEOS",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-InternetRadio",
+            "name": "Z2-InternetRadio",
+            "description": "Zone 2 Internet Radio Built-IN",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-InternetRadio",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Volume Up",
+            "name": "Z2-Volume Up",
+            "description": "Zone 2 Main Volume Up",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Volume Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Volume Down",
+            "name": "Z2-Volume Down",
+            "description": "Zone 2 Main Volume Down",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Volume Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Mute",
+            "name": "Z2-Mute",
+            "description": "Zone 2 Mute Audio",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Mute",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Page Up",
+            "name": "Z2-Page Up",
+            "description": "Zone 2 Channel/Page Up",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Page Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Page Down",
+            "name": "Z2-Page Down",
+            "description": "Zone 2 Channel/Page Down",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Page Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Back",
+            "name": "Z2-Back",
+            "description": "Zone 2 Back Function",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Back",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Rewind",
+            "name": "Z2-Rewind",
+            "description": "Zone 2 Rewind",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Rewind",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Play-Pause",
+            "name": "Z2-Play-Pause",
+            "description": "Zone 2 Play/Pause",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Play-Pause",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Forward",
+            "name": "Z2-Forward",
+            "description": "Zone 2 Forward",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Forward",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Z2-Sleep",
+            "name": "Z2-Sleep",
+            "description": "Zone 2 Sleep function",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Z2-Sleep",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

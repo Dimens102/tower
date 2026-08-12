@@ -19,6 +19,8 @@ namespace
 
 constexpr std::size_t firstIrOutput = 1;
 constexpr std::size_t lastIrOutput = 6;
+constexpr unsigned int minimumCarrierKhz = 20;
+constexpr unsigned int maximumCarrierKhz = 60;
 constexpr unsigned int maximumDurationMicroseconds = 100000;
 constexpr int connectTimeoutMilliseconds = 2500;
 constexpr int responseTimeoutMilliseconds = 5000;
@@ -94,18 +96,28 @@ const std::string& PicoController::name() const
 
 bool PicoController::sendIrRaw(
     std::size_t output,
-    const std::vector<unsigned int>& durations)
+    unsigned int carrierKhz,
+    const std::vector<unsigned int>& durations,
+    unsigned int dutyPercent)
 {
     if (!m_available ||
         output < firstIrOutput ||
         output > lastIrOutput ||
+        carrierKhz < minimumCarrierKhz ||
+        carrierKhz > maximumCarrierKhz ||
+        (dutyPercent != 0 && (dutyPercent < 10 || dutyPercent > 60)) ||
         durations.empty())
     {
         return false;
     }
 
     std::ostringstream command;
-    command << "SEND " << output << " ";
+    command << "SEND " << output << " " << carrierKhz << " ";
+
+    if (dutyPercent > 0)
+    {
+        command << dutyPercent << " ";
+    }
 
     for (std::size_t index = 0;
          index < durations.size();

@@ -1,0 +1,44 @@
+{
+    "id": "Generic 3-Way HDMI Switch",
+    "name": "Generic 3-Way HDMI Switch",
+    "type": "IR Device",
+    "manufacturer": "HDMI",
+    "model": "",
+    "remoteName": "HDMI Switch Remote",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-004",
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Channel 1",
+            "name": "Channel 1",
+            "description": "Channel 1",
+            "transport": "IR",
+            "transportDevice": "Generic 3-Way HDMI Switch",
+            "transportCommand": "Channel 1",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Channel 2",
+            "name": "Channel 2",
+            "description": "Channel 2",
+            "transport": "IR",
+            "transportDevice": "Generic 3-Way HDMI Switch",
+            "transportCommand": "Channel 2",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Channel 3",
+            "name": "Channel 3",
+            "description": "Channel 3",
+            "transport": "IR",
+            "transportDevice": "Generic 3-Way HDMI Switch",
+            "transportCommand": "Channel 3",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

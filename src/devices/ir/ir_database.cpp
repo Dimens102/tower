@@ -78,6 +78,8 @@ bool IRDatabase::save(const std::string& deviceName, const std::string& commandN
      if (code.receiverGpio > 0) out << "receiver_gpio=" << code.receiverGpio << "\n";
      if (!code.receiverModel.empty()) out << "receiver_model=" << code.receiverModel << "\n";
      if (!code.sourceCapture.empty()) out << "source_capture=" << code.sourceCapture << "\n";
+     out << "capture_initial_frames=" << code.captureInitialFrames << "\n";
+     out << "capture_repeat_frames=" << code.captureRepeatFrames << "\n";
      if (!code.analysis.empty())
      {
           out << "analysis_header=GPIO|Receiver|kHz|Frames|Valid|Result|Decode\n";
@@ -154,6 +156,8 @@ bool IRDatabase::load(const std::string& deviceName, const std::string& commandN
      code.receiverGpio = 0;
      code.receiverModel.clear();
      code.sourceCapture.clear();
+     code.captureInitialFrames = 0;
+     code.captureRepeatFrames = 0;
      code.analysis.clear();
 
      std::string line;
@@ -190,6 +194,8 @@ bool IRDatabase::load(const std::string& deviceName, const std::string& commandN
           else if (key == "receiver_gpio") code.receiverGpio = static_cast<unsigned>(std::stoul(value));
           else if (key == "receiver_model") code.receiverModel = value;
           else if (key == "source_capture") code.sourceCapture = value;
+          else if (key == "capture_initial_frames") code.captureInitialFrames = static_cast<std::size_t>(std::stoul(value));
+          else if (key == "capture_repeat_frames") code.captureRepeatFrames = static_cast<std::size_t>(std::stoul(value));
           else if (key == "analysis")
           {
                std::vector<std::string> fields;

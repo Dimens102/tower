@@ -25,7 +25,9 @@ public:
 
     bool sendIrRaw(
         std::size_t output,
-        const std::vector<unsigned int>& durations);
+        unsigned int carrierKhz,
+        const std::vector<unsigned int>& durations,
+        unsigned int dutyPercent = 0);
 
     const std::string& host() const;
     const std::string& lastResponse() const;

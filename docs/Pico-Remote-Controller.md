@@ -80,18 +80,64 @@ Expected result:
 PONG
 ```
 
-## 5. Move the Pico to the separate 5 V supply
+## 5. Power the Pico independently
 
 Only do this after Wi-Fi is working:
 
 - Disconnect the Pico USB cable from the Raspberry Pi.
 - Adapter `+5 V` goes to Pico `VSYS` (physical pin 39).
 - Adapter ground goes to a Pico `GND` pin.
-- The transmitter board uses the same adapter `+5 V` and ground.
+- Do not use the Pico's 5 V rail to power the IR transmitter stage. Power the
+  RE909 transmitter boards from their separate regulated 3.3 V rail described
+  below.
 - Pico GP1 remains connected to the input of `Tower-IR-TX-001`.
 - Do not connect this adapter's `+5 V` to the Raspberry Pi 5 V rail.
 
-The shared ground between the Pico and transmitter circuit is required.
+The Pico supply, external 3.3 V transmitter supply, and transmitter circuit
+must share ground.
+
+## Known-good RE909 IR transmitter configuration
+
+This is the proven transmitter configuration tested with the KPN receiver. It
+works reliably at room range and can switch the KPN box even when the IR light
+is reflected from a wall.
+
+### Power
+
+- Power the IR transmitter stage from a separate regulated **3.3 V** supply.
+- The tested supply is a 12 V Plextor adapter feeding an adjustable DC/DC
+  converter set to 3.3 V. The adapter can provide up to 3 A; the circuit only
+  draws the current it needs.
+- Connect the external supply ground to Pico ground. The common ground is
+  required for the Pico control signal to work.
+- Do not connect the external 3.3 V output to a Pico GPIO.
+- Keep the transmitter stage at 3.3 V. The known-good circuit does not need a
+  5 V LED supply.
+
+### Driver board and resistor values
+
+Each transmitter uses an RE909 board with a BC817 transistor driver.
+
+| Part | Value / type | Function |
+|---|---|---|
+| Pico control resistor | 1 kΩ | Series protection between the selected Pico GP output and the RE909 control input |
+| RE909 base resistor (`331`) | 330 Ω | Limits BC817 base current |
+| RE909 LED resistor (`2R2`) | 2.2 Ω | Limits the pulsed IR LED current |
+| RE909 transistor (`6C`) | BC817-40 | Switches the IR LED current; the Pico GPIO only supplies the control signal |
+| RE909 base pull-down (`103`) | 10 kΩ | Holds the BC817 off while the Pico output is floating or starting |
+
+The working signal chain is:
+
+```text
+Pico GP output -> 1 kΩ -> RE909 input -> 330 Ω -> BC817 base
+External 3.3 V -> RE909/BC817 LED stage -> 2.2 Ω -> IR LED -> GND
+Pico GND -----------------------------------------------> External GND
+```
+
+The transmitter must never be powered directly from a Pico GPIO. The GPIO only
+drives the BC817 control path. Tower supplies the carrier saved with each
+recording; the confirmed KPN command uses 56 kHz rather than the 38 kHz
+fallback.
 
 ## 6. Build and test Tower
 
@@ -109,7 +155,10 @@ Tower should report that it is sending through `192.168.2.30` output 1.
 - `pico/wifi_config.example.py`: safe template committed to the project.
 - `pico/wifi_config.py`: private local credentials uploaded to the Pico.
 
-The firmware keeps reconnecting if Wi-Fi is temporarily lost.
+The firmware keeps reconnecting if Wi-Fi is temporarily lost. Tower includes
+the `carrier_khz` stored with each raw IR recording in every Pico send command,
+so the Pico changes its PWM carrier automatically for each transmission. Older
+recordings without carrier metadata use 38 kHz.
 
 ## Tower service startup check
 

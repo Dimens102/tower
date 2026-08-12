@@ -1,0 +1,154 @@
+{
+    "id": "LED Light Bar",
+    "name": "LED Light Bar",
+    "type": "IR Device",
+    "manufacturer": "ACTION",
+    "model": "",
+    "remoteName": "Generic Model",
+    "location": "Outside",
+    "transmitter": "Tower-IR-TX-004",
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Power On",
+            "name": "Power On",
+            "description": "Power On (only works during night time)",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Power On",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Power Off",
+            "name": "Power Off",
+            "description": "Power Off",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Power Off",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Red",
+            "name": "Red",
+            "description": "Full Red Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Red",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Green",
+            "name": "Green",
+            "description": "Full Green Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Green",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Blue",
+            "name": "Blue",
+            "description": "Full Blue Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Blue",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Lime",
+            "name": "Lime",
+            "description": "Full Lime Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Lime",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Purple",
+            "name": "Purple",
+            "description": "Full Purple Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Purple",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Brightness Up",
+            "name": "Brightness Up",
+            "description": "Increase Brightness of Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Brightness Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Brightness Down",
+            "name": "Brightness Down",
+            "description": "Decrease Brightness of Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Brightness Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "White",
+            "name": "White",
+            "description": "Pure White Light",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "White",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "RGB Mode",
+            "name": "RGB Mode",
+            "description": "Mode RGB (Mixed colors going around)",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "RGB Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Strobe Mode",
+            "name": "Strobe Mode",
+            "description": "Mode Strobe (One different color every second)",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Strobe Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Fade Mode",
+            "name": "Fade Mode",
+            "description": "Mode Fade (Slowly fade brightness to 0 then back up and repeat)",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Fade Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Smooth Mode",
+            "name": "Smooth Mode",
+            "description": "Mode Smooth (Blend over into colors)",
+            "transport": "IR",
+            "transportDevice": "LED Light Bar",
+            "transportCommand": "Smooth Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

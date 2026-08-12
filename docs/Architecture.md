@@ -932,3 +932,65 @@ The LCD driver owns only HD44780/I2C communication. It does not retrieve sensor
 data or implement service behavior. Future command, automation, or network
 status screens should provide data to the display layer without adding those
 responsibilities to the LCD driver.
+
+
+### IR transmission calibration profile
+
+Learned IR command files preserve the captured signal: protocol metadata,
+receiver-array analysis, carrier candidate, repeat-frame observations, and RAW
+envelope timings. Real-world transmission calibration is stored on the logical
+device as `irProfile` rather than duplicated into every command recording.
+
+The profile separates signal identity from physical transmitter behavior:
+
+```text
+Device IR profile
+  carrierKhz
+  dutyPercent
+  calibrationCommand
+  verifiedTransmitters[]
+  unreliableTransmitters[]
+  incompatibleTransmitters[]
+  transmitterDutyPercent{}
+```
+
+Runtime duty resolution is:
+
+```text
+CLI --duty override
+    -> transmitter-specific profile override
+    -> device default duty
+```
+
+Carrier remains device-level unless future measurements prove that a physical
+output needs a transmitter-specific carrier correction.
+
+The learn wizard uses human-observed appliance actions as the feedback signal.
+Each batch waits five seconds, sends five discrete taps one second apart, and
+asks the operator for the observed action count. A candidate is considered
+verified only after two clean `5/5` batches. This reduces profile changes caused
+by a single missed or lucky transmission.
+
+The normal duty search is `33/40/50/60%`. If the selected output cannot produce
+a confirmed pass, Tower surveys all six outputs at the current carrier and 60%
+duty, selects the output with the strongest observed response, and then checks
+the center carrier and adjacent `-1/+1 kHz` candidates.
+
+Experimental 70/80% tests are available only after explicit operator approval
+and only on the best responding output. The Pico software ceiling is 80%.
+`100%` is intentionally excluded because it removes PWM carrier off-time and is
+not a normal modulated IR carrier waveform.
+
+Transmitter qualification is device-specific. For example, the same physical
+output can be effective for the KPN Siemens/56 kHz signal yet ineffective for
+the Denon Kaseikyo/38 kHz signal. The architecture therefore never treats a
+physical IR output as universally compatible or incompatible.
+
+Qualification updates are transactional: the complete proposed transmitter
+classification is built before replacing the live device profile. Command-level
+RAW timings remain unchanged, and replay CLI carrier/duty options remain
+explicit diagnostic overrides.
+
+TSOP demodulating receivers cannot measure the original handset carrier duty
+directly. Duty is therefore calibrated empirically from controlled-device
+response rather than inferred from the learned recording.

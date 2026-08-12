@@ -46,6 +46,14 @@ struct IRRepresentativeFrame
     IRDecode decode;
 };
 
+struct IRRawRepresentativeFrame
+{
+    std::vector<unsigned int> durations;
+    std::size_t matchingFrames = 0;
+    std::size_t frameCount = 0;
+    double meanTimingError = 1.0;
+};
+
 class IRAnalyzer
 {
 public:
@@ -54,6 +62,8 @@ public:
         const std::filesystem::path& directory) const;
     std::size_t best(const std::vector<IRReceiverAnalysis>& analyses) const;
     IRRepresentativeFrame representativeFrame(
+        const IRFileAnalysis& analysis) const;
+    IRRawRepresentativeFrame rawRepresentativeFrame(
         const IRFileAnalysis& analysis) const;
     unsigned int carrierKhz(const std::string& protocol) const;
 };

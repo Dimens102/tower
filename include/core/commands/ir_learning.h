@@ -2,6 +2,8 @@
 
 #include <string>
 
+constexpr int learnIrDuplicateDeclined = 3;
+
 int learnIRCommand(
     const std::string& deviceName,
     const std::string& commandName,

@@ -66,6 +66,24 @@ bool DeviceDatabase::loadDevice(const std::string& deviceId, Device& device)
         device.transmitter = document.value("transmitter", "");
         device.enabled = document.value("enabled", true);
 
+        device.irProfile = {};
+        if (document.contains("irProfile") && document["irProfile"].is_object())
+        {
+            const json& profile = document["irProfile"];
+            device.irProfile.calibrated = profile.value("calibrated", false);
+            device.irProfile.carrierKhz = profile.value("carrierKhz", 0U);
+            device.irProfile.dutyPercent = profile.value("dutyPercent", 0U);
+            if (profile.contains("transmitterDutyPercent") && profile["transmitterDutyPercent"].is_object())
+                device.irProfile.transmitterDutyPercent = profile["transmitterDutyPercent"].get<std::map<std::string, unsigned int>>();
+            device.irProfile.calibrationCommand = profile.value("calibrationCommand", "");
+            if (profile.contains("verifiedTransmitters") && profile["verifiedTransmitters"].is_array())
+                device.irProfile.verifiedTransmitters = profile["verifiedTransmitters"].get<std::vector<std::string>>();
+            if (profile.contains("unreliableTransmitters") && profile["unreliableTransmitters"].is_array())
+                device.irProfile.unreliableTransmitters = profile["unreliableTransmitters"].get<std::vector<std::string>>();
+            if (profile.contains("incompatibleTransmitters") && profile["incompatibleTransmitters"].is_array())
+                device.irProfile.incompatibleTransmitters = profile["incompatibleTransmitters"].get<std::vector<std::string>>();
+        }
+
         device.aliases.clear();
         device.commands.clear();
 
@@ -167,6 +185,16 @@ bool DeviceDatabase::saveDevice(const Device& device)
     document["remoteName"] = device.remoteName;
     document["location"] = device.location;
     document["transmitter"] = device.transmitter;
+    document["irProfile"] = {
+        {"calibrated", device.irProfile.calibrated},
+        {"carrierKhz", device.irProfile.carrierKhz},
+        {"dutyPercent", device.irProfile.dutyPercent},
+        {"transmitterDutyPercent", device.irProfile.transmitterDutyPercent},
+        {"calibrationCommand", device.irProfile.calibrationCommand},
+        {"verifiedTransmitters", device.irProfile.verifiedTransmitters},
+        {"unreliableTransmitters", device.irProfile.unreliableTransmitters},
+        {"incompatibleTransmitters", device.irProfile.incompatibleTransmitters}
+    };
     document["enabled"] = device.enabled;
     document["aliases"] = device.aliases;
     document["commands"] = json::array();

@@ -1,0 +1,154 @@
+{
+    "id": "Led Light Strip",
+    "name": "Led Light Strip",
+    "type": "IR Device",
+    "manufacturer": "ACTION",
+    "model": "",
+    "remoteName": "Generic Model",
+    "location": "Toilet",
+    "transmitter": "Tower-IR-TX-004",
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Power On",
+            "name": "Power On",
+            "description": "Power On",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "Power On",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Power Off",
+            "name": "Power Off",
+            "description": "Power Off",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "Power Off",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "60S Timer",
+            "name": "60S Timer",
+            "description": "Activate Shutdown After 60 Seconds",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "60S Timer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Fade Mode",
+            "name": "Fade Mode",
+            "description": "Mode Fade",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "Fade Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Strobe Mode",
+            "name": "Strobe Mode",
+            "description": "Mode Strobe",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "Strobe Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "15M Timer",
+            "name": "15M Timer",
+            "description": "Activate Shutdown After 15 Minutes",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "15M Timer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "30M Timer",
+            "name": "30M Timer",
+            "description": "Activate Shutdown After 30 Minutes",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "30M Timer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "60M Timer",
+            "name": "60M Timer",
+            "description": "Activate Shutdown After 60 Minutes",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "60M Timer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "25 Brightness",
+            "name": "25 Brightness",
+            "description": "Set 25 Percent Brightness",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "25 Brightness",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "50 Brightness",
+            "name": "50 Brightness",
+            "description": "Set 50 Percent Brightness",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "50 Brightness",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "75 Brightness",
+            "name": "75 Brightness",
+            "description": "Set 75 Percent Brightness",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "75 Brightness",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "100 Brightness",
+            "name": "100 Brightness",
+            "description": "Set 100 Percent Brightness",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "100 Brightness",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Brightness Up",
+            "name": "Brightness Up",
+            "description": "Increase Brightness",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "Brightness Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Brightness Down",
+            "name": "Brightness Down",
+            "description": "Decrease Brightness",
+            "transport": "IR",
+            "transportDevice": "Led Light Strip",
+            "transportCommand": "Brightness Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

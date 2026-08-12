@@ -1,0 +1,94 @@
+{
+    "id": "PAC 7.2",
+    "name": "PAC 7.2",
+    "type": "IR Device",
+    "manufacturer": "EUROM",
+    "model": "",
+    "remoteName": "Generic Non-Bluetooth Model",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-004",
+    "irProfile": {
+        "calibrated": false,
+        "carrierKhz": 0,
+        "dutyPercent": 0,
+        "transmitterDutyPercent": {},
+        "calibrationCommand": "",
+        "verifiedTransmitters": [],
+        "unreliableTransmitters": [],
+        "incompatibleTransmitters": []
+    },
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Speed",
+            "name": "Speed",
+            "description": "Speed Modes: HIGH & LOW",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Speed",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Mode",
+            "name": "Mode",
+            "description": "Change Mode: Cool,De-Hum,Fan (Cool Default)",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Timer",
+            "name": "Timer",
+            "description": "Start Timer -> Select Hours -> Hit Timer to enable program",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Timer",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Power",
+            "name": "Power",
+            "description": "Power On/Off",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Power",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Temp Up",
+            "name": "Temp Up",
+            "description": "Increase Cooling Temperature",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Temp Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Temp Down",
+            "name": "Temp Down",
+            "description": "Decrease Cooling Temperature",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Temp Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Unknown",
+            "name": "Unknown",
+            "description": "Unknown Button",
+            "transport": "IR",
+            "transportDevice": "PAC 7.2",
+            "transportCommand": "Unknown",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

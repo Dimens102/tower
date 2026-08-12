@@ -30,6 +30,8 @@ struct IRCode
     unsigned int receiverGpio = 0;
     std::string receiverModel;
     std::string sourceCapture;
+    std::size_t captureInitialFrames = 0;
+    std::size_t captureRepeatFrames = 0;
     std::vector<IRAnalysisRow> analysis;
     std::vector<unsigned int> pulses;
 };

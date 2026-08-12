@@ -1,0 +1,194 @@
+{
+    "id": "1610HD",
+    "name": "1610HD",
+    "type": "IR Device",
+    "manufacturer": "Dell",
+    "model": "",
+    "remoteName": "TSKB-IR02",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-004",
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Power",
+            "name": "Power",
+            "description": "Power On/Off",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Power",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Up",
+            "name": "Arrow Up",
+            "description": "Arrow Up",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Arrow Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Down",
+            "name": "Arrow Down",
+            "description": "Arrow Down",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Arrow Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Left",
+            "name": "Arrow Left",
+            "description": "Arrow Left",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Arrow Left",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Arrow Right",
+            "name": "Arrow Right",
+            "description": "Arrow Right",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Arrow Right",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "OK",
+            "name": "OK",
+            "description": "OK - Accept",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "OK",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Menu",
+            "name": "Menu",
+            "description": "Menu Button",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Menu",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Aspect Ratio",
+            "name": "Aspect Ratio",
+            "description": "Adjust Aspect Ratio 4:3,16:9",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Aspect Ratio",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Source",
+            "name": "Source",
+            "description": "Change Source Signal",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Source",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Auto-Adjust",
+            "name": "Auto-Adjust",
+            "description": "Auto-Adjust Screen",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Auto-Adjust",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Blank Screen",
+            "name": "Blank Screen",
+            "description": "Blank Test Screen",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Blank Screen",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Video Mode",
+            "name": "Video Mode",
+            "description": "Video Mode",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Video Mode",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Freeze",
+            "name": "Freeze",
+            "description": "Freeze Frame",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Freeze",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "VGA Input",
+            "name": "VGA Input",
+            "description": "VGA Input",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "VGA Input",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Video Input",
+            "name": "Video Input",
+            "description": "Video Input",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Video Input",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "S-Video Input",
+            "name": "S-Video Input",
+            "description": "S-Video Input",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "S-Video Input",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Angle Up Forward",
+            "name": "Angle Up Forward",
+            "description": "Angle Screen Up Forwards",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Angle Up Forward",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Angle Down Forward",
+            "name": "Angle Down Forward",
+            "description": "Angle Screen Down Forwards",
+            "transport": "IR",
+            "transportDevice": "1610HD",
+            "transportCommand": "Angle Down Forward",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

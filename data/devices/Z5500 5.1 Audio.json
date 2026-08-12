@@ -1,0 +1,174 @@
+{
+    "id": "Z5500 5.1 Audio",
+    "name": "Z5500 5.1 Audio",
+    "type": "IR Device",
+    "manufacturer": "Logitech",
+    "model": "",
+    "remoteName": "Generic Model",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-004",
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Test",
+            "name": "Test",
+            "description": "Test function",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Test",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Direct",
+            "name": "Direct",
+            "description": "Direct Channel Mode",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Direct",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Optical",
+            "name": "Optical",
+            "description": "Optical Channel Mode",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Optical",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Coax",
+            "name": "Coax",
+            "description": "Coax Channel Mode",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Coax",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Effect",
+            "name": "Effect",
+            "description": "Change Effect - 6CH,Stereo,Stereo2x,PLIIMovie,PLIIMusic",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Effect",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Settings",
+            "name": "Settings",
+            "description": "Settings - Options",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Settings",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Sub Up",
+            "name": "Sub Up",
+            "description": "Sub Woofer Volume Up",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Sub Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Sub Down",
+            "name": "Sub Down",
+            "description": "Sub Woofer Volume Down",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Sub Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Center Up",
+            "name": "Center Up",
+            "description": "Center Speaker Volumie Up",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Center Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Center Down",
+            "name": "Center Down",
+            "description": "Center Speaker Volume Down",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Center Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Surround Up",
+            "name": "Surround Up",
+            "description": "Surround Sound Volume Up",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Surround Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Surround Down",
+            "name": "Surround Down",
+            "description": "Surround Sound Volume Down",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Surround Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Mute",
+            "name": "Mute",
+            "description": "Mute Audio",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Mute",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Volume Up",
+            "name": "Volume Up",
+            "description": "Main Volume Up",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Volume Up",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Volume Down",
+            "name": "Volume Down",
+            "description": "Main Volume Down",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Volume Down",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        },
+        {
+            "id": "Standby",
+            "name": "Standby",
+            "description": "Standby - Power Off",
+            "transport": "IR",
+            "transportDevice": "Z5500 5.1 Audio",
+            "transportCommand": "Standby",
+            "transmitter": "Tower-IR-TX-004",
+            "enabled": true
+        }
+    ]
+}

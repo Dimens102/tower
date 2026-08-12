@@ -10,8 +10,12 @@ import time
 
 from wifi_config import WIFI_COUNTRY, WIFI_PASSWORD, WIFI_SSID
 
-IR_FREQUENCY = 38000
+DEFAULT_IR_CARRIER_KHZ = 38
+MIN_IR_CARRIER_KHZ = 20
+MAX_IR_CARRIER_KHZ = 60
 IR_DUTY = 21845  # Approximately 33%.
+MIN_IR_DUTY_PERCENT = 10
+MAX_IR_DUTY_PERCENT = 80
 COMMAND_PORT = 42101
 MAX_COMMAND_BYTES = 131072
 MAX_UPDATE_BYTES = 90000
@@ -28,9 +32,21 @@ def all_off():
         output.init(Pin.OUT, value=0)
 
 
-def send_raw(transmitter, durations):
+def send_raw(transmitter, carrier_khz, durations, duty_percent=0):
     if transmitter < 1 or transmitter > len(outputs):
         raise ValueError("INVALID_TRANSMITTER")
+
+    if (carrier_khz < MIN_IR_CARRIER_KHZ or
+            carrier_khz > MAX_IR_CARRIER_KHZ):
+        raise ValueError("INVALID_CARRIER_KHZ")
+
+    if duty_percent:
+        if (duty_percent < MIN_IR_DUTY_PERCENT or
+                duty_percent > MAX_IR_DUTY_PERCENT):
+            raise ValueError("INVALID_DUTY_PERCENT")
+        mark_duty = int(65535 * duty_percent / 100)
+    else:
+        mark_duty = IR_DUTY
 
     if not durations:
         raise ValueError("NO_DURATIONS")
@@ -41,13 +57,13 @@ def send_raw(transmitter, durations):
 
     output = outputs[transmitter - 1]
     pwm = PWM(output)
-    pwm.freq(IR_FREQUENCY)
+    pwm.freq(carrier_khz * 1000)
     pwm.duty_u16(0)
     gc.collect()
 
     try:
         for index, duration in enumerate(durations):
-            pwm.duty_u16(IR_DUTY if index % 2 == 0 else 0)
+            pwm.duty_u16(mark_duty if index % 2 == 0 else 0)
             time.sleep_us(duration)
     finally:
         pwm.duty_u16(0)
@@ -55,8 +71,14 @@ def send_raw(transmitter, durations):
         output.init(Pin.OUT, value=0)
 
 
+
+
 def test_transmitter(transmitter):
-    send_raw(transmitter, (10000, 10000, 10000, 10000, 10000))
+    send_raw(
+        transmitter,
+        DEFAULT_IR_CARRIER_KHZ,
+        (10000, 10000, 10000, 10000, 10000),
+    )
 
 
 def sha256_hex(data):
@@ -155,17 +177,32 @@ def process_command(line):
             return "OK TEST " + str(transmitter), False
 
         if command == "SEND":
-            if len(parts) != 3:
-                raise ValueError(
-                    "USAGE_SEND_TRANSMITTER_DURATIONS")
+            duty_percent = 0
 
-            transmitter = int(parts[1])
+            if len(parts) == 3:
+                # Compatibility with Tower versions that always used 38 kHz.
+                transmitter = int(parts[1])
+                carrier_khz = DEFAULT_IR_CARRIER_KHZ
+                durations_text = parts[2]
+            elif len(parts) == 4:
+                transmitter = int(parts[1])
+                carrier_khz = int(parts[2])
+                durations_text = parts[3]
+            elif len(parts) == 5:
+                transmitter = int(parts[1])
+                carrier_khz = int(parts[2])
+                duty_percent = int(parts[3])
+                durations_text = parts[4]
+            else:
+                raise ValueError(
+                    "USAGE_SEND_TRANSMITTER_CARRIER_[DUTY_]DURATIONS")
+
             durations = [
                 int(value)
-                for value in parts[2].split(",")
+                for value in durations_text.split(",")
             ]
 
-            send_raw(transmitter, durations)
+            send_raw(transmitter, carrier_khz, durations, duty_percent)
             return "OK SEND " + str(transmitter), False
 
         if command == "UPDATE_MAIN":

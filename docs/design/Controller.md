@@ -79,10 +79,12 @@ Supported commands:
 | `STATUS` | `STATUS OUTPUTS=...` | Read output states |
 | `ALL_OFF` | `OK ALL_OFF` | Return every output low |
 | `TEST n` | `OK TEST n` | Briefly pulse output `n` |
-| `SEND n d1,d2,...` | `OK SEND n` | Send raw IR durations |
+| `SEND n k d1,d2,...` | `OK SEND n` | Send raw IR durations at carrier `k` kHz |
 
 Raw duration values are alternating carrier-on and carrier-off times in
-microseconds. Values must be between 1 and 100000.
+microseconds. Values must be between 1 and 100000. Carrier values must be
+between 20 and 60 kHz. The earlier `SEND n d1,d2,...` form remains accepted
+and uses 38 kHz for compatibility.
 
 ## IR transmitter routing
 

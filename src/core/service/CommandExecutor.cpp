@@ -128,6 +128,21 @@ CommandExecutionResult CommandExecutor::executeIR(
             TransportType::IR);
     }
 
+    Device transportDevice;
+    DeviceDatabase deviceDatabase;
+    unsigned int carrierKhz = 0;
+    unsigned int dutyPercent = 0;
+    if (deviceDatabase.deviceExists(command.transportDevice) &&
+        deviceDatabase.loadDevice(command.transportDevice, transportDevice))
+    {
+        carrierKhz = transportDevice.irProfile.carrierKhz;
+        dutyPercent = transportDevice.irProfile.dutyPercent;
+        const auto transmitterDuty =
+            transportDevice.irProfile.transmitterDutyPercent.find(command.transmitter);
+        if (transmitterDuty != transportDevice.irProfile.transmitterDutyPercent.end())
+            dutyPercent = transmitterDuty->second;
+    }
+
     IRTransmitterDatabase transmitterDatabase;
     IRTransmitter transmitter;
 
@@ -141,7 +156,7 @@ CommandExecutionResult CommandExecutor::executeIR(
 
     IRSender sender;
 
-    if (!sender.send(code, transmitter))
+    if (!sender.send(code, transmitter, dutyPercent, carrierKhz))
     {
         return result(
             CommandExecutionStatus::TransmissionFailed,

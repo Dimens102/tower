@@ -131,6 +131,17 @@ std::optional<IRDecode> decodeManchester(const Frame& frame)
         levels.insert(levels.end(), units, event.pulse);
     }
 
+    // Some Manchester frames end in a SPACE half-bit. mode2 folds that final
+    // SPACE into the long timeout that terminates the frame, so parse() never
+    // sees it as a normal event. In that case Siemens/Ruwido arrives one
+    // half-bit short (45/35 levels). Reconstruct only that final half-bit;
+    // the normal Manchester pair checks and inverse validation below still
+    // have to succeed before the frame is accepted.
+    if (levels.size() == 45 || levels.size() == 35)
+    {
+        levels.push_back(!levels.back());
+    }
+
     if (levels.size() != 46 && levels.size() != 36)
     {
         return std::nullopt;
@@ -175,7 +186,7 @@ std::optional<IRDecode> decodeManchester(const Frame& frame)
         address,
         siemens ? (rawCommand & 0x7F) : rawCommand,
         rawCommand,
-        siemens && (rawCommand & 0x80),
+        false, // Siemens bit 7 is a toggle state, not a protocol repeat frame.
         mean(errors),
     };
 }
@@ -529,6 +540,95 @@ IRRepresentativeFrame IRAnalyzer::representativeFrame(
     if (!bestFrame)
         throw std::runtime_error("No validated initial frame found in " + analysis.path.string());
     return *bestFrame;
+}
+
+
+IRRawRepresentativeFrame IRAnalyzer::rawRepresentativeFrame(
+    const IRFileAnalysis& analysis) const
+{
+    const auto parsed = parse(analysis.path);
+    const std::vector<Frame>& frames = parsed.second;
+    if (frames.empty())
+        throw std::invalid_argument("Analysis contains no raw frames");
+
+    // Group frames by event count. A repeated remote button should produce the
+    // same pulse/space structure on every press even when the protocol decoder
+    // does not understand that particular frame variant.
+    std::map<std::size_t, std::vector<const Frame*>> groups;
+    for (const Frame& frame : frames)
+    {
+        if (frame.size() >= 8) groups[frame.size()].push_back(&frame);
+    }
+    if (groups.empty())
+        throw std::runtime_error("No usable raw frames found in " + analysis.path.string());
+
+    const auto largest = std::max_element(
+        groups.begin(), groups.end(),
+        [](const auto& left, const auto& right) {
+            return left.second.size() < right.second.size();
+        });
+    const std::vector<const Frame*>& candidates = largest->second;
+    if (candidates.size() < 2)
+        throw std::runtime_error("Raw capture does not contain repeated matching frame lengths");
+
+    auto frameError = [](const Frame& left, const Frame& right) {
+        if (left.size() != right.size()) return 1.0;
+        double total = 0.0;
+        for (std::size_t i = 0; i < left.size(); ++i)
+        {
+            const double scale = std::max(1.0,
+                (static_cast<double>(left[i].duration) + right[i].duration) / 2.0);
+            total += std::abs(static_cast<double>(left[i].duration) - right[i].duration) / scale;
+        }
+        return total / left.size();
+    };
+
+    const Frame* representative = candidates.front();
+    double representativeError = 1.0;
+    for (const Frame* candidate : candidates)
+    {
+        double total = 0.0;
+        for (const Frame* other : candidates) total += frameError(*candidate, *other);
+        const double average = total / candidates.size();
+        if (average < representativeError)
+        {
+            representativeError = average;
+            representative = candidate;
+        }
+    }
+
+    std::size_t matching = 0;
+    double matchingError = 0.0;
+    for (const Frame* candidate : candidates)
+    {
+        const double average = frameError(*representative, *candidate);
+        bool perTimingOk = true;
+        for (std::size_t i = 0; i < representative->size(); ++i)
+        {
+            const double scale = std::max(1.0,
+                (static_cast<double>((*representative)[i].duration) + (*candidate)[i].duration) / 2.0);
+            const double relative = std::abs(
+                static_cast<double>((*representative)[i].duration) - (*candidate)[i].duration) / scale;
+            if (relative > 0.35)
+            {
+                perTimingOk = false;
+                break;
+            }
+        }
+        if (perTimingOk && average <= 0.15)
+        {
+            ++matching;
+            matchingError += average;
+        }
+    }
+
+    IRRawRepresentativeFrame result;
+    result.frameCount = frames.size();
+    result.matchingFrames = matching;
+    result.meanTimingError = matching ? matchingError / matching : 1.0;
+    result.durations.reserve(representative->size());
+    for (const Event& event : *representative) result.durations.push_back(event.duration);
+    return result;
 }
 
 unsigned int IRAnalyzer::carrierKhz(const std::string& protocol) const
