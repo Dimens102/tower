@@ -4,9 +4,21 @@
     "type": "IR Device",
     "manufacturer": "ACTION",
     "model": "",
-    "remoteName": "Generic Model",
+    "remoteName": "Generic Non-Bluetooth Model",
     "location": "Outside",
-    "transmitter": "Tower-IR-TX-004",
+    "transmitter": "Tower-IR-TX-001",
+    "irProfile": {
+        "calibrated": true,
+        "carrierKhz": 38,
+        "dutyPercent": 33,
+        "transmitterDutyPercent": {},
+        "calibrationCommand": "Power On",
+        "verifiedTransmitters": [
+            "Tower-IR-TX-001"
+        ],
+        "unreliableTransmitters": [],
+        "incompatibleTransmitters": []
+    },
     "enabled": true,
     "aliases": [],
     "commands": [
@@ -17,7 +29,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Power On",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -27,7 +39,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Power Off",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -37,7 +49,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Red",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -47,7 +59,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Green",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -57,7 +69,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Blue",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -67,7 +79,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Lime",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -77,7 +89,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Purple",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -87,7 +99,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Brightness Up",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -97,7 +109,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Brightness Down",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -107,7 +119,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "White",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -117,7 +129,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "RGB Mode",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -127,7 +139,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Strobe Mode",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -137,7 +149,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Fade Mode",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -147,7 +159,7 @@
             "transport": "IR",
             "transportDevice": "LED Light Bar",
             "transportCommand": "Smooth Mode",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         }
     ]

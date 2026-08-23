@@ -1,0 +1,36 @@
+{
+    "id": "Homebrew",
+    "name": "Homebrew",
+    "type": "IR Device",
+    "manufacturer": "ChatGPT",
+    "model": "",
+    "remoteName": "SuperBeam2000",
+    "location": "Living Room",
+    "transmitter": "Tower-IR-TX-001",
+    "irProfile": {
+        "calibrated": true,
+        "carrierKhz": 38,
+        "dutyPercent": 50,
+        "transmitterDutyPercent": {},
+        "calibrationCommand": "Eco Mode",
+        "verifiedTransmitters": [
+            "Tower-IR-TX-001"
+        ],
+        "unreliableTransmitters": [],
+        "incompatibleTransmitters": []
+    },
+    "enabled": true,
+    "aliases": [],
+    "commands": [
+        {
+            "id": "Eco Mode",
+            "name": "Eco Mode",
+            "description": "testing denon eco mode on fake remote",
+            "transport": "IR",
+            "transportDevice": "Homebrew",
+            "transportCommand": "Eco Mode",
+            "transmitter": "Tower-IR-TX-001",
+            "enabled": true
+        }
+    ]
+}

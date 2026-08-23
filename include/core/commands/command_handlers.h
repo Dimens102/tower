@@ -5,6 +5,7 @@ int runReceiveCommand();
 int runMonitorCommand();
 int runServiceCommand();
 int runSendCommand(int argc, char* argv[]);
+int runRFCommand(int argc, char* argv[]);
 int runLearnCommand(int argc, char* argv[]);
 int runLearnWizard();
 int runLearnKernelCommand();

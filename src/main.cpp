@@ -84,6 +84,7 @@ void print_usage()
 		<< "  tower monitor\n"
 		<< "  tower service\n"
         << "  tower send <device-name> <on|off>\n"
+        << "  tower rf <add|pair|next>\n"
         << "  tower learn\n"
         << "  tower learn <device-name> <command-name> [seconds] [--force]\n"
         << "  tower learn-kernel\n"
@@ -132,6 +133,9 @@ int main(int argc, char* argv[])
 
         case Command::Send:
             return runSendCommand(argc, argv);
+
+        case Command::RF:
+            return runRFCommand(argc, argv);
 
         case Command::Learn:
             return runLearnCommand(argc, argv);

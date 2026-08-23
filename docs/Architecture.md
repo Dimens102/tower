@@ -994,3 +994,275 @@ explicit diagnostic overrides.
 TSOP demodulating receivers cannot measure the original handset carrier duty
 directly. Duty is therefore calibrated empirically from controlled-device
 response rather than inferred from the learned recording.
+
+
+# Windows Control Application Architecture
+
+The Windows control application is a client of Tower, not a second automation
+engine. Its job is presentation, user interaction, and management requests.
+Tower remains responsible for persistent device data, command execution,
+transmitter routing, schedules, and deletion of persistent objects.
+
+## Desktop client responsibilities
+
+The Windows application may:
+
+- Discover logical devices and their commands through the Tower API.
+- Render device-specific remote-control layouts.
+- Display original-remote artwork and command icons.
+- Maintain local presentation preferences such as monitor, panel width, color,
+  animation, and auto-hide delay.
+- Send logical command-execution requests.
+- Request repeated execution for explicit custom actions.
+- Select one or more IR transmitters for a command/device when supported by the API.
+- Create, edit, enable, disable, and delete Tower automation/program definitions.
+- Request deletion of a Tower device/profile after explicit user confirmation.
+- Display service health and execution errors.
+
+The Windows application must not:
+
+- Read or write IR capture files directly.
+- Read or write RF capture files directly.
+- Implement protocol-specific IR/RF transmission.
+- Own the authoritative automation schedule.
+- Require the Windows PC to remain running for scheduled programs.
+- Duplicate voice, IR, RF, or device-resolution logic that belongs to Tower.
+
+## Right-edge sidebar
+
+The primary desktop UI is an auto-hiding sidebar attached to the right edge of
+one selected Windows monitor.
+
+Target behaviour:
+
+```text
+selected monitor
++---------------------------------------------------------------+
+|                                                    | hidden   |
+|                                                    | edge     |
+|                                                    | trigger  |
++---------------------------------------------------------------+
+
+pointer reaches right edge
+        |
+        v
+
++--------------------------------------+------------------------+
+| original remote artwork              | Tower controls         |
+|                                      |                        |
+|                                      | categorized commands   |
+|                                      | transmitter selectors  |
+|                                      | custom actions         |
++--------------------------------------+------------------------+
+             approximately one third of selected monitor
+```
+
+The user should be able to configure:
+
+- Target monitor.
+- Sidebar width.
+- Auto-hide delay.
+- Animation timing.
+- Color/theme.
+- Optional pin/open behaviour.
+
+These are client-side UI preferences and do not belong in Tower's device
+database.
+
+## Remote-control presentation
+
+Each logical remote/device may have UI metadata describing:
+
+- Remote artwork.
+- Command categories.
+- Preferred control ordering.
+- Optional layout hints.
+- Command icon.
+- Whether a command supports hold/repeat presentation.
+
+The underlying logical command identities remain independent from the UI
+layout.
+
+Example:
+
+```text
+AVR X2800H
+    Navigation
+        Arrow Up
+        Arrow Down
+        Arrow Left
+        Arrow Right
+        Enter
+
+    Volume
+        Volume Up
+        Volume Down
+        Mute
+
+    Inputs
+        Blu-ray
+        TV Audio
+        Game
+        HEOS
+```
+
+A pressed or held UI button must have an obvious visual state. Hold/repeat in
+the client must still resolve through Tower's normal command-execution path.
+
+## IR transmitter selection
+
+The desktop client must display six explicit IR transmitter selectors:
+
+```text
+[TX-001] [TX-002] [TX-003] [TX-004] [TX-005] [TX-006]
+```
+
+The selectors are multi-select. For example:
+
+```text
+[TX-001 ACTIVE] [TX-002 ACTIVE] [TX-003 ACTIVE]
+[TX-004      ] [TX-005      ] [TX-006      ]
+```
+
+This allows a remote/device command to be directed through one or more physical
+emitters for coverage or directionality.
+
+The final API must support a transmitter set rather than forcing the Windows
+client to emulate multiple independent command presses. The backend should
+remain responsible for validating transmitter names and executing the routing.
+
+During the current single-transmitter hardware investigation, TX-001 may remain
+the only verified output, but the Windows interface should still expose all six
+selectors so the final UI does not need to be redesigned later.
+
+## Custom actions
+
+Below the normal device controls, the desktop client may provide user-created
+actions.
+
+Initial custom-action form:
+
+```text
+Name        : Volume +10
+Device      : AVR X2800H
+Command     : Volume Up
+Count       : 10
+Transmitters: TX-001
+```
+
+Custom actions should eventually generalize into Tower-owned action sequences,
+but the first implementation may support a single logical command plus repeat
+count.
+
+## Programs and schedules
+
+The Programs tab is an editor for Tower-side automation objects.
+
+Execution architecture:
+
+```text
+Windows Programs UI
+        |
+        | create/update/delete
+        v
+Tower API
+        |
+        v
+Automation database
+        |
+        v
+Scheduler / AutomationEngine
+        |
+        v
+Shared command execution path
+        |
+        v
+IR / RF / Controller backends
+```
+
+Closing or shutting down the Windows PC must not stop a program.
+
+Programs should eventually support:
+
+- One-time schedules.
+- Recurring schedules.
+- Enable/disable state.
+- Ordered logical commands.
+- Repeat counts.
+- Delays.
+- Named scenes/actions.
+- Future voice-intent aliases or mappings.
+- Execution history/status.
+
+## Voice-processing node
+
+Speech recognition may run on a separate Raspberry Pi with sufficient compute
+for local AI/speech processing.
+
+The voice node should output a logical intent such as:
+
+```text
+device  = AVR X2800H
+command = Volume Up
+count   = 3
+```
+
+and submit that through the same Tower API used by the Windows application.
+
+The voice-processing node must not contain its own IR/RF implementation or
+schedule database.
+
+## Device deletion
+
+The Windows client may expose a Delete Remote/Profile control.
+
+Deletion flow:
+
+```text
+user selects device
+        |
+        v
+explicit confirmation
+        |
+        v
+Tower API delete request
+        |
+        v
+Tower validates references/dependencies
+        |
+        v
+device metadata and transport-owned command data removed
+        |
+        v
+client refreshes device list
+```
+
+Tower should reject or explicitly handle deletion when programs or other
+persistent objects still reference the device. The Windows application should
+display that dependency information rather than silently orphaning automation
+definitions.
+
+## Reliability and HTTP 400 recovery
+
+The recurring HTTP 400/stale-service behaviour is a Phase 1 defect and must be
+resolved before the desktop client is expanded substantially.
+
+The client should distinguish:
+
+- Tower unavailable.
+- Invalid request.
+- API/schema mismatch.
+- Stale connection/session state.
+- Command rejected by Tower.
+- Command accepted but execution failed.
+
+Where safe, transient connectivity failures may be retried automatically.
+Invalid requests and schema mismatches must be surfaced rather than hidden by
+blind retries. Diagnostics should include enough information to determine
+whether the fault is in the Windows client, Tower API, or Tower service state.
+
+## Windows application documentation
+
+`docs/Windows-Control-App.md` is the working design and implementation log for
+the desktop client. Significant Windows-client changes should update that file
+alongside the corresponding code change.

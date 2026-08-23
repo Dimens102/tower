@@ -2,7 +2,7 @@
 
 This document records the physical hardware required by the current Tower
 installation, what is installed now, and the known connections used by Tower
-v0.10.11.
+v0.11.01.
 
 `Installed` means the component is part of the present build. A software check
 can confirm an I2C address, GPIO interface, or network endpoint, but it cannot
@@ -49,7 +49,7 @@ unstable Linux `rcX` numbering.
 During service startup, the LCD displays:
 
 ```text
-Tower v0.10.11 BOOT
+Tower v0.11.01 BOOT
 30 33 36 38 40 56
 OK OK OK OK OK OK
 >> Init.     IR-Rec.
@@ -118,7 +118,7 @@ transmitter. The actual peak LED current has not yet been instrumented, so
 | Installed / working | FS1000A 433 MHz transmitter | BCM GPIO24 | Sends commands to the paired 433 MHz power devices |
 | Installed / reception still under development | Aurel RX-4MM5-F 433 MHz receiver | DATA on provisional BCM GPIO4; RSSI on ADS1115 AIN0 | RF capture and diagnostics |
 
-The Aurel DATA and RSSI assignments are still provisional in v0.10.11. Its
+The Aurel DATA and RSSI assignments are still provisional in v0.11.01. Its
 final ENABLE connection is not yet documented, so these values must not be
 treated as the finished RF receiver wiring specification.
 

@@ -6,13 +6,13 @@
     "model": "",
     "remoteName": "Generic Non-Bluetooth Model",
     "location": "Living Room",
-    "transmitter": "Tower-IR-TX-004",
+    "transmitter": "Tower-IR-TX-001",
     "irProfile": {
-        "calibrated": false,
-        "carrierKhz": 0,
-        "dutyPercent": 0,
+        "calibrated": true,
+        "carrierKhz": 38,
+        "dutyPercent": 50,
         "transmitterDutyPercent": {},
-        "calibrationCommand": "",
+        "calibrationCommand": "Timer",
         "verifiedTransmitters": [],
         "unreliableTransmitters": [],
         "incompatibleTransmitters": []
@@ -27,7 +27,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Speed",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -37,7 +37,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Mode",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -47,7 +47,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Timer",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -57,7 +57,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Power",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -67,7 +67,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Temp Up",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -77,7 +77,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Temp Down",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         },
         {
@@ -87,7 +87,7 @@
             "transport": "IR",
             "transportDevice": "PAC 7.2",
             "transportCommand": "Unknown",
-            "transmitter": "Tower-IR-TX-004",
+            "transmitter": "Tower-IR-TX-001",
             "enabled": true
         }
     ]

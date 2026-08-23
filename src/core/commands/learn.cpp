@@ -1,5 +1,6 @@
 #include "core/commands/command_handlers.h"
 #include "core/commands/ir_learning.h"
+#include "core/service/IRLearningService.h"
 
 #include "devices/device_database.h"
 #include "devices/ir/ir_analyzer.h"
@@ -255,281 +256,250 @@ int learnIRCommand(
     double seconds,
     bool force)
 {
-    if (!validDatabaseName(deviceName) || !validDatabaseName(commandName))
+    IRLearningService learning;
+    IRLearnResult result;
+    std::string error;
+
+    std::cout
+        << "IR learning\n\n"
+        << "Device   : " << deviceName << "\n"
+        << "Command  : " << commandName << "\n"
+        << "Duration : " << seconds << " seconds\n\n"
+        << "Recording NOW - press the same button several times.\n";
+
+    if (!learning.captureAndAnalyze(
+            deviceName,
+            commandName,
+            description,
+            seconds,
+            force,
+            result,
+            error))
     {
-        std::cerr << "Device and command names cannot be empty, '.', '..', or contain slashes.\n";
+        std::cerr << error << "\n";
+
+        if (!result.capturePath.empty())
+        {
+            std::cerr
+                << "Capture  : "
+                << result.capturePath
+                << "\n";
+        }
+
+        return result.failureCode;
+    }
+
+    std::cout
+        << "\nIR capture analysis\n\n"
+        << "Capture: "
+        << result.capturePath
+        << "\n\n"
+        << std::left
+        << std::setw(6) << "GPIO"
+        << std::setw(12) << "Receiver"
+        << std::setw(7) << "kHz"
+        << std::setw(8) << "Frames"
+        << std::setw(7) << "Valid"
+        << std::setw(11) << "Result"
+        << "Decode\n"
+        << std::setw(6) << "----"
+        << std::setw(12) << "---------"
+        << std::setw(7) << "---"
+        << std::setw(8) << "------"
+        << std::setw(7) << "-----"
+        << std::setw(11) << "---------"
+        << "-----------------------\n";
+
+    for (const IRAnalysisRow& row :
+         result.code.analysis)
+    {
+        std::ostringstream decode;
+
+        if (!row.decodedProtocol.empty())
+        {
+            decode
+                << row.decodedProtocol
+                << " 0x"
+                << std::uppercase
+                << std::hex
+                << std::right
+                << std::setw(
+                    row.address > 0xFFF ? 4 : 3)
+                << std::setfill('0')
+                << row.address
+                << "/0x"
+                << std::setw(2)
+                << row.decodedCommand
+                << std::dec
+                << std::setfill(' ');
+        }
+        else
+        {
+            decode << "-";
+        }
+
+        std::cout
+            << std::left
+            << std::setw(6) << row.gpio
+            << std::setw(12) << row.receiverModel
+            << std::setw(7) << row.nominalCarrierKhz
+            << std::setw(8) << row.frameCount
+            << std::setw(7) << row.validFrameCount
+            << std::setw(11) << row.result
+            << decode.str()
+            << "\n";
+    }
+
+    if (!result.note.empty())
+    {
+        std::cout
+            << "\n"
+            << result.note
+            << "\n";
+    }
+
+    bool acceptDuplicate = false;
+
+    if (!result.duplicates.empty())
+    {
+        std::cout
+            << "\nWARNING: This IR signal is already saved as";
+
+        if (result.duplicates.size() == 1)
+        {
+            std::cout
+                << " '"
+                << result.duplicates.front()
+                << "'.\n";
+        }
+        else
+        {
+            std::cout << ":\n";
+
+            for (const std::string& duplicate :
+                 result.duplicates)
+            {
+                std::cout
+                    << "  - "
+                    << duplicate
+                    << "\n";
+            }
+        }
+
+        if (!result.code.decodedProtocol.empty())
+        {
+            std::cout
+                << "Protocol : "
+                << result.code.decodedProtocol
+                << "\nAddress  : ";
+            printHex(
+                result.code.address,
+                result.code.address > 0xFFF ? 4 : 3);
+            std::cout
+                << "\nCommand  : ";
+            printHex(
+                result.code.decodedCommand,
+                2);
+            std::cout << "\n";
+        }
+
+        std::cout
+            << "Keep duplicate command '"
+            << commandName
+            << "'? [y/N]: ";
+
+        std::string answer;
+
+        if (!std::getline(std::cin, answer))
+        {
+            return 1;
+        }
+
+        acceptDuplicate =
+            answer == "y" ||
+            answer == "Y" ||
+            answer == "yes" ||
+            answer == "YES";
+
+        if (!acceptDuplicate)
+        {
+            std::cout
+                << "Duplicate command was not saved. "
+                << "Raw capture retained at "
+                << result.capturePath
+                << "\n";
+
+            return learnIrDuplicateDeclined;
+        }
+    }
+
+    if (!learning.saveResult(
+            result,
+            force,
+            acceptDuplicate,
+            error))
+    {
+        std::cerr
+            << error
+            << "\n";
         return 1;
     }
 
     IRDatabase database;
-    if (database.exists(deviceName, commandName) && !force)
+
+    std::cout
+        << "\nLearned successfully\n\n";
+
+    if (!result.code.decodedProtocol.empty())
     {
-        std::cerr << "IR command already exists: " << database.path(deviceName, commandName)
-                  << "\nUse --force to replace it after a successful validated capture.\n";
-        return 1;
+        std::cout
+            << "Protocol : "
+            << result.code.decodedProtocol
+            << "\nAddress  : ";
+
+        printHex(
+            result.code.address,
+            result.code.address > 0xFFF ? 4 : 3);
+
+        std::cout
+            << "\nCommand  : ";
+
+        printHex(
+            result.code.decodedCommand,
+            2);
+
+        std::cout << "\n";
+    }
+    else
+    {
+        std::cout
+            << "Protocol : RAW "
+            << "(stable undecoded capture)\n";
     }
 
-    const IRReceiverArray array;
-    const std::vector<IRReceiverStatus> receivers = array.discover();
-    if (!array.allAvailable())
-    {
-        std::cerr << "All six IR receivers must be available. "
-                     "Run 'tower ir-receivers' for details.\n";
-        return 1;
-    }
+    std::cout
+        << "Receiver : GPIO"
+        << result.code.receiverGpio
+        << " "
+        << result.code.receiverModel
+        << "\nCarrier candidate: "
+        << result.code.carrierKhz
+        << " kHz\n"
+        << "Capture  : "
+        << result.code.captureInitialFrames
+        << " initial / "
+        << result.code.captureRepeatFrames
+        << " protocol repeat frames\n"
+        << "Raw frame: "
+        << result.code.pulses.size()
+        << " timings\n"
+        << "Saved    : "
+        << database.path(
+            deviceName,
+            commandName).string()
+        << "\n";
 
-    std::filesystem::path destination;
-    try
-    {
-        destination = std::filesystem::path("captures") / "ir" /
-            (utcTimestamp() + "_" + safeName(deviceName) + "_" + safeName(commandName));
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << error.what() << "\n";
-        return 1;
-    }
-
-    std::cout << "IR learning\n\n"
-              << "Device   : " << deviceName << "\n"
-              << "Command  : " << commandName << "\n"
-              << "Duration : " << seconds << " seconds\n"
-              << "Capture  : " << destination.string() << "\n\n"
-              << "Recording NOW - press the same button several times.\n";
-
-    std::vector<IRArrayCaptureResult> captures;
-    try
-    {
-        captures = IRArrayCapture().capture(receivers, destination, seconds);
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << "Capture failed: " << error.what() << "\n";
-        return 1;
-    }
-
-    bool anySignal = false;
-    for (const IRArrayCaptureResult& capture : captures)
-    {
-        anySignal = anySignal || capture.pulseCount > 0;
-        if (irCaptureDiagnosticHasError(capture.diagnostic))
-        {
-            std::cerr << "Capture error on " << capture.receiver.lircDevice
-                      << ": " << capture.diagnostic;
-            return 1;
-        }
-    }
-    if (!anySignal)
-    {
-        std::cerr << "No IR signal was captured. Nothing was saved.\n";
-        return 2;
-    }
-
-    try
-    {
-        const IRAnalyzer analyzer;
-        const std::vector<IRReceiverAnalysis> analyses =
-            analyzer.analyzeDirectory(destination);
-        printAnalysisTable(destination, analyses);
-        const IRReceiverAnalysis& best = analyses[analyzer.best(analyses)];
-
-        // A multi-press learning capture does not need every detected frame to
-        // decode successfully. Some remotes can produce a few truncated/noisy
-        // frames while still providing an unambiguous supported-protocol decode.
-        const bool stableDecode =
-            best.analysis.decodedCount >= 2 &&
-            best.analysis.consistency == 1.0;
-
-        IRCode code;
-        code.device = deviceName;
-        code.command = commandName;
-        code.description = description;
-        code.protocol = "raw";
-        code.sourceCapture = destination.string();
-
-        const IRReceiverAnalysis* selected = &best;
-        if (best.analysis.result() == "CLEAN" || stableDecode)
-        {
-            if (best.analysis.result() != "CLEAN")
-            {
-                std::cout << "\nAccepting stable partial capture: "
-                          << best.analysis.decodedCount << "/"
-                          << best.analysis.frameCount
-                          << " frames decoded and all valid decodes agree.\n";
-            }
-
-            const IRRepresentativeFrame frame = analyzer.representativeFrame(best.analysis);
-            code.decodedProtocol = best.analysis.protocol;
-            code.address = best.analysis.address;
-            code.decodedCommand = best.analysis.command;
-            // The tuned receiver array gives a better operational carrier
-            // candidate than a protocol-family constant. Final transmission
-            // calibration can refine it after the remote is learned.
-            code.carrierKhz = best.nominalCarrierKhz;
-            code.receiverGpio = best.gpio;
-            code.receiverModel = best.model;
-            code.captureInitialFrames = best.analysis.initialFrames;
-            code.captureRepeatFrames = best.analysis.repeatFrames;
-            code.pulses = frame.durations;
-        }
-        else
-        {
-            // Unsupported-protocol raw fallback. This is intentionally only
-            // enabled when this device already has learned commands with a
-            // known carrier. That lets us choose the correct tuned receiver
-            // without guessing the modulation frequency.
-            const unsigned int knownCarrier = existingDeviceCarrierKhz(database, deviceName);
-            if (knownCarrier == 0)
-            {
-                std::cerr << "No stable supported protocol was found, and this device has no "
-                             "previous learned carrier to use for safe RAW fallback. "
-                             "Capture retained for 'tower ir-analyze', but no command was saved.\n";
-                return 2;
-            }
-
-            const auto receiver = std::find_if(
-                analyses.begin(), analyses.end(),
-                [knownCarrier](const IRReceiverAnalysis& item) {
-                    return item.nominalCarrierKhz == knownCarrier;
-                });
-            if (receiver == analyses.end() || receiver->analysis.frameCount < 2)
-            {
-                std::cerr << "No stable supported protocol was found. Known device carrier is "
-                          << knownCarrier << " kHz, but that receiver did not capture at least "
-                             "two frames. Capture retained, but no command was saved.\n";
-                return 2;
-            }
-
-            const IRRawRepresentativeFrame raw =
-                analyzer.rawRepresentativeFrame(receiver->analysis);
-            const std::size_t minimumMatches = std::max<std::size_t>(
-                2, (raw.frameCount + 1) / 2);
-            if (raw.matchingFrames < minimumMatches)
-            {
-                std::cerr << "No stable supported protocol was found. RAW frames at "
-                          << knownCarrier << " kHz were not consistent enough ("
-                          << raw.matchingFrames << "/" << raw.frameCount
-                          << " matched). Capture retained, but no command was saved.\n";
-                return 2;
-            }
-
-            selected = &*receiver;
-            code.carrierKhz = knownCarrier;
-            code.receiverGpio = receiver->gpio;
-            code.receiverModel = receiver->model;
-            code.captureInitialFrames = receiver->analysis.initialFrames;
-            code.captureRepeatFrames = receiver->analysis.repeatFrames;
-            code.pulses = raw.durations;
-
-            std::cout << "\nSupported-protocol decode failed, but the "
-                      << knownCarrier << " kHz receiver captured a stable repeated RAW frame ("
-                      << raw.matchingFrames << "/" << raw.frameCount
-                      << " matching). Saving verified RAW timing instead.\n";
-        }
-
-        for (const IRReceiverAnalysis& receiver : analyses)
-        {
-            IRAnalysisRow row;
-            row.gpio = receiver.gpio;
-            row.receiverModel = receiver.model;
-            row.nominalCarrierKhz = receiver.nominalCarrierKhz;
-            row.frameCount = receiver.analysis.frameCount;
-            row.validFrameCount = receiver.analysis.decodedCount;
-            row.result = receiver.analysis.result();
-            row.decodedProtocol = receiver.analysis.protocol;
-            row.address = receiver.analysis.address;
-            row.decodedCommand = receiver.analysis.command;
-            code.analysis.push_back(row);
-        }
-
-        const std::vector<std::string> duplicates = findDuplicateCommands(
-            database, deviceName, commandName, code);
-        if (!duplicates.empty())
-        {
-            std::cout << "\nWARNING: This IR signal is already saved as";
-            if (duplicates.size() == 1)
-            {
-                std::cout << " '" << duplicates.front() << "'.\n";
-            }
-            else
-            {
-                std::cout << ":\n";
-                for (const std::string& duplicate : duplicates)
-                    std::cout << "  - " << duplicate << "\n";
-            }
-            std::cout << "Protocol : " << code.decodedProtocol << "\n"
-                      << "Address  : ";
-            printHex(code.address, code.address > 0xFFF ? 4 : 3);
-            std::cout << "\nCommand  : ";
-            printHex(code.decodedCommand, 2);
-            std::cout << "\nKeep duplicate command '" << commandName
-                      << "'? [y/N]: ";
-
-            std::string answer;
-            if (!std::getline(std::cin, answer)) return 1;
-            if (answer != "y" && answer != "Y" &&
-                answer != "yes" && answer != "YES")
-            {
-                std::cout << "Duplicate command was not saved. "
-                             "Raw capture retained at "
-                          << destination.string() << "\n";
-                return learnIrDuplicateDeclined;
-            }
-        }
-
-        if (database.exists(deviceName, commandName))
-        {
-            std::filesystem::path backup = database.path(deviceName, commandName);
-            backup += ".tower-learn-backup";
-            std::error_code error;
-            std::filesystem::copy_file(
-                database.path(deviceName, commandName), backup,
-                std::filesystem::copy_options::overwrite_existing, error);
-            if (error)
-            {
-                std::cerr << "Could not back up existing command: " << error.message() << "\n";
-                return 1;
-            }
-            std::cout << "\nBackup   : " << backup.string() << "\n";
-        }
-
-        if (!database.save(deviceName, commandName, code)) return 1;
-        if (!updateLogicalCommand(deviceName, commandName, description))
-        {
-            std::cerr << "Capture was saved, but the logical device command could not be updated.\n";
-            return 1;
-        }
-
-        std::cout << "\nLearned successfully\n\n";
-        if (!code.decodedProtocol.empty())
-        {
-            std::cout << "Protocol : " << code.decodedProtocol << "\n"
-                      << "Address  : ";
-            printHex(code.address, code.address > 0xFFF ? 4 : 3);
-            std::cout << "\nCommand  : ";
-            printHex(code.decodedCommand, 2);
-            std::cout << "\n";
-        }
-        else
-        {
-            std::cout << "Protocol : RAW (stable undecoded capture)\n";
-        }
-        std::cout << "Receiver : GPIO" << code.receiverGpio << " "
-                  << code.receiverModel << " (" << selected->nominalCarrierKhz << " kHz)\n"
-                  << "Carrier candidate: " << code.carrierKhz << " kHz\n"
-                  << "Capture  : " << code.captureInitialFrames << " initial / "
-                  << code.captureRepeatFrames << " protocol repeat frames\n"
-                  << "Raw frame: " << code.pulses.size() << " timings\n"
-                  << "Saved    : " << database.path(deviceName, commandName).string()
-                  << "\n";
-        return 0;
-    }
-    catch (const std::exception& error)
-    {
-        std::cerr << "Learning analysis failed: " << error.what()
-                  << "\nCapture retained, but no command was saved.\n";
-        return 1;
-    }
+    return 0;
 }
 
 int runLearnCommand(int argc, char* argv[])

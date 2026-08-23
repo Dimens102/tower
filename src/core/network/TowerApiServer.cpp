@@ -1,6 +1,10 @@
 #include "core/network/TowerApiServer.h"
 
 #include "core/service/CommandExecutor.h"
+#include "core/service/IRLearningService.h"
+#include "core/service/IRCalibrationService.h"
+#include "core/service/RFCommandService.h"
+#include "core/service/RFProvisioningService.h"
 #include "devices/device.h"
 #include "devices/device_database.h"
 #include "devices/rf/rf_database.h"
@@ -11,17 +15,18 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
-#include <limits.h>
+#include <filesystem>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <mutex>
 #include <netinet/in.h>
-#include <spawn.h>
 #include <sstream>
 #include <sys/socket.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
-extern char** environ;
 
 namespace
 {
@@ -48,88 +53,6 @@ std::string executionStatusName(CommandExecutionStatus status)
         case CommandExecutionStatus::TransmissionFailed: return "transmission_failed";
     }
     return "unknown";
-}
-
-bool runTowerSendCommand(
-    const std::string& device,
-    const std::string& action,
-    std::string& error)
-{
-    if (action != "on" && action != "off")
-    {
-        error = "Action must be on or off";
-        return false;
-    }
-
-    RFDatabase database;
-    bool knownDevice = false;
-    for (const RFDevice& definition : database.listPowerDevices())
-    {
-        if (definition.name == device)
-        {
-            knownDevice = true;
-            break;
-        }
-    }
-    if (!knownDevice)
-    {
-        error = "RF device not found";
-        return false;
-    }
-
-    char executable[PATH_MAX + 1]{};
-    const ssize_t length =
-        ::readlink("/proc/self/exe", executable, PATH_MAX);
-    if (length <= 0)
-    {
-        error = "Could not resolve Tower executable";
-        return false;
-    }
-    executable[length] = '\0';
-
-    char* arguments[] = {
-        executable,
-        const_cast<char*>("send"),
-        const_cast<char*>(device.c_str()),
-        const_cast<char*>(action.c_str()),
-        nullptr
-    };
-
-    pid_t child = -1;
-    const int spawnResult =
-        ::posix_spawn(
-            &child,
-            executable,
-            nullptr,
-            nullptr,
-            arguments,
-            environ);
-    if (spawnResult != 0)
-    {
-        error = "Could not start tower send: " +
-            std::string(std::strerror(spawnResult));
-        return false;
-    }
-
-    int status = 0;
-    while (::waitpid(child, &status, 0) < 0)
-    {
-        if (errno == EINTR)
-        {
-            continue;
-        }
-        error = "Could not wait for tower send";
-        return false;
-    }
-
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-    {
-        error = "tower send failed";
-        return false;
-    }
-
-    error.clear();
-    return true;
 }
 
 void sendResponse(
@@ -306,6 +229,40 @@ void TowerApiServer::handleClient(int clientFd)
         return;
     }
 
+    if (path == "/api/v1/rf/modern/next" && method == "GET")
+    {
+        RFProvisioningService provisioning;
+        RFModernDefaults defaults;
+        std::string error;
+
+        if (!provisioning.getNextModernDefaults(defaults, error))
+        {
+            sendResponse(
+                clientFd,
+                500,
+                "Internal Server Error",
+                {{"ok", false}, {"error", error}});
+            return;
+        }
+
+        sendResponse(
+            clientFd,
+            200,
+            "OK",
+            {
+                {"ok", true},
+                {"recordId", defaults.recordName},
+                {"fileName", defaults.recordName + ".rf"},
+                {"suggestedTransmitterId", defaults.transmitterId},
+                {"description", defaults.description},
+                {"unit", defaults.unit},
+                {"gpio", defaults.gpio},
+                {"pulseUs", defaults.pulse},
+                {"repeat", defaults.repeat}
+            });
+        return;
+    }
+
     if (path == "/api/v1/rf/devices" && method == "GET")
     {
         nlohmann::json result = nlohmann::json::array();
@@ -316,10 +273,632 @@ void TowerApiServer::handleClient(int clientFd)
                 {"id", device.name},
                 {"name", device.deviceName.empty() ? device.name : device.deviceName},
                 {"status", device.status},
-                {"actions", {"on", "off"}}
+                {"actions", {"on", "off"}},
+                {"protocol", device.protocol},
+                {"description", device.description},
+                {"house", device.house},
+                {"unit", device.unit},
+                {"gpio", device.gpio},
+                {"pulseUs", device.pulse},
+                {"repeat", device.repeat},
+                {"onCode", device.onCode},
+                {"offCode", device.offCode},
+                {"transmitterId", device.transmitterId}
             });
         }
         sendResponse(clientFd, 200, "OK", {{"devices", result}});
+        return;
+    }
+
+    if (path == "/api/v1/ir/calibration/prepare" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json =
+                nlohmann::json::parse(body);
+
+            const std::string device =
+                json.at("device").get<std::string>();
+
+            IRCalibrationService calibration;
+            IRCalibrationPreparation preparation;
+            std::string error;
+
+            if (!calibration.prepare(
+                    device,
+                    preparation,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error}
+                    });
+                return;
+            }
+
+            nlohmann::json commands =
+                nlohmann::json::array();
+
+            for (const IRCalibrationCommandInfo& command :
+                 preparation.commands)
+            {
+                commands.push_back({
+                    {"id", command.id},
+                    {"description", command.description},
+                    {"carrierKhz", command.carrierKhz}
+                });
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", device},
+                    {"commands", commands},
+                    {"suggestedCommand", preparation.suggestedCommand},
+                    {"transmitter", preparation.transmitter},
+                    {"dutyCandidates", preparation.dutyCandidates},
+                    {"batchSize", preparation.batchSize},
+                    {"confirmThreshold", preparation.confirmThreshold},
+                    {"alreadyCalibrated", preparation.alreadyCalibrated},
+                    {"existingCarrierKhz", preparation.existingCarrierKhz},
+                    {"existingDutyPercent", preparation.existingDutyPercent},
+                    {"existingCommand", preparation.existingCommand}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/ir/calibration/batch" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json =
+                nlohmann::json::parse(body);
+
+            const std::string device =
+                json.at("device").get<std::string>();
+            const std::string command =
+                json.at("command").get<std::string>();
+            const unsigned int carrierKhz =
+                json.at("carrierKhz").get<unsigned int>();
+            const unsigned int dutyPercent =
+                json.at("dutyPercent").get<unsigned int>();
+            const unsigned int count =
+                json.value("count", 10U);
+            const unsigned int preDelaySeconds =
+                json.value("preDelaySeconds", 5U);
+            const unsigned int intervalMilliseconds =
+                json.value("intervalMilliseconds", 1000U);
+
+            IRCalibrationService calibration;
+            std::string error;
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!calibration.sendBatch(
+                    device,
+                    command,
+                    carrierKhz,
+                    dutyPercent,
+                    count,
+                    preDelaySeconds,
+                    intervalMilliseconds,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", device},
+                    {"command", command},
+                    {"carrierKhz", carrierKhz},
+                    {"dutyPercent", dutyPercent},
+                    {"count", count},
+                    {"message", "Calibration batch sent"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/ir/calibration/save" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json =
+                nlohmann::json::parse(body);
+
+            const std::string device =
+                json.at("device").get<std::string>();
+            const std::string command =
+                json.at("command").get<std::string>();
+            const unsigned int carrierKhz =
+                json.at("carrierKhz").get<unsigned int>();
+            const unsigned int dutyPercent =
+                json.at("dutyPercent").get<unsigned int>();
+
+            IRCalibrationService calibration;
+            std::string error;
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!calibration.saveProfile(
+                    device,
+                    command,
+                    carrierKhz,
+                    dutyPercent,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", device},
+                    {"command", command},
+                    {"carrierKhz", carrierKhz},
+                    {"dutyPercent", dutyPercent},
+                    {"transmitter", "Tower-IR-TX-001"},
+                    {"message", "IR calibration profile saved"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/ir/devices/create" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+
+            const std::string manufacturer =
+                json.value("manufacturer", "");
+            const std::string remoteName =
+                json.value("remoteName", "");
+            const std::string deviceName =
+                json.at("deviceName").get<std::string>();
+            const std::string location =
+                json.value("location", "");
+            const std::string transmitter =
+                json.value(
+                    "transmitter",
+                    "Tower-IR-TX-001");
+
+            IRLearningService learning;
+            Device created;
+            std::string error;
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!learning.createDevice(
+                    manufacturer,
+                    remoteName,
+                    deviceName,
+                    location,
+                    transmitter,
+                    created,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"deviceId", created.id},
+                    {"deviceName", created.name},
+                    {"manufacturer", created.manufacturer},
+                    {"remoteName", created.remoteName},
+                    {"location", created.location},
+                    {"transmitter", created.transmitter},
+                    {"message", "IR device profile created"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/ir/learn/capture" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+
+            const std::string device =
+                json.at("device").get<std::string>();
+            const std::string command =
+                json.at("command").get<std::string>();
+            const std::string description =
+                json.value("description", "");
+            const double seconds =
+                json.value("seconds", 8.0);
+            const bool force =
+                json.value("force", false);
+
+            IRLearningService learning;
+            IRLearnResult result;
+            std::string error;
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!learning.captureAndAnalyze(
+                    device,
+                    command,
+                    description,
+                    seconds,
+                    force,
+                    result,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    result.failureCode == 2 ? 422 : 400,
+                    result.failureCode == 2
+                        ? "Unprocessable Entity"
+                        : "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error},
+                        {"captureId", result.captureId},
+                        {"capturePath", result.capturePath},
+                        {"failureCode", result.failureCode}
+                    });
+                return;
+            }
+
+            nlohmann::json receivers =
+                nlohmann::json::array();
+
+            for (const IRReceiverCaptureStat& stat :
+                 result.receiverStats)
+            {
+                receivers.push_back({
+                    {"gpio", stat.gpio},
+                    {"receiver", stat.receiverModel},
+                    {"carrierKhz", stat.nominalCarrierKhz},
+                    {"timings", stat.timingCount},
+                    {"pulses", stat.pulseCount},
+                    {"frames", stat.frameCount},
+                    {"valid", stat.validFrameCount},
+                    {"result", stat.result}
+                });
+            }
+
+            nlohmann::json analysis =
+                nlohmann::json::array();
+
+            for (const IRAnalysisRow& row :
+                 result.code.analysis)
+            {
+                analysis.push_back({
+                    {"gpio", row.gpio},
+                    {"receiver", row.receiverModel},
+                    {"carrierKhz", row.nominalCarrierKhz},
+                    {"frames", row.frameCount},
+                    {"valid", row.validFrameCount},
+                    {"result", row.result},
+                    {"protocol", row.decodedProtocol},
+                    {"address", row.address},
+                    {"command", row.decodedCommand}
+                });
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"captureId", result.captureId},
+                    {"capturePath", result.capturePath},
+                    {"device", result.deviceName},
+                    {"commandName", result.commandName},
+                    {"description", result.description},
+                    {"protocol", result.code.decodedProtocol},
+                    {"address", result.code.address},
+                    {"decodedCommand", result.code.decodedCommand},
+                    {"carrierKhz", result.code.carrierKhz},
+                    {"receiverGpio", result.code.receiverGpio},
+                    {"receiverModel", result.code.receiverModel},
+                    {"initialFrames", result.code.captureInitialFrames},
+                    {"repeatFrames", result.code.captureRepeatFrames},
+                    {"rawTimings", result.code.pulses.size()},
+                    {"rawFallback", result.rawFallback},
+                    {"stablePartialDecode", result.stablePartialDecode},
+                    {"note", result.note},
+                    {"duplicates", result.duplicates},
+                    {"receivers", receivers},
+                    {"analysis", analysis}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/ir/learn/save" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+
+            const std::string captureId =
+                json.at("captureId").get<std::string>();
+            const std::string device =
+                json.at("device").get<std::string>();
+            const std::string command =
+                json.at("command").get<std::string>();
+            const std::string description =
+                json.value("description", "");
+            const bool force =
+                json.value("force", false);
+            const bool acceptDuplicate =
+                json.value("acceptDuplicate", false);
+
+            IRLearningService learning;
+            IRLearnResult result;
+            std::string error;
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!learning.analyzeExistingCapture(
+                    captureId,
+                    device,
+                    command,
+                    description,
+                    result,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    result.failureCode == 2 ? 422 : 400,
+                    result.failureCode == 2
+                        ? "Unprocessable Entity"
+                        : "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error},
+                        {"captureId", captureId}
+                    });
+                return;
+            }
+
+            if (!result.duplicates.empty() &&
+                !acceptDuplicate)
+            {
+                sendResponse(
+                    clientFd,
+                    409,
+                    "Conflict",
+                    {
+                        {"ok", false},
+                        {"error", "Duplicate IR signal"},
+                        {"duplicates", result.duplicates}
+                    });
+                return;
+            }
+
+            if (!learning.saveResult(
+                    result,
+                    force,
+                    acceptDuplicate,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", device},
+                    {"command", command},
+                    {"protocol", result.code.decodedProtocol},
+                    {"carrierKhz", result.code.carrierKhz},
+                    {"receiverGpio", result.code.receiverGpio},
+                    {"receiverModel", result.code.receiverModel},
+                    {"message", "IR command saved"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/system/time" && method == "GET")
+    {
+        const auto now =
+            std::chrono::system_clock::now();
+
+        const std::time_t nowTime =
+            std::chrono::system_clock::to_time_t(now);
+
+        std::tm local = {};
+        localtime_r(&nowTime, &local);
+
+        std::ostringstream localTime;
+        localTime << std::put_time(
+            &local,
+            "%H:%M:%S"
+        );
+
+        std::ostringstream localDate;
+        localDate << std::put_time(
+            &local,
+            "%Y-%m-%d"
+        );
+
+        std::ostringstream timezone;
+        timezone << std::put_time(
+            &local,
+            "%Z"
+        );
+
+        sendResponse(
+            clientFd,
+            200,
+            "OK",
+            {
+                {"ok", true},
+                {"localTime", localTime.str()},
+                {"localDate", localDate.str()},
+                {"timezone", timezone.str()}
+            });
         return;
     }
 
@@ -355,12 +934,305 @@ void TowerApiServer::handleClient(int clientFd)
                 {"model", device.model},
                 {"remoteName", device.remoteName},
                 {"location", device.location},
+                {"transmitter", device.transmitter},
                 {"enabled", device.enabled},
                 {"commands", commands}
             });
         }
 
         sendResponse(clientFd, 200, "OK", {{"devices", devices}});
+        return;
+    }
+
+    if (path == "/api/v1/devices/rename" && method == "POST")
+    {
+        const auto headerEnd =
+            request.find("\r\n\r\n");
+
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json =
+                nlohmann::json::parse(body);
+
+            const std::string deviceId =
+                json.at("device").get<std::string>();
+
+            const std::string newName =
+                json.at("name").get<std::string>();
+
+            if (deviceId.empty() ||
+                deviceId.find("..") != std::string::npos ||
+                deviceId.find('/') != std::string::npos ||
+                deviceId.find('\\') != std::string::npos)
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Invalid device id"}
+                    });
+                return;
+            }
+
+            if (newName.empty() ||
+                newName.size() > 120)
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Device name must contain 1 to 120 characters"}
+                    });
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(
+                commandMutex
+            );
+
+            DeviceDatabase database;
+            Device device;
+
+            if (!database.loadDevice(
+                    deviceId,
+                    device))
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "Device not found: " + deviceId}
+                    });
+                return;
+            }
+
+            device.name = newName;
+
+            if (!database.saveDevice(device))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {
+                        {"ok", false},
+                        {"error", "Failed to save renamed device"}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", deviceId},
+                    {"name", newName},
+                    {"message", "IR device renamed"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/devices/delete" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body = headerEnd == std::string::npos
+            ? std::string{}
+            : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string deviceId =
+                json.at("device").get<std::string>();
+
+            if (deviceId.empty() ||
+                deviceId.find("..") != std::string::npos ||
+                deviceId.find('/') != std::string::npos ||
+                deviceId.find('\\') != std::string::npos)
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {{"ok", false}, {"error", "Invalid device id"}});
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+            DeviceDatabase database;
+
+            if (!database.deviceExists(deviceId))
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "Device not found: " + deviceId}
+                    });
+                return;
+            }
+
+            Device device;
+            if (!database.loadDevice(deviceId, device))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {
+                        {"ok", false},
+                        {"error", "Failed to load device before deletion"}
+                    });
+                return;
+            }
+
+            std::vector<std::string> transportDevices;
+            for (const DeviceCommand& command : device.commands)
+            {
+                if (command.transport != TransportType::IR ||
+                    command.transportDevice.empty())
+                {
+                    continue;
+                }
+
+                bool alreadyPresent = false;
+                for (const std::string& existing : transportDevices)
+                {
+                    if (existing == command.transportDevice)
+                    {
+                        alreadyPresent = true;
+                        break;
+                    }
+                }
+                if (!alreadyPresent)
+                {
+                    transportDevices.push_back(command.transportDevice);
+                }
+            }
+
+            if (!database.deleteDevice(deviceId))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {
+                        {"ok", false},
+                        {"error", "Failed to delete device profile"}
+                    });
+                return;
+            }
+
+            nlohmann::json removedIrData = nlohmann::json::array();
+            nlohmann::json preservedIrData = nlohmann::json::array();
+
+            for (const std::string& transportDevice : transportDevices)
+            {
+                bool shared = false;
+
+                for (const std::string& otherId : database.listDevices())
+                {
+                    Device other;
+                    if (!database.loadDevice(otherId, other))
+                    {
+                        continue;
+                    }
+
+                    for (const DeviceCommand& otherCommand : other.commands)
+                    {
+                        if (otherCommand.transport == TransportType::IR &&
+                            otherCommand.transportDevice == transportDevice)
+                        {
+                            shared = true;
+                            break;
+                        }
+                    }
+                    if (shared)
+                    {
+                        break;
+                    }
+                }
+
+                if (shared)
+                {
+                    preservedIrData.push_back(transportDevice);
+                    continue;
+                }
+
+                std::error_code error;
+                const std::filesystem::path directory =
+                    std::filesystem::path("data") /
+                    "ir" /
+                    "devices" /
+                    transportDevice;
+
+                if (std::filesystem::exists(directory))
+                {
+                    std::filesystem::remove_all(directory, error);
+                }
+
+                if (error)
+                {
+                    preservedIrData.push_back(transportDevice);
+                }
+                else
+                {
+                    removedIrData.push_back(transportDevice);
+                }
+            }
+
+            const std::string displayName =
+                device.name.empty() ? deviceId : device.name;
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", deviceId},
+                    {"name", displayName},
+                    {"removedIrData", removedIrData},
+                    {"preservedSharedIrData", preservedIrData},
+                    {"message", "Deleted device: " + displayName}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {{"ok", false}, {"error", exception.what()}});
+        }
         return;
     }
 
@@ -404,9 +1276,28 @@ void TowerApiServer::handleClient(int clientFd)
             const auto json = nlohmann::json::parse(body);
             const std::string device = json.at("device").get<std::string>();
             const std::string command = json.at("command").get<std::string>();
+
+            std::vector<std::string> transmitters;
+            if (json.contains("transmitter") &&
+                !json.at("transmitter").is_null())
+            {
+                transmitters.push_back(
+                    json.at("transmitter").get<std::string>());
+            }
+            if (json.contains("transmitters") &&
+                json.at("transmitters").is_array())
+            {
+                for (const auto& entry : json.at("transmitters"))
+                {
+                    transmitters.push_back(entry.get<std::string>());
+                }
+            }
+
             std::lock_guard<std::mutex> lock(commandMutex);
             CommandExecutor executor;
-            const CommandExecutionResult execution = executor.execute(device, command);
+            const CommandExecutionResult execution = transmitters.empty()
+                ? executor.execute(device, command)
+                : executor.execute(device, command, transmitters);
 
             nlohmann::json response = {
                 {"ok", execution.succeeded()},
@@ -416,6 +1307,10 @@ void TowerApiServer::handleClient(int clientFd)
                 {"status", executionStatusName(execution.status)},
                 {"message", execution.message}
             };
+            if (!transmitters.empty())
+            {
+                response["transmitters"] = transmitters;
+            }
 
             sendResponse(
                 clientFd,
@@ -430,6 +1325,239 @@ void TowerApiServer::handleClient(int clientFd)
         return;
     }
 
+    if (path == "/api/v1/rf/create" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+
+            RFProvisioningService provisioning;
+            RFModernDefaults defaults;
+            std::string error;
+
+            if (!provisioning.getNextModernDefaults(defaults, error))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {{"ok", false}, {"error", error}});
+                return;
+            }
+
+            const std::string deviceName =
+                json.at("deviceName").get<std::string>();
+            const std::string description =
+                json.value("description", defaults.description);
+            const std::string transmitterId =
+                json.value("transmitterId", defaults.transmitterId);
+            const int unit =
+                json.value("unit", defaults.unit);
+
+            RFDevice created;
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!provisioning.createModernPowerDevice(
+                    deviceName,
+                    description,
+                    transmitterId,
+                    unit,
+                    created,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {{"ok", false}, {"error", error}});
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"recordId", created.name},
+                    {"fileName", created.name + ".rf"},
+                    {"deviceName", created.deviceName},
+                    {"description", created.description},
+                    {"transmitterId", created.transmitterId},
+                    {"unit", created.unit},
+                    {"gpio", created.gpio},
+                    {"pulseUs", created.pulse},
+                    {"repeat", created.repeat},
+                    {"status", created.status}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {{"ok", false}, {"error", exception.what()}});
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/rf/pair/start" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string device =
+                json.at("device").get<std::string>();
+
+            RFDatabase database;
+            RFDevice definition;
+
+            if (!database.loadPowerDevice(device, definition))
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "RF power device not found"},
+                        {"device", device}
+                    });
+                return;
+            }
+
+            if (definition.protocol != "kaku_ac")
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Pair wizard only supports modern KAKU"},
+                        {"device", device}
+                    });
+                return;
+            }
+
+            std::string error;
+            std::lock_guard<std::mutex> lock(commandMutex);
+            RFCommandService rfService;
+
+            if (!rfService.send(device, "on", error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error},
+                        {"device", device}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", device},
+                    {"action", "on"},
+                    {"repeat", definition.repeat},
+                    {"message", "Pairing ON transmission sent"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {{"ok", false}, {"error", exception.what()}});
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/rf/pair/status" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string device =
+                json.at("device").get<std::string>();
+            const bool paired =
+                json.at("paired").get<bool>();
+
+            RFProvisioningService provisioning;
+            std::string error;
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            if (!provisioning.setPairingStatus(
+                    device,
+                    paired,
+                    error))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", error},
+                        {"device", device}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", device},
+                    {"status", paired ? "paired" : "unpaired"},
+                    {"message", paired
+                        ? "RF device marked paired"
+                        : "RF device marked unpaired"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {{"ok", false}, {"error", exception.what()}});
+        }
+
+        return;
+    }
+
     if (path == "/api/v1/rf/send" && method == "POST")
     {
         const auto headerEnd = request.find("\r\n\r\n");
@@ -441,16 +1569,316 @@ void TowerApiServer::handleClient(int clientFd)
             const std::string action = json.at("action").get<std::string>();
             std::string error;
             std::lock_guard<std::mutex> lock(commandMutex);
-            if (!runTowerSendCommand(device, action, error))
+            RFCommandService rfService;
+            if (!rfService.send(device, action, error))
             {
-                sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", error}});
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"transport", "RF"},
+                        {"status", "transmission_failed"},
+                        {"device", device},
+                        {"action", action},
+                        {"message", error},
+                        {"error", error}
+                    });
                 return;
             }
-            sendResponse(clientFd, 200, "OK", {{"ok", true}, {"device", device}, {"action", action}});
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"transport", "RF"},
+                    {"status", "success"},
+                    {"device", device},
+                    {"action", action}
+                });
         }
         catch (const std::exception& exception)
         {
             sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", exception.what()}});
+        }
+        return;
+    }
+
+    if (path == "/api/v1/rf/rename" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json =
+                nlohmann::json::parse(body);
+
+            const std::string deviceId =
+                json.at("device").get<std::string>();
+
+            const std::string newName =
+                json.at("name").get<std::string>();
+
+            if (deviceId.empty() ||
+                deviceId.find("..") != std::string::npos ||
+                deviceId.find('/') != std::string::npos ||
+                deviceId.find('\\') != std::string::npos)
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Invalid RF device id"}
+                    });
+                return;
+            }
+
+            if (newName.empty() ||
+                newName.size() > 120 ||
+                newName.find('\r') != std::string::npos ||
+                newName.find('\n') != std::string::npos)
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "RF device name must contain 1 to 120 characters"}
+                    });
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(
+                commandMutex
+            );
+
+            RFDatabase database;
+            RFDevice device;
+
+            if (!database.loadPowerDevice(
+                    deviceId,
+                    device))
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "RF power device not found"},
+                        {"device", deviceId}
+                    });
+                return;
+            }
+
+            // Keep device.name unchanged: it is the immutable .rf record ID.
+            // Only device.deviceName is the user-facing display name.
+            device.deviceName = newName;
+
+            if (!database.savePowerDevice(
+                    device,
+                    true))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {
+                        {"ok", false},
+                        {"error", "Failed to save renamed RF power device"},
+                        {"device", deviceId}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", deviceId},
+                    {"name", newName},
+                    {"message", "RF power device renamed"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/rf/delete" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string deviceId =
+                json.at("device").get<std::string>();
+
+            RFDatabase database;
+            RFDevice existing;
+
+            if (!database.loadPowerDevice(deviceId, existing))
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "RF power device not found"},
+                        {"device", deviceId}
+                    });
+                return;
+            }
+
+            if (!database.deletePowerDevice(deviceId))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {
+                        {"ok", false},
+                        {"error", "Failed to delete RF power device"},
+                        {"device", deviceId}
+                    });
+                return;
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", deviceId},
+                    {"message", "RF power device deleted"}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
+    if (path == "/api/v1/rf/group" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string action = json.at("action").get<std::string>();
+
+            if (action != "on" && action != "off")
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Action must be on or off"}
+                    });
+                return;
+            }
+
+            if (!json.contains("devices") ||
+                !json.at("devices").is_array() ||
+                json.at("devices").empty())
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "devices must be a non-empty array"}
+                    });
+                return;
+            }
+
+            nlohmann::json results = nlohmann::json::array();
+            bool allSucceeded = true;
+            RFCommandService rfService;
+            std::lock_guard<std::mutex> lock(commandMutex);
+
+            for (const auto& entry : json.at("devices"))
+            {
+                const std::string device = entry.get<std::string>();
+
+                std::string error;
+                const bool succeeded =
+                    rfService.send(device, action, error);
+
+                allSucceeded = allSucceeded && succeeded;
+
+                results.push_back({
+                    {"device", device},
+                    {"ok", succeeded},
+                    {"error", error}
+                });
+            }
+
+            sendResponse(
+                clientFd,
+                allSucceeded ? 200 : 500,
+                allSucceeded ? "OK" : "Internal Server Error",
+                {
+                    {"ok", allSucceeded},
+                    {"action", action},
+                    {"results", results}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
         }
         return;
     }
@@ -472,12 +1900,13 @@ void TowerApiServer::handleClient(int clientFd)
             nlohmann::json results = nlohmann::json::array();
             bool allSucceeded = true;
             RFDatabase database;
+            RFCommandService rfService;
             std::lock_guard<std::mutex> lock(commandMutex);
 
             for (const RFDevice& device : database.listPowerDevices())
             {
                 std::string error;
-                const bool succeeded = runTowerSendCommand(device.name, action, error);
+                const bool succeeded = rfService.send(device.name, action, error);
                 allSucceeded = allSucceeded && succeeded;
                 results.push_back({
                     {"device", device.name},

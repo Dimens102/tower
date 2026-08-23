@@ -220,6 +220,9 @@ struct CandidateCheck
     int secondObserved = -1;
 };
 
+constexpr unsigned int kCalibrationBatchSize = 10;
+constexpr unsigned int kCalibrationConfirmThreshold = 8;
+
 CandidateCheck testCalibrationCandidate(
     const IRCode& code,
     const std::string& transmitterName,
@@ -228,53 +231,58 @@ CandidateCheck testCalibrationCandidate(
 {
     CandidateCheck check;
 
-    if (!sendCalibrationBatch(code, transmitterName, carrierKhz, dutyPercent, 5))
+    if (!sendCalibrationBatch(
+            code, transmitterName, carrierKhz, dutyPercent, kCalibrationBatchSize))
     {
         check.firstObserved = -1;
         return check;
     }
 
-    check.firstObserved = promptObservedActions(5);
+    check.firstObserved = promptObservedActions(kCalibrationBatchSize);
     if (check.firstObserved < 0) return check;
 
-    if (check.firstObserved > 5)
+    if (check.firstObserved > static_cast<int>(kCalibrationBatchSize))
     {
         check.result = CandidateResult::OverTriggered;
         return check;
     }
 
-    // 0-3/5 is clearly not reliable enough to spend another batch on.
-    if (check.firstObserved <= 3)
+    // Below 80% is clearly not reliable enough to spend a confirmation batch on.
+    if (check.firstObserved < static_cast<int>(kCalibrationConfirmThreshold))
     {
         check.result = CandidateResult::Fail;
         return check;
     }
 
-    std::cout << "Result " << check.firstObserved
-              << "/5. Confirming the same setting with another 5 transmissions.\n";
+    std::cout << "Result " << check.firstObserved << "/" << kCalibrationBatchSize
+              << ". Confirming the same setting with another "
+              << kCalibrationBatchSize << " transmissions.\n";
 
-    if (!sendCalibrationBatch(code, transmitterName, carrierKhz, dutyPercent, 5))
+    if (!sendCalibrationBatch(
+            code, transmitterName, carrierKhz, dutyPercent, kCalibrationBatchSize))
     {
         check.secondObserved = -1;
         return check;
     }
 
-    check.secondObserved = promptObservedActions(5);
+    check.secondObserved = promptObservedActions(kCalibrationBatchSize);
     if (check.secondObserved < 0) return check;
 
-    if (check.secondObserved > 5)
+    if (check.secondObserved > static_cast<int>(kCalibrationBatchSize))
     {
         check.result = CandidateResult::OverTriggered;
         return check;
     }
 
-    if (check.firstObserved == 5 && check.secondObserved == 5)
+    if (check.firstObserved == static_cast<int>(kCalibrationBatchSize) &&
+        check.secondObserved == static_cast<int>(kCalibrationBatchSize))
     {
         check.result = CandidateResult::CleanPass;
         return check;
     }
 
-    if (check.firstObserved >= 4 && check.secondObserved >= 4)
+    if (check.firstObserved >= static_cast<int>(kCalibrationConfirmThreshold) &&
+        check.secondObserved >= static_cast<int>(kCalibrationConfirmThreshold))
     {
         check.result = CandidateResult::Marginal;
         return check;
@@ -314,12 +322,16 @@ bool calibrateDeviceIR(Device& device, DeviceDatabase& deviceDatabase)
         ? device.irProfile.carrierKhz
         : (code.carrierKhz > 0 ? code.carrierKhz : 38);
     unsigned int duty = device.irProfile.dutyPercent > 0 ? device.irProfile.dutyPercent : 33;
-    std::string calibrationTransmitter = device.transmitter.empty() ? "Tower-IR-TX-001" : device.transmitter;
+    // Temporary single-output calibration mode while the multi-emitter power
+    // distribution is being investigated.
+    std::string calibrationTransmitter = "Tower-IR-TX-001";
 
-    std::cout << "\nCalibration uses five discrete taps.\n"
+    std::cout << "\nCalibration transmitter is temporarily fixed to Tower-IR-TX-001.\n"
+              << "TX-002 through TX-006 will not be transmitted during calibration.\n";
+    std::cout << "\nCalibration uses 10 discrete taps per batch.\n"
               << "Each batch waits 5 seconds before starting, then sends one tap every second.\n"
-              << "A 4/5 or 5/5 result is confirmed with a second batch before it can change the profile.\n"
-              << "Exactly 5 actions in both batches is a clean pass; more than 5 means over-triggering.\n";
+              << "An 8/10, 9/10 or 10/10 result is confirmed with a second batch.\n"
+              << "Only 10/10 in both batches is a clean pass; more than 10 means over-triggering.\n";
 
     // Duty search: choose the lowest reliable duty. Preserve an already calibrated
     // value as the first candidate when revisiting an existing device.
@@ -351,156 +363,25 @@ bool calibrateDeviceIR(Device& device, DeviceDatabase& deviceDatabase)
         {
             duty = candidate;
             dutyFound = true;
-            centerCarrierHits = 5;
+            centerCarrierHits = static_cast<int>(kCalibrationBatchSize);
             break;
         }
 
         if (check.result == CandidateResult::Marginal)
         {
-            std::cout << candidate << "% duty was close but not clean in both confirmation batches. "
+            std::cout << candidate
+                      << "% duty was close but did not achieve 10/10 in both batches. "
                          "Trying the next duty.\n";
         }
     }
     if (!dutyFound)
     {
-        std::cout << "\nNo confirmed pass on " << calibrationTransmitter
-                  << " in the normal 33-60% range.\n"
-                  << "Scanning all six transmitters at " << carrier
-                  << " kHz / 60% duty before giving up.\n";
-
-        struct SurveyHit
-        {
-            std::string transmitter;
-            int observed = 0;
-        };
-        std::vector<SurveyHit> survey;
-
-        for (unsigned int output = 1; output <= 6; ++output)
-        {
-            const std::string name = "Tower-IR-TX-00" + std::to_string(output);
-            std::cout << "\nSurvey " << name << " at " << carrier << " kHz / 60% duty.\n";
-            if (!sendCalibrationBatch(code, name, carrier, 60, 5)) return false;
-            const int observed = promptObservedActions(5);
-            if (observed < 0) return false;
-            survey.push_back({name, observed});
-        }
-
-        std::sort(
-            survey.begin(),
-            survey.end(),
-            [](const SurveyHit& a, const SurveyHit& b)
-            {
-                return a.observed > b.observed;
-            });
-
-        if (!survey.empty() && survey.front().observed > 0)
-        {
-            calibrationTransmitter = survey.front().transmitter;
-            std::cout << "\nBest survey response: " << calibrationTransmitter
-                      << " with " << survey.front().observed << "/5 actions.\n";
-
-            // First test carrier neighborhood at the normal 60% ceiling.
-            for (int offset : {0, -1, 1})
-            {
-                const int candidateInt = static_cast<int>(carrier) + offset;
-                if (candidateInt < 20 || candidateInt > 60) continue;
-                const unsigned int candidateCarrier =
-                    static_cast<unsigned int>(candidateInt);
-
-                std::cout << "\nFallback carrier test: " << calibrationTransmitter
-                          << " at " << candidateCarrier << " kHz / 60% duty.\n";
-                const CandidateCheck check =
-                    testCalibrationCandidate(
-                        code, calibrationTransmitter, candidateCarrier, 60);
-
-                if (check.firstObserved < 0) return false;
-                if (check.result == CandidateResult::OverTriggered)
-                {
-                    std::cout << "Over-triggering detected; not using this setting.\n";
-                    continue;
-                }
-                if (check.result == CandidateResult::CleanPass)
-                {
-                    carrier = candidateCarrier;
-                    duty = 60;
-                    dutyFound = true;
-                    centerCarrierHits = 5;
-                    break;
-                }
-            }
-
-            if (!dutyFound)
-            {
-                std::cout
-                    << "\nNormal duty range still has no clean pass.\n"
-                    << "70% and 80% are EXPERIMENTAL for the current transmitter hardware.\n"
-                    << "They are not automatically considered electrically safe because actual "
-                       "peak LED current has not yet been measured.\n"
-                    << "Try experimental 70/80% on " << calibrationTransmitter
-                    << " only? [y/N]: ";
-
-                std::string highDutyAnswer;
-                if (!std::getline(std::cin, highDutyAnswer)) return false;
-
-                if (answerIsYes(highDutyAnswer, false))
-                {
-                    for (unsigned int highDuty : {70U, 80U})
-                    {
-                        bool highDutyPassed = false;
-
-                        for (int offset : {0, -1, 1})
-                        {
-                            const int candidateInt =
-                                static_cast<int>(carrier) + offset;
-                            if (candidateInt < 20 || candidateInt > 60) continue;
-                            const unsigned int candidateCarrier =
-                                static_cast<unsigned int>(candidateInt);
-
-                            std::cout << "\nEXPERIMENTAL: " << calibrationTransmitter
-                                      << " at " << candidateCarrier << " kHz / "
-                                      << highDuty << "% duty.\n";
-
-                            const CandidateCheck check =
-                                testCalibrationCandidate(
-                                    code,
-                                    calibrationTransmitter,
-                                    candidateCarrier,
-                                    highDuty);
-
-                            if (check.firstObserved < 0) return false;
-                            if (check.result == CandidateResult::OverTriggered)
-                            {
-                                std::cout << "Over-triggering detected; stopping this duty level.\n";
-                                break;
-                            }
-
-                            if (check.result == CandidateResult::CleanPass)
-                            {
-                                carrier = candidateCarrier;
-                                duty = highDuty;
-                                dutyFound = true;
-                                centerCarrierHits = 5;
-                                highDutyPassed = true;
-                                break;
-                            }
-                        }
-
-                        if (highDutyPassed) break;
-                    }
-                }
-            }
-        }
-
-        if (!dutyFound)
-        {
-            std::cout
-                << "\nNo reliably confirmed transmitter/carrier/duty combination was found.\n"
-                << "The existing device profile has not been replaced.\n";
-            return true;
-        }
-
-        std::cout << "\nFallback calibration succeeded using "
-                  << calibrationTransmitter << ".\n";
+        std::cout
+            << "\nNo reliably confirmed duty setting was found on Tower-IR-TX-001.\n"
+            << "TX-002 through TX-006 are currently excluded from calibration while "
+               "the multi-emitter power distribution is being investigated.\n"
+            << "The existing device profile has not been replaced.\n";
+        return true;
     }
 
     // Carrier refinement around the analyzer-selected tuned receiver.
@@ -516,11 +397,13 @@ bool calibrateDeviceIR(Device& device, DeviceDatabase& deviceDatabase)
         const unsigned int candidate = static_cast<unsigned int>(candidateInt);
 
         std::cout << "\nCarrier check: " << candidate << " kHz at " << duty << "% duty.\n";
-        if (!sendCalibrationBatch(code, calibrationTransmitter, candidate, duty, 5)) return false;
-        const int observed = promptObservedActions(5);
+        if (!sendCalibrationBatch(
+                code, calibrationTransmitter, candidate, duty, kCalibrationBatchSize))
+            return false;
+        const int observed = promptObservedActions(kCalibrationBatchSize);
         if (observed < 0) return false;
 
-        if (observed > 5)
+        if (observed > static_cast<int>(kCalibrationBatchSize))
         {
             std::cout << "Over-triggering detected at " << candidate
                       << " kHz; keeping center carrier " << carrier << " kHz.\n";
@@ -548,100 +431,17 @@ bool calibrateDeviceIR(Device& device, DeviceDatabase& deviceDatabase)
               << "Transmitter : " << calibrationTransmitter << "\n"
               << "Command     : " << commandName << "\n";
 
-    std::cout << "\nQualify all six transmitters with 5 sends each? [Y/n]: ";
-    if (!std::getline(std::cin, answer)) return false;
-    if (answerIsYes(answer, true))
-    {
-        // Build a complete proposed qualification result first. Do not destroy
-        // the live profile while tests are still running.
-        std::vector<std::string> proposedVerified;
-        std::vector<std::string> proposedUnreliable;
-        std::vector<std::string> proposedIncompatible;
-        std::map<std::string, unsigned int> proposedDutyOverrides;
+    // Temporary TX-001-only qualification mode. The primary calibration above
+    // already confirmed this output, so do not pulse TX-002..TX-006.
+    device.irProfile.verifiedTransmitters = {"Tower-IR-TX-001"};
+    device.irProfile.unreliableTransmitters.clear();
+    device.irProfile.incompatibleTransmitters.clear();
+    device.irProfile.transmitterDutyPercent.clear();
 
-        for (unsigned int output = 1; output <= 6; ++output)
-        {
-            const std::string name = "Tower-IR-TX-00" + std::to_string(output);
-            unsigned int qualifiedDuty = duty;
-            bool verified = false;
-            bool marginalSeen = false;
-            bool overTriggered = false;
+    std::cout << "\nTX-001-only calibration mode\n"
+              << "Verified transmitter : Tower-IR-TX-001\n"
+              << "TX-002..TX-006        : not tested / not classified\n";
 
-            std::vector<unsigned int> transmitterDuties{duty};
-            for (unsigned int candidate : {33U, 40U, 50U, 60U})
-            {
-                if (candidate > duty &&
-                    std::find(transmitterDuties.begin(), transmitterDuties.end(), candidate) ==
-                        transmitterDuties.end())
-                    transmitterDuties.push_back(candidate);
-            }
-
-            for (unsigned int candidateDuty : transmitterDuties)
-            {
-                std::cout << "\nTesting " << name << " at " << carrier << " kHz / "
-                          << candidateDuty << "% duty.\n";
-
-                const CandidateCheck check =
-                    testCalibrationCandidate(code, name, carrier, candidateDuty);
-                if (check.firstObserved < 0 || check.secondObserved < -1) return false;
-
-                if (check.result == CandidateResult::OverTriggered)
-                {
-                    overTriggered = true;
-                    break;
-                }
-
-                if (check.result == CandidateResult::CleanPass)
-                {
-                    qualifiedDuty = candidateDuty;
-                    verified = true;
-                    break;
-                }
-
-                if (check.result == CandidateResult::Marginal)
-                {
-                    marginalSeen = true;
-                    std::cout << name << " was close at " << candidateDuty
-                              << "% but did not produce two clean 5/5 batches.\n";
-                }
-
-                if (candidateDuty < 60)
-                    std::cout << "Trying a higher duty for this transmitter only.\n";
-            }
-
-            if (verified)
-            {
-                proposedVerified.push_back(name);
-                if (qualifiedDuty != duty)
-                {
-                    proposedDutyOverrides[name] = qualifiedDuty;
-                    std::cout << name << " verified with per-transmitter duty override: "
-                              << qualifiedDuty << "%.\n";
-                }
-                else
-                {
-                    std::cout << name << " verified at the device default duty: "
-                              << duty << "%.\n";
-                }
-            }
-            else if (overTriggered || marginalSeen)
-            {
-                proposedUnreliable.push_back(name);
-                std::cout << name << " classified as unreliable for this device.\n";
-            }
-            else
-            {
-                proposedIncompatible.push_back(name);
-                std::cout << name << " classified as incompatible for this device.\n";
-            }
-        }
-
-        // Only now replace the old qualification data.
-        device.irProfile.verifiedTransmitters = std::move(proposedVerified);
-        device.irProfile.unreliableTransmitters = std::move(proposedUnreliable);
-        device.irProfile.incompatibleTransmitters = std::move(proposedIncompatible);
-        device.irProfile.transmitterDutyPercent = std::move(proposedDutyOverrides);
-    }
 
     if (!deviceDatabase.saveDevice(device))
     {
@@ -706,28 +506,12 @@ int runLearnWizard()
     device.location = promptValue("Location", device.location);
     if (!std::cin) return 1;
 
+    // Temporary single-transmitter mode while the multi-emitter power
+    // distribution is being investigated.
+    device.transmitter = "Tower-IR-TX-001";
     std::cout
-        << "\nUse transmitter 001 until the completed IR array hardware is "
-           "installed and verified.\n"
-        << "Enter 001-006 or a full Tower-IR-TX name.\n";
-
-    while (true)
-    {
-        const std::string requested = promptValue(
-            "Transmitter",
-            device.transmitter,
-            "Tower-IR-TX-001");
-        if (!std::cin) return 1;
-
-        const std::string normalized = normalizeTransmitter(requested);
-        if (!normalized.empty())
-        {
-            device.transmitter = normalized;
-            break;
-        }
-
-        std::cout << "Choose transmitter 001 through 006.\n";
-    }
+        << "\nTransmitter fixed to Tower-IR-TX-001 while TX-002 through TX-006 "
+           "remain out of service.\n";
 
     // The wizard's transmitter selection is a device-level setting.  Apply
     // it to existing IR commands as well as every command recorded below.

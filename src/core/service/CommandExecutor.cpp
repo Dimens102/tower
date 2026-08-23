@@ -11,6 +11,7 @@
 #include "devices/rf/rf_device.h"
 #include "devices/rf/rf_sender.h"
 
+#include <algorithm>
 #include <exception>
 
 namespace
@@ -67,6 +68,156 @@ CommandExecutionResult CommandExecutor::execute(
     return result(
         CommandExecutionStatus::CommandNotFound,
         "Command not found: " + deviceId + "." + commandId);
+}
+
+CommandExecutionResult CommandExecutor::execute(
+    const std::string& deviceId,
+    const std::string& commandId,
+    const std::vector<std::string>& transmitters)
+{
+    if (transmitters.empty())
+    {
+        return execute(deviceId, commandId);
+    }
+
+    DeviceDatabase database;
+    Device device;
+
+    if (!database.deviceExists(deviceId))
+    {
+        return result(
+            CommandExecutionStatus::DeviceNotFound,
+            "Device not found: " + deviceId);
+    }
+
+    if (!database.loadDevice(deviceId, device))
+    {
+        return result(
+            CommandExecutionStatus::DeviceLoadFailed,
+            "Failed to load device: " + deviceId);
+    }
+
+    if (!device.enabled)
+    {
+        return result(
+            CommandExecutionStatus::DeviceDisabled,
+            "Device is disabled: " + deviceId);
+    }
+
+    const DeviceCommand* matchedCommand = nullptr;
+    for (const DeviceCommand& command : device.commands)
+    {
+        if (command.id == commandId)
+        {
+            matchedCommand = &command;
+            break;
+        }
+    }
+
+    if (matchedCommand == nullptr)
+    {
+        return result(
+            CommandExecutionStatus::CommandNotFound,
+            "Command not found: " + deviceId + "." + commandId);
+    }
+
+    if (matchedCommand->transport != TransportType::IR)
+    {
+        return execute(*matchedCommand);
+    }
+
+    std::vector<std::string> attemptedTransmitters;
+    std::vector<std::string> successfulTransmitters;
+    std::vector<std::string> failedTransmitters;
+    CommandExecutionResult lastFailure = result(
+        CommandExecutionStatus::TransmissionFailed,
+        "IR transmission failed.",
+        TransportType::IR);
+
+    for (const std::string& transmitterName : transmitters)
+    {
+        if (transmitterName.empty())
+        {
+            continue;
+        }
+
+        if (std::find(
+                attemptedTransmitters.begin(),
+                attemptedTransmitters.end(),
+                transmitterName) != attemptedTransmitters.end())
+        {
+            continue;
+        }
+        attemptedTransmitters.push_back(transmitterName);
+
+        DeviceCommand overridden = *matchedCommand;
+        overridden.transmitter = transmitterName;
+        const CommandExecutionResult execution = execute(overridden);
+        if (execution.succeeded())
+        {
+            successfulTransmitters.push_back(transmitterName);
+        }
+        else
+        {
+            failedTransmitters.push_back(
+                transmitterName + " (" + execution.message + ")");
+            lastFailure = execution;
+        }
+    }
+
+    if (attemptedTransmitters.empty())
+    {
+        return result(
+            CommandExecutionStatus::InvalidMapping,
+            "No valid IR transmitters were selected.",
+            TransportType::IR);
+    }
+
+    if (!successfulTransmitters.empty())
+    {
+        std::string message = "IR execution complete on " +
+            std::to_string(successfulTransmitters.size()) + "/" +
+            std::to_string(attemptedTransmitters.size()) + " transmitter(s): ";
+
+        for (std::size_t i = 0; i < successfulTransmitters.size(); ++i)
+        {
+            if (i > 0)
+            {
+                message += ", ";
+            }
+            message += successfulTransmitters[i];
+        }
+
+        if (!failedTransmitters.empty())
+        {
+            message += ". Failed: ";
+            for (std::size_t i = 0; i < failedTransmitters.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    message += "; ";
+                }
+                message += failedTransmitters[i];
+            }
+        }
+
+        return result(
+            CommandExecutionStatus::Success,
+            message,
+            TransportType::IR);
+    }
+
+    std::string message = "IR execution failed on all selected transmitters: ";
+    for (std::size_t i = 0; i < failedTransmitters.size(); ++i)
+    {
+        if (i > 0)
+        {
+            message += "; ";
+        }
+        message += failedTransmitters[i];
+    }
+
+    return result(lastFailure.status, message, TransportType::IR);
 }
 
 CommandExecutionResult CommandExecutor::execute(

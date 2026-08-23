@@ -285,3 +285,52 @@ sight yet lose room-bounce range when a reflective wall or projection surface
 is moved. Calibration therefore records transmitter/device compatibility, not
 a universal optical-range guarantee.
 
+
+
+## Windows / API learning service (v45)
+
+The original terminal `tower learn` path and Tower Control now share
+`IRLearningService`.
+
+A Windows learning request is deliberately split into capture and save:
+
+```text
+Create device
+    -> capture + analyze
+    -> inspect result
+    -> Retry OR Save
+```
+
+This is important for duplicate detection: the HTTP server never waits on
+terminal input.
+
+### API
+
+```text
+POST /api/v1/ir/devices/create
+POST /api/v1/ir/learn/capture
+POST /api/v1/ir/learn/save
+```
+
+`/api/v1/ir/learn/capture` retains the raw capture under `captures/ir/` and
+returns the winning protocol, address, command, carrier candidate, receiver,
+frame information, full analyzer rows, and duplicate command names.
+
+`/api/v1/ir/learn/save` re-analyzes that retained capture and performs the same
+protected database save used by the CLI. Existing command replacement still
+requires force, and duplicate decoded signals require explicit acceptance.
+
+Calibration remains the next wizard phase after the create/capture/save path
+has been verified.
+
+
+## Tower Control receiver diagnostics and calibration integration (v50)
+
+Tower Control now exposes the six-receiver capture statistics directly after
+each successful recording. `Timings` is the number of accepted mode2 timing
+events and `Pulses` is the number of pulse entries.
+
+IR transmission calibration is now available through Pi-side
+`IRCalibrationService` HTTP endpoints. This GUI integration intentionally
+preserves the current calibration algorithm and TX-001-only limitation.
+Calibration algorithm refinement remains a separate future task.

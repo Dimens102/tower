@@ -97,6 +97,49 @@ implementation.
 Tower should expose a stable authenticated API that can also be used by future
 desktop applications.
 
+
+## Desktop control application v2
+
+The Windows control application should become Tower's primary desktop user
+interface while remaining a replaceable client of the Tower service.
+
+Required behaviour:
+
+- Resolve the recurring HTTP 400/stale-service problem so normal use does not
+  require manually restarting Tower services.
+- Operate as an auto-hiding panel attached to the right edge of a selected
+  monitor.
+- Support multi-monitor systems and remember the selected monitor.
+- Open to approximately one third of the selected monitor when the pointer
+  reaches the right screen edge.
+- Allow configurable panel width, auto-hide delay, appearance, and related UI
+  preferences.
+- Show artwork of the original physical remote alongside the Tower controls.
+- Support transparent remote artwork so the UI background can be customized.
+- Present commands in functional groups and approximately reproduce useful
+  physical relationships from the original remote.
+- Give command buttons a visible pressed/held state.
+- Support hold/repeat semantics for commands where repeated transmission is
+  meaningful.
+- Show TX-001 through TX-006 for IR devices and allow one or more transmitters
+  to be selected for a remote/device.
+- Clearly show which transmitter buttons are active.
+- Allow custom actions such as executing Volume Up ten times.
+- Show small icons or thumbnails beside RF controls where useful for visual
+  recognition.
+- Provide a Programs page for creating and managing schedules and command
+  sequences.
+- Store and execute all programs on Tower itself so automations continue when
+  the Windows PC is shut down.
+- Prepare program definitions for future voice-intent mappings.
+- Allow a device/remote profile to be deleted from the Windows application,
+  with the actual deletion performed through Tower's API.
+
+The Windows client must not directly manipulate IR/RF files or implement a
+scheduler. It should discover logical devices, commands, transmitter routing,
+and automation objects through Tower's network API.
+
+
 ## 4. Voice control
 
 Tower must support local voice commands through a connected microphone.

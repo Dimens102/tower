@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "devices/device_command.h"
 
@@ -38,6 +39,11 @@ public:
     CommandExecutionResult execute(
         const std::string& deviceId,
         const std::string& commandId);
+
+    CommandExecutionResult execute(
+        const std::string& deviceId,
+        const std::string& commandId,
+        const std::vector<std::string>& transmitters);
 
     CommandExecutionResult execute(
         const DeviceCommand& command);

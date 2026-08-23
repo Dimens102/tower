@@ -1,6 +1,6 @@
 # Tower Roadmap
 
-> Last updated: 2026-08-05
+> Last updated: 2026-08-13
 
 ---
 
@@ -232,6 +232,66 @@ Status: 45%
 Interfaces should edit and invoke Tower objects. They must not contain scheduling, protocol, or hardware-access logic.
 
 ---
+
+
+## Windows Control Application v2
+
+Status: 5%
+
+The Windows client is being promoted from a simple command sender to Tower's
+primary desktop control surface. Tower remains the source of truth and the
+Windows application must use the shared Tower API rather than implementing IR,
+RF, scheduling, or device-storage logic locally.
+
+### Phase 1 - Stability and sidebar shell
+
+[ ] Diagnose and fix the recurring HTTP 400/stale-service failure.
+[ ] Add client-side health checking and useful error diagnostics.
+[ ] Recover/reconnect automatically where safe instead of requiring manual service restarts.
+[ ] Implement a hidden right-edge sidebar window.
+[ ] Support multiple monitors and allow the user to choose the target monitor.
+[ ] Slide the sidebar out when the mouse reaches the selected monitor's right edge.
+[ ] Default the open width to approximately one third of the selected monitor.
+[ ] Add persistent UI settings for target monitor, sidebar width, hide delay, and appearance.
+[ ] Load device and command data dynamically from Tower.
+
+### Phase 2 - Remote-control interface
+
+[ ] Show an image of the original physical remote on the left side of the panel.
+[ ] Support transparent-background remote artwork.
+[ ] Show Tower command buttons on the right side of the panel.
+[ ] Group commands into useful categories.
+[ ] Arrange related controls spatially where practical, for example Volume Up above Volume Down.
+[ ] Give buttons clear pressed/held visual feedback.
+[ ] Support press-and-hold/repeat behavior for suitable commands such as Denon volume.
+[ ] Add per-device IR transmitter selection.
+[ ] Always show transmitter selectors TX-001 through TX-006.
+[ ] Allow one or more transmitter selectors to be active at the same time.
+[ ] Visually distinguish selected and unselected transmitters.
+[ ] Do not hide unavailable/experimental transmitters; the user must still be able to see all six.
+[ ] Add custom action/macro buttons below the normal remote controls.
+[ ] Allow a custom action to execute a command a configured number of times, for example Volume Up x10.
+[ ] Add device/profile deletion from the Windows application with confirmation.
+[ ] Refresh the client after a device/profile is deleted from Tower.
+
+### Phase 3 - Programs, automation, and visual polish
+
+[ ] Add a Programs tab.
+[ ] Create, edit, enable, disable, and delete time-based programs from Windows.
+[ ] Store and execute programs on the Raspberry Pi, not on the Windows PC.
+[ ] Programs must reference logical Tower devices and commands.
+[ ] Support ordered command sequences and repeat counts.
+[ ] Prepare program/action definitions for later voice-command mapping.
+[ ] Add RF command icons/thumbnails to improve visual recognition.
+[ ] Add configurable sidebar colors and visual theme settings.
+[ ] Track all Windows-client design decisions and implementation progress in `docs/Windows-Control-App.md`.
+
+### Later voice integration
+
+[ ] A separate voice-processing Raspberry Pi may perform speech recognition and intent detection.
+[ ] Voice processing must invoke the same logical Tower command API as the Windows client.
+[ ] Do not duplicate IR/RF protocol knowledge inside the voice-processing node.
+
 
 # Future Transports
 

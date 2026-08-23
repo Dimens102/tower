@@ -1,5 +1,69 @@
 # Tower Changelog
 
+## v0.11.01 - Tower Control management and UI integration (2026-08-23)
+
+### Added
+
+- Added the Home page as the default Tower Control landing page with
+  configurable IR-device artwork and direct remote opening.
+- Added full Windows IR-device management including ordering, deletion,
+  display-name rename, transmitter selection, learned-command rendering, and
+  integrated IR learning/calibration workflows.
+- Added six-receiver IR learning diagnostics and global duplicate detection.
+- Added visible IR calibration tap/countdown progress and automatic wizard
+  completion after a successful calibration save.
+- Added RF power provisioning, pairing state, presets, deletion, and
+  display-name rename from Tower Control.
+- Added persistent Cards/List view selection for RF power devices.
+- Added persistent sensor cards with an Aquarium image and Cards/List/Details
+  layouts using the Settings-style view controls.
+- Added the Raspberry Pi system clock to the Tower Control header.
+- Added authenticated Pi API support required by the Windows management UI,
+  including IR/RF rename and RF provisioning/management actions.
+
+### Changed
+
+- Tower Control startup now uses local IR and RF inventory caches so Home,
+  IR Remotes, and RF Power can render before background synchronization.
+- RF Power is pre-rendered from cache while the application is still hidden,
+  eliminating the visible top-to-bottom control build during first tab access.
+- Background IR/RF refreshes are cache-aware and quiet during startup; a
+  transient read failure no longer unnecessarily replaces a usable cached view.
+- Identical IR and RF inventory responses no longer rebuild already-rendered
+  controls.
+- Sensor refreshes update existing labels in place instead of clearing and
+  rebuilding the entire Sensors page.
+- Sensor Cards view stacks blocks vertically; List arranges the same full blocks
+  horizontally; Details provides a compact tabular overview.
+- Improved Tower Control header, clock, RF list spacing, button styling,
+  remote-image handling, and sidebar/tab responsiveness.
+- Updated the project and runtime version to `0.11.01`.
+
+### Fixed
+
+- Fixed startup RF and IR refresh races that could briefly show false red
+  refresh-failure status messages.
+- Fixed RF Power and Home controls flashing or rebuilding when switching tabs.
+- Fixed PowerShell WinForms event-scope handling that prevented IR rename from
+  returning the entered name.
+- Restored the IR remote preview-heading callback removed during an earlier UI
+  refactor.
+- Restored the sensor refresh failure handler after the persistent-card
+  conversion.
+- Fixed RF list width resizing so the configured right-side spacing is not
+  silently forced back to the old width.
+- Preserved RF execution through the direct `RFCommandService` path instead of
+  depending on a deleted executable or `/proc/self/exe`.
+
+### Verified
+
+- Learned IR commands can be captured, saved, rendered, and transmitted from
+  the Windows application.
+- RF controls remain responsive using the direct service path and cached UI.
+- IR and RF display-name changes preserve their immutable internal record IDs.
+- Home, Sensors, RF Power, and IR Remotes now reopen without unnecessary
+  network refreshes or visible control reconstruction.
+
 ## v0.10.12 - IR learning and transmission calibration (2026-08-12)
 
 ### Added

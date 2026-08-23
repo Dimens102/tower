@@ -11,6 +11,7 @@ Command parseCommand(const char* text)
 	if (std::strcmp(text, "monitor") == 0) return Command::Monitor;
 	if (std::strcmp(text, "service") == 0) return Command::Service;
     if (std::strcmp(text, "send") == 0) return Command::Send;
+    if (std::strcmp(text, "rf") == 0) return Command::RF;
     if (std::strcmp(text, "learn") == 0) return Command::Learn;
     if (std::strcmp(text, "learn-kernel") == 0) return Command::LearnKernel;
     if (std::strcmp(text, "ir-receivers") == 0) return Command::IRReceivers;

@@ -7,6 +7,7 @@ enum class Command
     Monitor,
     Service,
     Send,
+    RF,
     Learn,
     LearnKernel,
     IRReceivers,

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(tower VERSION 0.10.12 LANGUAGES C CXX)
+project(tower VERSION 0.11.01 LANGUAGES C CXX)
 
 find_package(CURL REQUIRED)
 

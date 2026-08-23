@@ -1,12 +1,22 @@
 {
     "id": "Generic 3-Way HDMI Switch",
-    "name": "Generic 3-Way HDMI Switch",
+    "name": "HDMI Switch",
     "type": "IR Device",
     "manufacturer": "HDMI",
     "model": "",
     "remoteName": "HDMI Switch Remote",
     "location": "Living Room",
     "transmitter": "Tower-IR-TX-004",
+    "irProfile": {
+        "calibrated": false,
+        "carrierKhz": 0,
+        "dutyPercent": 0,
+        "transmitterDutyPercent": {},
+        "calibrationCommand": "",
+        "verifiedTransmitters": [],
+        "unreliableTransmitters": [],
+        "incompatibleTransmitters": []
+    },
     "enabled": true,
     "aliases": [],
     "commands": [
