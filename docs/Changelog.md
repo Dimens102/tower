@@ -1,5 +1,59 @@
 # Tower Changelog
 
+## v0.11.02 - IR remote command editor (2026-08-23)
+
+### Added
+
+- Replaced the IR remote pencil action with one **Edit IR Remote** window.
+- Added per-command **Re-record** and **Remove** actions plus **+ Add Command**.
+- Added a focused command-learning dialog that reuses the existing six-receiver
+  capture/analyze/save pipeline for both new commands and deliberate replacements.
+- Added authenticated single-command deletion with safe preservation of shared IR
+  recordings and protection against removing the final command from a remote.
+- Added per-remote **Edit Layout** mode for IR command buttons with drag/drop,
+  explicit **Save Layout** / **Cancel**, persistent grid coordinates, empty-cell
+  placement, and swap-on-drop behavior.
+- Saved IR command layouts preserve deliberate empty columns when Tower Control is
+  widened; when the sidebar is temporarily narrower than the saved grid, the UI
+  compacts only the display and restores the saved positions when width returns.
+- Edit Layout now supports dragging commands between category blocks and stores the
+  chosen target group together with the command coordinates.
+- Added a small edit-mode color palette with Auto plus six Tower UI colors; button
+  color overrides are saved per command and remain independent of group placement.
+- Added per-command button-size editing with **Default**, **1x1**, **2x1**,
+  **1x2**, and **2x2** grid-span presets; size is persisted with position/group/color.
+- Button-size persistence uses independent row/column spans so larger presets can be
+  added later without changing the saved-layout format or grid engine.
+
+### Fixed
+
+- Fixed IR command buttons retaining a previous 2-cell row/column span after
+  being resized smaller; 2x1/1x2/2x2 buttons can now return to 1x1 or any
+  other smaller preset correctly.
+
+### Changed
+
+- Updated the project and runtime version to `0.11.02`.
+- Moved **Edit Layout** / **Save Layout** / **Cancel** onto the Active IR
+  transmitters row, aligned at the far-right edge beside the Calibrate controls.
+- IR remote display-name rename now lives in the Edit IR Remote window instead of
+  a separate rename-only dialog.
+- Re-recording uses the existing forced replacement path, which keeps the learner's
+  `.tower-learn-backup` safety copy before overwriting an existing IR recording.
+- Returning from **+ Add Command** or **Re-record** now reselects and scrolls to
+  the command that was just created or updated in the Edit IR Remote list.
+- Edit-mode grid guides now draw only internal row/column separators instead of
+  boxing every cell, and the IR header has extra height to avoid clipping the
+  Edit/Save Layout controls.
+- Managed IR command grids now keep every column at the exact configured cell
+  width; unused sidebar width no longer stretches the right-most command column.
+- Fixed-width managed IR grids are centred within their group box so single-row
+  command sets no longer sit visibly left-biased when spare width remains.
+- IR command group borders now use equal left/right outer margins and align their
+  right edge with the Edit/Save Layout toolbar across sidebar width changes.
+- Rounded/pill/chamfer control outlines are painted one pixel inside their clipped
+  region so anti-aliased borders remain crisp instead of losing half the stroke.
+
 ## v0.11.01 - Tower Control management and UI integration (2026-08-23)
 
 ### Added

@@ -661,6 +661,16 @@
             "transportCommand": "Z2-Sleep",
             "transmitter": "Tower-IR-TX-001",
             "enabled": true
+        },
+        {
+            "id": "Eco Mode",
+            "name": "Eco Mode",
+            "description": "Enable, Disable, Auto - Eco Mode",
+            "transport": "IR",
+            "transportDevice": "AVR X2800H",
+            "transportCommand": "Eco Mode",
+            "transmitter": "Tower-IR-TX-001",
+            "enabled": true
         }
     ]
 }

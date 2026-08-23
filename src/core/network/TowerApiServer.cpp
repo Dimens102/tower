@@ -1058,6 +1058,282 @@ void TowerApiServer::handleClient(int clientFd)
         return;
     }
 
+    if (path == "/api/v1/ir/commands/delete" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+
+        try
+        {
+            const auto json = nlohmann::json::parse(body);
+            const std::string deviceId =
+                json.at("device").get<std::string>();
+            const std::string commandId =
+                json.at("command").get<std::string>();
+
+            const auto invalidName = [](const std::string& value)
+            {
+                return value.empty() ||
+                    value == "." ||
+                    value == ".." ||
+                    value.find('/') != std::string::npos ||
+                    value.find('\\') != std::string::npos;
+            };
+
+            if (invalidName(deviceId) || invalidName(commandId))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Invalid device or command id"}
+                    });
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(commandMutex);
+            DeviceDatabase database;
+            Device device;
+
+            if (!database.loadDevice(deviceId, device))
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "Device not found: " + deviceId}
+                    });
+                return;
+            }
+
+            std::size_t irCommandCount = 0;
+            for (const DeviceCommand& candidate : device.commands)
+            {
+                if (candidate.transport == TransportType::IR)
+                {
+                    ++irCommandCount;
+                }
+            }
+
+            if (irCommandCount <= 1)
+            {
+                sendResponse(
+                    clientFd,
+                    409,
+                    "Conflict",
+                    {
+                        {"ok", false},
+                        {"error", "The last IR command cannot be removed. Delete the remote instead."}
+                    });
+                return;
+            }
+
+            auto selected = device.commands.end();
+            for (auto it = device.commands.begin();
+                 it != device.commands.end();
+                 ++it)
+            {
+                if (it->id == commandId &&
+                    it->transport == TransportType::IR)
+                {
+                    selected = it;
+                    break;
+                }
+            }
+
+            if (selected == device.commands.end())
+            {
+                sendResponse(
+                    clientFd,
+                    404,
+                    "Not Found",
+                    {
+                        {"ok", false},
+                        {"error", "IR command not found: " + commandId}
+                    });
+                return;
+            }
+
+            const Device originalDevice = device;
+            const std::string transportDevice =
+                selected->transportDevice.empty()
+                    ? deviceId
+                    : selected->transportDevice;
+            const std::string transportCommand =
+                selected->transportCommand.empty()
+                    ? selected->id
+                    : selected->transportCommand;
+
+            if (invalidName(transportDevice) ||
+                invalidName(transportCommand))
+            {
+                sendResponse(
+                    clientFd,
+                    400,
+                    "Bad Request",
+                    {
+                        {"ok", false},
+                        {"error", "Invalid IR transport mapping"}
+                    });
+                return;
+            }
+
+            device.commands.erase(selected);
+
+            if (!database.saveDevice(device))
+            {
+                sendResponse(
+                    clientFd,
+                    500,
+                    "Internal Server Error",
+                    {
+                        {"ok", false},
+                        {"error", "Failed to remove command from device profile"}
+                    });
+                return;
+            }
+
+            bool shared = false;
+            for (const std::string& otherId : database.listDevices())
+            {
+                Device other;
+                if (!database.loadDevice(otherId, other))
+                {
+                    continue;
+                }
+
+                for (const DeviceCommand& otherCommand : other.commands)
+                {
+                    const std::string otherTransportDevice =
+                        otherCommand.transportDevice.empty()
+                            ? other.id
+                            : otherCommand.transportDevice;
+                    const std::string otherTransportCommand =
+                        otherCommand.transportCommand.empty()
+                            ? otherCommand.id
+                            : otherCommand.transportCommand;
+
+                    if (otherCommand.transport == TransportType::IR &&
+                        otherTransportDevice == transportDevice &&
+                        otherTransportCommand == transportCommand)
+                    {
+                        shared = true;
+                        break;
+                    }
+                }
+
+                if (shared)
+                {
+                    break;
+                }
+            }
+
+            bool removedIrData = false;
+            if (!shared)
+            {
+                const std::filesystem::path irPath =
+                    std::filesystem::path("data") /
+                    "ir" /
+                    "devices" /
+                    transportDevice /
+                    (transportCommand + ".ir");
+
+                const std::filesystem::path backupPath =
+                    irPath.string() + ".tower-learn-backup";
+
+                std::error_code existsError;
+                const bool irExists =
+                    std::filesystem::exists(irPath, existsError);
+
+                if (existsError)
+                {
+                    database.saveDevice(originalDevice);
+
+                    sendResponse(
+                        clientFd,
+                        500,
+                        "Internal Server Error",
+                        {
+                            {"ok", false},
+                            {"error", "Could not inspect IR recording: " + existsError.message()}
+                        });
+                    return;
+                }
+
+                if (irExists)
+                {
+                    std::error_code removeError;
+                    std::filesystem::remove(irPath, removeError);
+
+                    if (removeError)
+                    {
+                        database.saveDevice(originalDevice);
+
+                        sendResponse(
+                            clientFd,
+                            500,
+                            "Internal Server Error",
+                            {
+                                {"ok", false},
+                                {"error", "Could not remove IR recording: " + removeError.message()}
+                            });
+                        return;
+                    }
+
+                    removedIrData = true;
+                }
+
+                // A replacement backup is only safety history. Remove it on a
+                // best-effort basis; failure must not restore a logical command
+                // whose active .ir recording has already been deleted.
+                std::error_code backupExistsError;
+                if (std::filesystem::exists(
+                        backupPath,
+                        backupExistsError) &&
+                    !backupExistsError)
+                {
+                    std::error_code backupRemoveError;
+                    std::filesystem::remove(
+                        backupPath,
+                        backupRemoveError);
+                }
+            }
+
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"device", deviceId},
+                    {"command", commandId},
+                    {"removedIrData", removedIrData},
+                    {"preservedSharedIrData", shared},
+                    {"message", "Deleted IR command: " + commandId}
+                });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                400,
+                "Bad Request",
+                {
+                    {"ok", false},
+                    {"error", exception.what()}
+                });
+        }
+
+        return;
+    }
+
     if (path == "/api/v1/devices/delete" && method == "POST")
     {
         const auto headerEnd = request.find("\r\n\r\n");

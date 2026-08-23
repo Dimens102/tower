@@ -85,7 +85,7 @@ function Get-TowerConfig {
         server = $server.TrimEnd('/')
         token = $token
     }
-    $config | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
+    $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
     return $config
 }
 
@@ -136,6 +136,9 @@ if ($null -eq $config.PSObject.Properties['selectedIrTransmitters']) {
 if ($null -eq $config.PSObject.Properties['irDeviceOrder']) {
     $config | Add-Member -NotePropertyName irDeviceOrder -NotePropertyValue @()
 }
+if ($null -eq $config.PSObject.Properties['irCommandLayouts']) {
+    $config | Add-Member -NotePropertyName irCommandLayouts -NotePropertyValue @()
+}
 
 if ($null -eq $config.PSObject.Properties['rfPreset1Devices']) {
     $config | Add-Member -NotePropertyName rfPreset1Devices -NotePropertyValue @()
@@ -163,7 +166,7 @@ if ([string]$config.sensorViewMode -notin @('cards', 'list', 'details')) {
 
 function Save-TowerConfig {
     New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
-    $config | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
+    $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
 }
 
 $headers = @{ Authorization = "Bearer $($config.token)" }
@@ -177,6 +180,13 @@ $script:irTransmitterButtons = @{}
 $script:selectedIrTransmitters = @()
 $script:currentIrDevice = $null
 $script:denonZoneMode = 'Main'
+$script:irLayoutEditMode = $false
+$script:irLayoutDeviceId = ''
+$script:irLayoutWorking = @{}
+$script:irLayoutDraggedEntry = $null
+$script:irLayoutSelectedEntry = $null
+$script:irLayoutGroupCounts = @{}
+$script:irLayoutScopeKey = 'Default'
 $script:sensorRefreshFailures = 0
 $script:remotePreviewFullTitle = 'Remote'
 
@@ -547,13 +557,18 @@ function Add-TowerShapeBorder(
         # clipped by Windows. That was especially obvious on the unfilled
         # Settings chamfer buttons: the left/right vertical edges disappeared.
         #
-        # Keep the Region itself full-sized, but draw the Chamfer outline 1px
-        # inward so every segment remains inside the visible Region.
+        # Keep the Region itself full-sized, but draw the visible outline 1px
+        # inward so every segment remains inside the clipped Region.
         $paintWidth = [int]($sender.ClientSize.Width - 1)
         $paintHeight = [int]($sender.ClientSize.Height - 1)
         $translate = $false
 
-        if ($capturedShape -eq 'Chamfer') {
+        if ($capturedShape -eq 'Chamfer' -or
+            $capturedShape -eq 'Rounded' -or
+            $capturedShape -eq 'Pill') {
+            # Keep the anti-aliased outline fully inside the clipped control
+            # region. A line centered on the Region boundary loses half of its
+            # pixels and makes rounded IR buttons look soft/jagged.
             $paintWidth = [Math]::Max(
                 2,
                 [int]($sender.ClientSize.Width - 3)
@@ -2699,7 +2714,7 @@ $irDeviceDeleteButton.Font =
 $toolTip.SetToolTip($irDeviceAddButton, 'Add a new IR remote')
 $toolTip.SetToolTip($irDeviceUpButton, 'Move selected remote up')
 $toolTip.SetToolTip($irDeviceDownButton, 'Move selected remote down')
-$toolTip.SetToolTip($irDeviceRenameButton, 'Rename selected remote')
+$toolTip.SetToolTip($irDeviceRenameButton, 'Edit selected remote')
 $toolTip.SetToolTip($irDeviceDeleteButton, 'Delete selected remote')
 
 $irDeviceList = New-Object System.Windows.Forms.ListBox
@@ -2859,52 +2874,208 @@ $irRightLayout = New-Object System.Windows.Forms.TableLayoutPanel
 $irRightLayout.Dock = 'Fill'
 $irRightLayout.RowCount = 2
 $irRightLayout.ColumnCount = 1
-[void]$irRightLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 148)))
+[void]$irRightLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 152)))
 [void]$irRightLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))
 $irSplit.Panel2.Controls.Add($irRightLayout)
 
 $irHeaderLayout = New-Object System.Windows.Forms.TableLayoutPanel
 $irHeaderLayout.Dock = 'Fill'
-$irHeaderLayout.RowCount = 5
+$irHeaderLayout.RowCount = 7
 $irHeaderLayout.ColumnCount = 1
-[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 36)))
+[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 40)))
+[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 0)))
+[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 0)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 25)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 23)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 40)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 24)))
 $irRightLayout.Controls.Add($irHeaderLayout, 0, 0)
 
+$irHeadingPanel = New-Object System.Windows.Forms.Panel
+$irHeadingPanel.Dock = 'Fill'
+$irHeaderLayout.Controls.Add($irHeadingPanel, 0, 0)
+
+$irLayoutEditButton = New-RfSmoothButton `
+    'Edit Layout' `
+    92 `
+    29 `
+    ([System.Drawing.Color]::FromArgb(232, 239, 249)) `
+    ([System.Drawing.Color]::FromArgb(30, 65, 105)) `
+    ([System.Drawing.Color]::FromArgb(120, 155, 195))
+$irLayoutEditButton.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
+
+$irLayoutSaveButton = New-RfSmoothButton `
+    'Save Layout' `
+    92 `
+    29 `
+    ([System.Drawing.Color]::FromArgb(224, 244, 228)) `
+    ([System.Drawing.Color]::FromArgb(30, 80, 40)) `
+    ([System.Drawing.Color]::FromArgb(130, 175, 135))
+$irLayoutSaveButton.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
+$irLayoutSaveButton.Visible = $false
+
+$irLayoutCancelButton = New-RfSmoothButton `
+    'Cancel' `
+    72 `
+    29 `
+    ([System.Drawing.Color]::White) `
+    ([System.Drawing.Color]::FromArgb(50, 50, 50)) `
+    ([System.Drawing.Color]::FromArgb(155, 155, 155))
+$irLayoutCancelButton.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
+$irLayoutCancelButton.Visible = $false
+
+$irLayoutColorPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+$irLayoutColorPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$irLayoutColorPanel.FlowDirection =
+    [System.Windows.Forms.FlowDirection]::LeftToRight
+$irLayoutColorPanel.WrapContents = $false
+$irLayoutColorPanel.Padding = New-Object System.Windows.Forms.Padding(10, 2, 0, 0)
+$irLayoutColorPanel.Visible = $false
+$irHeaderLayout.Controls.Add($irLayoutColorPanel, 0, 1)
+
+$irLayoutColorLabel = New-Object System.Windows.Forms.Label
+$irLayoutColorLabel.Text = 'Button color:'
+$irLayoutColorLabel.AutoSize = $true
+$irLayoutColorLabel.Margin = New-Object System.Windows.Forms.Padding(0, 5, 8, 0)
+[void]$irLayoutColorPanel.Controls.Add($irLayoutColorLabel)
+
+$irLayoutColorChoices = @(
+    @{ Key = 'Auto';   Name = 'Auto / original'; Color = [System.Drawing.Color]::White },
+    @{ Key = 'Red';    Name = 'Red';    Color = [System.Drawing.Color]::FromArgb(246, 226, 226) },
+    @{ Key = 'Blue';   Name = 'Blue';   Color = [System.Drawing.Color]::FromArgb(229, 238, 250) },
+    @{ Key = 'Green';  Name = 'Green';  Color = [System.Drawing.Color]::FromArgb(230, 244, 232) },
+    @{ Key = 'Purple'; Name = 'Purple'; Color = [System.Drawing.Color]::FromArgb(238, 233, 246) },
+    @{ Key = 'Gold';   Name = 'Gold';   Color = [System.Drawing.Color]::FromArgb(251, 241, 224) },
+    @{ Key = 'Gray';   Name = 'Gray';   Color = [System.Drawing.Color]::FromArgb(242, 242, 242) }
+)
+
+foreach ($choice in $irLayoutColorChoices) {
+    $swatch = New-Object System.Windows.Forms.Button
+    $swatch.Size = New-Object System.Drawing.Size(28, 24)
+    $swatch.Margin = New-Object System.Windows.Forms.Padding(2, 1, 2, 0)
+    $swatch.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $swatch.FlatAppearance.BorderSize = 1
+    $swatch.FlatAppearance.BorderColor =
+        [System.Drawing.Color]::FromArgb(150, 150, 150)
+    $swatch.BackColor = $choice.Color
+    $swatch.Text = if ($choice.Key -eq 'Auto') { 'A' } else { '' }
+    $swatch.Tag = [string]$choice.Key
+    $toolTip.SetToolTip($swatch, [string]$choice.Name)
+    $swatch.Add_Click({
+        param($sender, $eventArgs)
+        Set-IrSelectedLayoutColor ([string]$sender.Tag)
+    })
+    [void]$irLayoutColorPanel.Controls.Add($swatch)
+}
+
+$irLayoutSizePanel = New-Object System.Windows.Forms.FlowLayoutPanel
+$irLayoutSizePanel.Dock = [System.Windows.Forms.DockStyle]::Fill
+$irLayoutSizePanel.FlowDirection =
+    [System.Windows.Forms.FlowDirection]::LeftToRight
+$irLayoutSizePanel.WrapContents = $false
+$irLayoutSizePanel.Padding = New-Object System.Windows.Forms.Padding(10, 2, 0, 0)
+$irLayoutSizePanel.Visible = $false
+$irHeaderLayout.Controls.Add($irLayoutSizePanel, 0, 2)
+
+$irLayoutSizeLabel = New-Object System.Windows.Forms.Label
+$irLayoutSizeLabel.Text = 'Button size:'
+$irLayoutSizeLabel.AutoSize = $true
+$irLayoutSizeLabel.Margin = New-Object System.Windows.Forms.Padding(0, 5, 8, 0)
+[void]$irLayoutSizePanel.Controls.Add($irLayoutSizeLabel)
+
+# Width x height in logical grid cells. Add larger presets here later without
+# changing the persistence or layout engine.
+$irLayoutSizeChoices = @(
+    @{ Key = 'Default'; Label = 'Default'; ColumnSpan = 0; RowSpan = 0 },
+    @{ Key = '1x1';     Label = '1x1';     ColumnSpan = 1; RowSpan = 1 },
+    @{ Key = '2x1';     Label = '2x1';     ColumnSpan = 2; RowSpan = 1 },
+    @{ Key = '1x2';     Label = '1x2';     ColumnSpan = 1; RowSpan = 2 },
+    @{ Key = '2x2';     Label = '2x2';     ColumnSpan = 2; RowSpan = 2 }
+)
+
+foreach ($choice in $irLayoutSizeChoices) {
+    $sizeButtonWidth = if ($choice.Key -eq 'Default') { 64 } else { 48 }
+    $sizeButton = New-RfSmoothButton `
+        ([string]$choice.Label) `
+        $sizeButtonWidth `
+        24 `
+        ([System.Drawing.Color]::FromArgb(244, 244, 244)) `
+        ([System.Drawing.Color]::FromArgb(45, 45, 45)) `
+        ([System.Drawing.Color]::FromArgb(155, 155, 155))
+    $sizeButton.Margin = New-Object System.Windows.Forms.Padding(2, 1, 2, 0)
+    $sizeButton.Tag = [string]$choice.Key
+    $sizeTip = if ($choice.Key -eq 'Default') {
+        'Restore this command button to its original renderer size.'
+    }
+    else {
+        ('Set button size to ' + [string]$choice.Label + ' grid cells.')
+    }
+    $toolTip.SetToolTip($sizeButton, $sizeTip)
+    $sizeButton.Add_Click({
+        param($sender, $eventArgs)
+        Set-IrSelectedLayoutSize ([string]$sender.Tag)
+    })
+    [void]$irLayoutSizePanel.Controls.Add($sizeButton)
+}
+
 $irHeading = New-Object System.Windows.Forms.Label
 $irHeading.Dock = 'Fill'
 $irHeading.Padding = New-Object System.Windows.Forms.Padding(10, 6, 4, 0)
 $irHeading.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 14)
 $irHeading.Text = 'Select an IR device'
-$irHeaderLayout.Controls.Add($irHeading, 0, 0)
+$irHeadingPanel.Controls.Add($irHeading)
 
 $irDetailLabel = New-Object System.Windows.Forms.Label
 $irDetailLabel.Dock = 'Fill'
 $irDetailLabel.Padding = New-Object System.Windows.Forms.Padding(11, 0, 4, 0)
 $irDetailLabel.ForeColor = [System.Drawing.Color]::DimGray
-$irHeaderLayout.Controls.Add($irDetailLabel, 0, 1)
+$irHeaderLayout.Controls.Add($irDetailLabel, 0, 3)
 
 $irTxLabel = New-Object System.Windows.Forms.Label
 $irTxLabel.Text = 'Active IR transmitters'
 $irTxLabel.Dock = 'Fill'
 $irTxLabel.Padding = New-Object System.Windows.Forms.Padding(11, 2, 4, 0)
 $irTxLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
-$irHeaderLayout.Controls.Add($irTxLabel, 0, 2)
+$irHeaderLayout.Controls.Add($irTxLabel, 0, 4)
+
+$irTransmitterRow = New-Object System.Windows.Forms.TableLayoutPanel
+$irTransmitterRow.Dock = 'Fill'
+$irTransmitterRow.RowCount = 1
+$irTransmitterRow.ColumnCount = 2
+$irTransmitterRow.Margin = New-Object System.Windows.Forms.Padding(0)
+$irTransmitterRow.Padding = New-Object System.Windows.Forms.Padding(0)
+[void]$irTransmitterRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+[void]$irTransmitterRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
+$irHeaderLayout.Controls.Add($irTransmitterRow, 0, 5)
 
 $irTransmitterPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 $irTransmitterPanel.Dock = 'Fill'
-$irTransmitterPanel.Padding = New-Object System.Windows.Forms.Padding(8, 2, 8, 2)
+$irTransmitterPanel.Padding = New-Object System.Windows.Forms.Padding(8, 2, 0, 2)
 $irTransmitterPanel.WrapContents = $false
-$irHeaderLayout.Controls.Add($irTransmitterPanel, 0, 3)
+$irTransmitterPanel.Margin = New-Object System.Windows.Forms.Padding(0)
+$irTransmitterRow.Controls.Add($irTransmitterPanel, 0, 0)
+
+# Keep Edit/Save/Cancel on the transmitter row, aligned against the far-right
+# edge while transmitter selectors and Calibrate remain grouped on the left.
+$irLayoutToolbar = New-Object System.Windows.Forms.FlowLayoutPanel
+$irLayoutToolbar.AutoSize = $true
+$irLayoutToolbar.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+$irLayoutToolbar.Dock = 'Fill'
+$irLayoutToolbar.FlowDirection =
+    [System.Windows.Forms.FlowDirection]::RightToLeft
+$irLayoutToolbar.WrapContents = $false
+$irLayoutToolbar.Margin = New-Object System.Windows.Forms.Padding(0)
+$irLayoutToolbar.Padding = New-Object System.Windows.Forms.Padding(0, 2, 11, 2)
+$irTransmitterRow.Controls.Add($irLayoutToolbar, 1, 0)
+[void]$irLayoutToolbar.Controls.Add($irLayoutEditButton)
+[void]$irLayoutToolbar.Controls.Add($irLayoutSaveButton)
+[void]$irLayoutToolbar.Controls.Add($irLayoutCancelButton)
 
 $irTxHintLabel = New-Object System.Windows.Forms.Label
 $irTxHintLabel.Dock = 'Fill'
 $irTxHintLabel.Padding = New-Object System.Windows.Forms.Padding(11, 2, 4, 0)
 $irTxHintLabel.ForeColor = [System.Drawing.Color]::DimGray
-$irHeaderLayout.Controls.Add($irTxHintLabel, 0, 4)
+$irHeaderLayout.Controls.Add($irTxHintLabel, 0, 6)
 
 $irCommandPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 $irCommandPanel.Dock = 'Fill'
@@ -5516,6 +5687,8 @@ function New-IrCommandButton(
     $button.Tag = [pscustomobject]@{
         BaseColor = $baseColor
         PressedColor = $pressedColor
+        DefaultBaseColor = $baseColor
+        DefaultPressedColor = $pressedColor
     }
 
     $button.Add_MouseDown({
@@ -5538,6 +5711,7 @@ function New-IrCommandButton(
     $capturedCommandId = [string]$command.id
     $capturedDisplayName = "$($device.name) - $displayText"
     $button.Add_Click({
+        if ($script:irLayoutEditMode) { return }
         Send-IrCommand $capturedDeviceId $capturedCommandId $capturedDisplayName
     }.GetNewClosure())
 
@@ -5566,40 +5740,340 @@ function Find-IrCommand($commands, [string]$name) {
     return $null
 }
 
-function New-IrGridGroup(
-    [string]$title,
-    [int]$columns,
-    [int]$rows,
-    [int]$buttonWidth = 150,
-    [int]$buttonHeight = 46) {
+function Get-IrLayoutGroupKey([string]$title) {
+    $key = if ([string]::IsNullOrWhiteSpace($title)) {
+        'Commands'
+    }
+    else {
+        $title
+    }
 
-    $cellWidth = $buttonWidth + 12
-    $cellHeight = $buttonHeight + 12
-    $gridWidth = $columns * $cellWidth
-    $gridHeight = $rows * $cellHeight
+    if (-not $script:irLayoutGroupCounts.ContainsKey($key)) {
+        $script:irLayoutGroupCounts[$key] = 0
+    }
 
-    $group = New-Object System.Windows.Forms.GroupBox
-    $group.Text = $title
-    $group.AutoSize = $false
-    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
-    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
+    $script:irLayoutGroupCounts[$key] =
+        [int]$script:irLayoutGroupCounts[$key] + 1
 
-    # Keep the child grid away from the GroupBox caption/border. The previous
-    # AutoSize + 0,0 child position caused the grid to paint across the border.
-    $group.Size = New-Object System.Drawing.Size(
-        ($gridWidth + 18),
-        ($gridHeight + 36)
+    $count = [int]$script:irLayoutGroupCounts[$key]
+    $instanceKey = if ($count -le 1) {
+        $key
+    }
+    else {
+        "$key#$count"
+    }
+
+    return ([string]$script:irLayoutScopeKey + '::' + $instanceKey)
+}
+
+function Get-IrLayoutEntryKey(
+    [string]$groupKey,
+    [string]$commandId) {
+
+    return ($groupKey + '|' + $commandId)
+}
+
+function Get-IrSavedLayoutEntry(
+    [string]$deviceId,
+    [string]$groupKey,
+    [string]$commandId) {
+
+    foreach ($item in @($config.irCommandLayouts)) {
+        if ([string]$item.deviceId -eq $deviceId -and
+            [string]$item.groupKey -eq $groupKey -and
+            [string]$item.commandId -eq $commandId) {
+            return $item
+        }
+    }
+
+    return $null
+}
+
+function Get-IrSavedLayoutEntryForCommand(
+    [string]$deviceId,
+    [string]$commandId) {
+
+    $scopePrefix = [string]$script:irLayoutScopeKey + '::'
+
+    foreach ($item in @($config.irCommandLayouts)) {
+        if ([string]$item.deviceId -eq $deviceId -and
+            [string]$item.commandId -eq $commandId -and
+            ([string]$item.groupKey).StartsWith($scopePrefix)) {
+            return $item
+        }
+    }
+
+    return $null
+}
+
+function Get-IrLayoutColorPair([string]$colorKey) {
+    switch ($colorKey) {
+        'Red' {
+            return [pscustomobject]@{
+                Base = [System.Drawing.Color]::FromArgb(246, 226, 226)
+                Pressed = [System.Drawing.Color]::FromArgb(223, 188, 188)
+            }
+        }
+        'Blue' {
+            return [pscustomobject]@{
+                Base = [System.Drawing.Color]::FromArgb(229, 238, 250)
+                Pressed = [System.Drawing.Color]::FromArgb(184, 208, 239)
+            }
+        }
+        'Green' {
+            return [pscustomobject]@{
+                Base = [System.Drawing.Color]::FromArgb(230, 244, 232)
+                Pressed = [System.Drawing.Color]::FromArgb(188, 224, 194)
+            }
+        }
+        'Purple' {
+            return [pscustomobject]@{
+                Base = [System.Drawing.Color]::FromArgb(238, 233, 246)
+                Pressed = [System.Drawing.Color]::FromArgb(212, 198, 231)
+            }
+        }
+        'Gold' {
+            return [pscustomobject]@{
+                Base = [System.Drawing.Color]::FromArgb(251, 241, 224)
+                Pressed = [System.Drawing.Color]::FromArgb(240, 216, 176)
+            }
+        }
+        'Gray' {
+            return [pscustomobject]@{
+                Base = [System.Drawing.Color]::FromArgb(242, 242, 242)
+                Pressed = [System.Drawing.Color]::FromArgb(219, 219, 219)
+            }
+        }
+        default {
+            return $null
+        }
+    }
+}
+
+function Apply-IrEntryColor($entry, [string]$colorKey) {
+    if ($null -eq $entry -or $null -eq $entry.Button -or
+        $null -eq $entry.Button.Tag) {
+        return
+    }
+
+    $button = $entry.Button
+    $pair = Get-IrLayoutColorPair $colorKey
+
+    if ($null -eq $pair) {
+        $button.Tag.BaseColor = $button.Tag.DefaultBaseColor
+        $button.Tag.PressedColor = $button.Tag.DefaultPressedColor
+        $entry.ColorKey = 'Auto'
+    }
+    else {
+        $button.Tag.BaseColor = $pair.Base
+        $button.Tag.PressedColor = $pair.Pressed
+        $entry.ColorKey = $colorKey
+    }
+
+    $button.BackColor = $button.Tag.BaseColor
+}
+
+function Get-IrManagedGroupByKey([string]$groupKey) {
+    foreach ($group in @($irCommandPanel.Controls)) {
+        if ($group -is [System.Windows.Forms.GroupBox] -and
+            $null -ne $group.Tag -and
+            [string]$group.Tag.LayoutKind -eq 'ManagedGrid' -and
+            [string]$group.Tag.GroupKey -eq $groupKey) {
+            return $group
+        }
+    }
+
+    return $null
+}
+
+function Apply-IrSavedGroupAssignmentsAndStyles {
+    if ($null -eq $script:currentIrDevice) { return }
+
+    $deviceId = [string]$script:currentIrDevice.id
+    $groups = @(
+        $irCommandPanel.Controls |
+            Where-Object {
+                $_ -is [System.Windows.Forms.GroupBox] -and
+                $null -ne $_.Tag -and
+                [string]$_.Tag.LayoutKind -eq 'ManagedGrid'
+            }
     )
 
-    $grid = New-Object System.Windows.Forms.TableLayoutPanel
-    $grid.AutoSize = $false
-    $grid.GrowStyle = [System.Windows.Forms.TableLayoutPanelGrowStyle]::FixedSize
+    # Start from the renderer's default group membership, then move any command
+    # that has a persisted manual group override into its saved target group.
+    foreach ($sourceGroup in $groups) {
+        foreach ($entry in @($sourceGroup.Tag.Entries)) {
+            $saved = Get-IrSavedLayoutEntryForCommand `
+                $deviceId `
+                ([string]$entry.CommandId)
+
+            if ($null -eq $saved) {
+                $entry.RowSpan = [int]$entry.DefaultRowSpan
+                $entry.ColumnSpan = [int]$entry.DefaultColumnSpan
+                Apply-IrEntryColor $entry 'Auto'
+                continue
+            }
+
+            $targetKey = [string]$saved.groupKey
+            if (-not [string]::IsNullOrWhiteSpace($targetKey) -and
+                $targetKey -ne [string]$sourceGroup.Tag.GroupKey) {
+                $targetGroup = Get-IrManagedGroupByKey $targetKey
+                if ($null -ne $targetGroup) {
+                    [void]$sourceGroup.Tag.Entries.Remove($entry)
+                    [void]$targetGroup.Tag.Entries.Add($entry)
+                    $entry.GroupKey = [string]$targetGroup.Tag.GroupKey
+                }
+            }
+
+            $entry.RowSpan = if (
+                $null -ne $saved.PSObject.Properties['rowSpan'] -and
+                [int]$saved.rowSpan -gt 0
+            ) {
+                [int]$saved.rowSpan
+            }
+            else {
+                [int]$entry.DefaultRowSpan
+            }
+            $entry.ColumnSpan = if (
+                $null -ne $saved.PSObject.Properties['columnSpan'] -and
+                [int]$saved.columnSpan -gt 0
+            ) {
+                [int]$saved.columnSpan
+            }
+            else {
+                [int]$entry.DefaultColumnSpan
+            }
+
+            $colorKey = 'Auto'
+            if ($null -ne $saved.PSObject.Properties['colorKey'] -and
+                -not [string]::IsNullOrWhiteSpace([string]$saved.colorKey)) {
+                $colorKey = [string]$saved.colorKey
+            }
+            Apply-IrEntryColor $entry $colorKey
+        }
+    }
+}
+
+function Test-IrGroupHasSavedLayout(
+    [string]$deviceId,
+    [string]$groupKey) {
+
+    foreach ($item in @($config.irCommandLayouts)) {
+        if ([string]$item.deviceId -eq $deviceId -and
+            [string]$item.groupKey -eq $groupKey) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Get-IrLayoutAvailableWidth {
+    # Keep command GroupBox borders on the same horizontal anchors as the IR
+    # header controls. The FlowLayoutPanel contributes 7 px padding plus the
+    # GroupBox contributes a 4 px margin, so each group begins 11 px from the
+    # left. Reserve the same 11 px on the right: this keeps both outer margins
+    # exactly equal and aligns the group border with the right edge of the
+    # Edit/Save Layout toolbar.
+    return [Math]::Max(
+        360,
+        [int]$irCommandPanel.ClientSize.Width - 22
+    )
+}
+
+function Get-IrLayoutAvailableColumns($tag) {
+    if ($null -eq $tag) { return 1 }
+
+    $availableWidth = Get-IrLayoutAvailableWidth
+    $innerWidth = [Math]::Max(162, $availableWidth - 22)
+    $cellWidth = [Math]::Max(1, [int]$tag.CellWidth)
+
+    return [Math]::Max(
+        1,
+        [int][Math]::Floor($innerWidth / [double]$cellWidth)
+    )
+}
+
+function Test-IrLayoutRegionFree(
+    $occupancy,
+    [int]$row,
+    [int]$column,
+    [int]$rowSpan,
+    [int]$columnSpan,
+    [int]$columnLimit) {
+
+    if ($row -lt 0 -or $column -lt 0) { return $false }
+    if (($column + $columnSpan) -gt $columnLimit) { return $false }
+
+    for ($r = $row; $r -lt ($row + $rowSpan); $r++) {
+        for ($c = $column; $c -lt ($column + $columnSpan); $c++) {
+            if ($occupancy.ContainsKey("$r,$c")) {
+                return $false
+            }
+        }
+    }
+
+    return $true
+}
+
+function Add-IrLayoutRegion(
+    $occupancy,
+    [int]$row,
+    [int]$column,
+    [int]$rowSpan,
+    [int]$columnSpan,
+    $value) {
+
+    for ($r = $row; $r -lt ($row + $rowSpan); $r++) {
+        for ($c = $column; $c -lt ($column + $columnSpan); $c++) {
+            $occupancy["$r,$c"] = $value
+        }
+    }
+}
+
+function Get-IrFirstFreeLayoutPosition(
+    $occupancy,
+    [int]$rowSpan,
+    [int]$columnSpan,
+    [int]$columnLimit) {
+
+    for ($row = 0; $row -lt 1000; $row++) {
+        for ($column = 0; $column -lt $columnLimit; $column++) {
+            if (Test-IrLayoutRegionFree `
+                    $occupancy `
+                    $row `
+                    $column `
+                    $rowSpan `
+                    $columnSpan `
+                    $columnLimit) {
+                return [pscustomobject]@{
+                    Row = $row
+                    Column = $column
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Row = 0
+        Column = 0
+    }
+}
+
+function Set-IrLayoutGridDimensions(
+    $grid,
+    [int]$columns,
+    [int]$rows,
+    [int]$cellWidth,
+    [int]$cellHeight) {
+
+    $columns = [Math]::Max(1, $columns)
+    $rows = [Math]::Max(1, $rows)
+
+    $grid.ColumnStyles.Clear()
+    $grid.RowStyles.Clear()
     $grid.ColumnCount = $columns
     $grid.RowCount = $rows
-    $grid.Location = New-Object System.Drawing.Point(8, 22)
-    $grid.Size = New-Object System.Drawing.Size($gridWidth, $gridHeight)
-    $grid.Margin = New-Object System.Windows.Forms.Padding(0)
-    $grid.Padding = New-Object System.Windows.Forms.Padding(0)
 
     for ($c = 0; $c -lt $columns; $c++) {
         $style = New-Object System.Windows.Forms.ColumnStyle
@@ -5614,8 +6088,1128 @@ function New-IrGridGroup(
         $style.Height = $cellHeight
         [void]$grid.RowStyles.Add($style)
     }
+}
+
+function Get-IrEntryConfiguredPosition($groupTag, $entry) {
+    $deviceId = [string]$groupTag.DeviceId
+    $groupKey = [string]$groupTag.GroupKey
+    $commandId = [string]$entry.CommandId
+
+    if ($script:irLayoutEditMode -and
+        [string]$script:irLayoutDeviceId -eq $deviceId -and
+        $script:irLayoutWorking.ContainsKey($commandId)) {
+        $working = $script:irLayoutWorking[$commandId]
+        if ([string]$working.GroupKey -eq $groupKey) {
+            return [pscustomobject]@{
+                Row = [int]$working.Row
+                Column = [int]$working.Column
+            }
+        }
+    }
+
+    $saved = Get-IrSavedLayoutEntry $deviceId $groupKey $commandId
+    if ($null -ne $saved) {
+        return [pscustomobject]@{
+            Row = [int]$saved.row
+            Column = [int]$saved.column
+        }
+    }
+
+    return $null
+}
+
+function Apply-IrManagedGroupLayout($group) {
+    if ($null -eq $group -or $null -eq $group.Tag) { return }
+
+    $tag = $group.Tag
+    if ([string]$tag.LayoutKind -ne 'ManagedGrid') { return }
+
+    $grid = $tag.Layout
+    $entries = @($tag.Entries)
+
+    $deviceId = [string]$tag.DeviceId
+    $groupKey = [string]$tag.GroupKey
+    $availableColumns = Get-IrLayoutAvailableColumns $tag
+    $availableWidth = Get-IrLayoutAvailableWidth
+    $hasSaved = Test-IrGroupHasSavedLayout $deviceId $groupKey
+    $isEditing =
+        $script:irLayoutEditMode -and
+        [string]$script:irLayoutDeviceId -eq $deviceId
+
+    if ($entries.Count -eq 0) {
+        if (-not $isEditing) {
+            $group.Visible = $false
+            return
+        }
+
+        $group.Visible = $true
+        $group.Width = $availableWidth
+        $grid.SuspendLayout()
+        $grid.Controls.Clear()
+        Set-IrLayoutGridDimensions `
+            $grid `
+            $availableColumns `
+            2 `
+            ([int]$tag.CellWidth) `
+            ([int]$tag.CellHeight)
+        $grid.CellBorderStyle =
+            [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::None
+        $grid.Width = [Math]::Max(
+            [int]$tag.CellWidth,
+            ($availableColumns * [int]$tag.CellWidth)
+        )
+        # Keep a fixed-width command grid visually centred inside the wider
+        # group. This is especially noticeable for one-row remotes/categories.
+        $grid.Left = [Math]::Max(
+            8,
+            [int][Math]::Floor(
+                ($group.ClientSize.Width - $grid.Width) / 2.0
+            )
+        )
+        $grid.Height = 2 * [int]$tag.CellHeight
+        $group.Height = $grid.Height + 36
+        $grid.ResumeLayout()
+        $grid.Invalidate()
+        return
+    }
+
+    $group.Visible = $true
+
+    $useManagedWidth =
+        [string]$tag.LayoutMode -eq 'Flow' -or
+        $hasSaved -or
+        $isEditing
+
+    if (-not $useManagedWidth) {
+        $columns = [Math]::Max(1, [int]$tag.BaseColumns)
+        $rows = [Math]::Max(1, [int]$tag.BaseRows)
+
+        $grid.SuspendLayout()
+        $grid.Controls.Clear()
+        Set-IrLayoutGridDimensions `
+            $grid `
+            $columns `
+            $rows `
+            ([int]$tag.CellWidth) `
+            ([int]$tag.CellHeight)
+
+        foreach ($entry in $entries) {
+            $entry.LogicalRow = [int]$entry.DefaultRow
+            $entry.LogicalColumn = [int]$entry.DefaultColumn
+            $entry.DisplayRow = [int]$entry.DefaultRow
+            $entry.DisplayColumn = [int]$entry.DefaultColumn
+
+            $grid.Controls.Add(
+                $entry.Button,
+                [int]$entry.DefaultColumn,
+                [int]$entry.DefaultRow
+            )
+            # TableLayoutPanel stores span values on the control itself. Always
+            # write both values, including 1, so a previously enlarged button can
+            # shrink back to 1x1/2x1/1x2 without retaining an old span.
+            $grid.SetRowSpan(
+                $entry.Button,
+                [Math]::Max(1, [int]$entry.RowSpan)
+            )
+            $grid.SetColumnSpan(
+                $entry.Button,
+                [Math]::Max(1, [int]$entry.ColumnSpan)
+            )
+
+            $entry.Button.Cursor = [System.Windows.Forms.Cursors]::Default
+        }
+
+        $grid.CellBorderStyle =
+            [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::None
+        $grid.Size = New-Object System.Drawing.Size(
+            ($columns * [int]$tag.CellWidth),
+            ($rows * [int]$tag.CellHeight)
+        )
+        $group.Size = New-Object System.Drawing.Size(
+            ($grid.Width + 18),
+            ($grid.Height + 36)
+        )
+        $grid.ResumeLayout()
+        return
+    }
+
+    $group.Width = $availableWidth
+    # Keep every command column exactly CellWidth wide. TableLayoutPanel will
+    # otherwise assign any leftover client width to its last column even when
+    # the ColumnStyles are Absolute, making the right-most buttons wider.
+    $grid.Width = [Math]::Max(
+        [int]$tag.CellWidth,
+        ($availableColumns * [int]$tag.CellWidth)
+    )
+    # Fixed-size columns can leave spare pixels in the group when another full
+    # column will not fit. Split that spare width evenly on both sides instead
+    # of leaving the command rows visually anchored to the left.
+    $grid.Left = [Math]::Max(
+        8,
+        [int][Math]::Floor(
+            ($group.ClientSize.Width - $grid.Width) / 2.0
+        )
+    )
+
+    # Build logical positions first. Saved/edit coordinates win. Commands that
+    # do not yet have a saved slot use their renderer default when possible,
+    # otherwise the next free logical cell.
+    $logicalOccupancy = @{}
+    $positioned = New-Object System.Collections.ArrayList
+    $unpositioned = New-Object System.Collections.ArrayList
+
+    foreach ($entry in $entries) {
+        $position = Get-IrEntryConfiguredPosition $tag $entry
+        if ($null -ne $position) {
+            $entry.LogicalRow = [int]$position.Row
+            $entry.LogicalColumn = [int]$position.Column
+            [void]$positioned.Add($entry)
+        }
+        else {
+            [void]$unpositioned.Add($entry)
+        }
+    }
+
+    $logicalColumnLimit = [Math]::Max(
+        $availableColumns,
+        [Math]::Max(1, [int]$tag.BaseColumns)
+    )
+
+    foreach ($entry in $positioned) {
+        $logicalColumnLimit = [Math]::Max(
+            $logicalColumnLimit,
+            ([int]$entry.LogicalColumn + [int]$entry.ColumnSpan)
+        )
+    }
+
+    foreach ($entry in @($positioned | Sort-Object LogicalRow, LogicalColumn, DefaultIndex)) {
+        if (Test-IrLayoutRegionFree `
+                $logicalOccupancy `
+                ([int]$entry.LogicalRow) `
+                ([int]$entry.LogicalColumn) `
+                ([int]$entry.RowSpan) `
+                ([int]$entry.ColumnSpan) `
+                $logicalColumnLimit) {
+            Add-IrLayoutRegion `
+                $logicalOccupancy `
+                ([int]$entry.LogicalRow) `
+                ([int]$entry.LogicalColumn) `
+                ([int]$entry.RowSpan) `
+                ([int]$entry.ColumnSpan) `
+                $entry
+        }
+        else {
+            [void]$unpositioned.Add($entry)
+        }
+    }
+
+    $defaultIndex = 0
+    foreach ($entry in @($unpositioned | Sort-Object DefaultIndex)) {
+        $preferred = $null
+
+        if ([string]$tag.LayoutMode -eq 'Fixed') {
+            if (Test-IrLayoutRegionFree `
+                    $logicalOccupancy `
+                    ([int]$entry.DefaultRow) `
+                    ([int]$entry.DefaultColumn) `
+                    ([int]$entry.RowSpan) `
+                    ([int]$entry.ColumnSpan) `
+                    $logicalColumnLimit) {
+                $preferred = [pscustomobject]@{
+                    Row = [int]$entry.DefaultRow
+                    Column = [int]$entry.DefaultColumn
+                }
+            }
+        }
+        elseif (-not $hasSaved -and -not $isEditing) {
+            $candidateRow =
+                [int][Math]::Floor($defaultIndex / [double]$availableColumns)
+            $candidateColumn = $defaultIndex % $availableColumns
+            if (Test-IrLayoutRegionFree `
+                    $logicalOccupancy `
+                    $candidateRow `
+                    $candidateColumn `
+                    ([int]$entry.RowSpan) `
+                    ([int]$entry.ColumnSpan) `
+                    $logicalColumnLimit) {
+                $preferred = [pscustomobject]@{
+                    Row = $candidateRow
+                    Column = $candidateColumn
+                }
+            }
+            $defaultIndex++
+        }
+
+        if ($null -eq $preferred) {
+            $preferred = Get-IrFirstFreeLayoutPosition `
+                $logicalOccupancy `
+                ([int]$entry.RowSpan) `
+                ([int]$entry.ColumnSpan) `
+                $logicalColumnLimit
+        }
+
+        $entry.LogicalRow = [int]$preferred.Row
+        $entry.LogicalColumn = [int]$preferred.Column
+        Add-IrLayoutRegion `
+            $logicalOccupancy `
+            ([int]$entry.LogicalRow) `
+            ([int]$entry.LogicalColumn) `
+            ([int]$entry.RowSpan) `
+            ([int]$entry.ColumnSpan) `
+            $entry
+    }
+
+    # If the sidebar becomes too narrow for the saved columns, compact only the
+    # display. Logical positions remain untouched and return when width allows.
+    $displayFits = $true
+    $displayOccupancy = @{}
+    foreach ($entry in @($entries | Sort-Object LogicalRow, LogicalColumn, DefaultIndex)) {
+        if (-not (Test-IrLayoutRegionFree `
+                $displayOccupancy `
+                ([int]$entry.LogicalRow) `
+                ([int]$entry.LogicalColumn) `
+                ([int]$entry.RowSpan) `
+                ([int]$entry.ColumnSpan) `
+                $availableColumns)) {
+            $displayFits = $false
+            break
+        }
+
+        Add-IrLayoutRegion `
+            $displayOccupancy `
+            ([int]$entry.LogicalRow) `
+            ([int]$entry.LogicalColumn) `
+            ([int]$entry.RowSpan) `
+            ([int]$entry.ColumnSpan) `
+            $entry
+    }
+
+    if ($displayFits) {
+        foreach ($entry in $entries) {
+            $entry.DisplayRow = [int]$entry.LogicalRow
+            $entry.DisplayColumn = [int]$entry.LogicalColumn
+        }
+    }
+    else {
+        $displayOccupancy = @{}
+        foreach ($entry in @($entries | Sort-Object LogicalRow, LogicalColumn, DefaultIndex)) {
+            $position = Get-IrFirstFreeLayoutPosition `
+                $displayOccupancy `
+                ([int]$entry.RowSpan) `
+                ([int]$entry.ColumnSpan) `
+                $availableColumns
+
+            $entry.DisplayRow = [int]$position.Row
+            $entry.DisplayColumn = [int]$position.Column
+            Add-IrLayoutRegion `
+                $displayOccupancy `
+                ([int]$entry.DisplayRow) `
+                ([int]$entry.DisplayColumn) `
+                ([int]$entry.RowSpan) `
+                ([int]$entry.ColumnSpan) `
+                $entry
+        }
+    }
+
+    $maxRow = 0
+    foreach ($entry in $entries) {
+        $maxRow = [Math]::Max(
+            $maxRow,
+            ([int]$entry.DisplayRow + [int]$entry.RowSpan)
+        )
+    }
+    $rowCount = [Math]::Max(1, $maxRow)
+    if ($isEditing) {
+        # One empty row is deliberately kept visible so a button can be dragged
+        # down into a new row without first changing anything else.
+        $rowCount++
+    }
+
+    $grid.SuspendLayout()
+    $grid.Controls.Clear()
+    Set-IrLayoutGridDimensions `
+        $grid `
+        $availableColumns `
+        $rowCount `
+        ([int]$tag.CellWidth) `
+        ([int]$tag.CellHeight)
+
+    foreach ($entry in $entries) {
+        $grid.Controls.Add(
+            $entry.Button,
+            [int]$entry.DisplayColumn,
+            [int]$entry.DisplayRow
+        )
+        # Explicitly reset spans to 1 as well as applying larger values. WinForms
+        # otherwise retains the previous TableLayoutPanel span on this control.
+        $grid.SetRowSpan(
+            $entry.Button,
+            [Math]::Max(1, [int]$entry.RowSpan)
+        )
+        $grid.SetColumnSpan(
+            $entry.Button,
+            [Math]::Max(1, [int]$entry.ColumnSpan)
+        )
+
+        $entry.Button.Cursor = if ($isEditing) {
+            [System.Windows.Forms.Cursors]::SizeAll
+        }
+        else {
+            [System.Windows.Forms.Cursors]::Default
+        }
+    }
+
+    # Edit-mode guides are painted manually so only the internal row/column
+    # separators are visible. The GroupBox remains the only outer border.
+    $grid.CellBorderStyle =
+        [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::None
+
+    $grid.Height = $rowCount * [int]$tag.CellHeight
+    $group.Height = $grid.Height + 36
+    $grid.ResumeLayout()
+    $grid.Invalidate()
+}
+
+function Test-IrWorkingGroupLayoutValid($group) {
+    if ($null -eq $group -or $null -eq $group.Tag) { return $false }
+
+    $tag = $group.Tag
+    $columns = Get-IrLayoutAvailableColumns $tag
+    $occupancy = @{}
+
+    foreach ($entry in @($tag.Entries)) {
+        $commandId = [string]$entry.CommandId
+
+        if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
+            return $false
+        }
+
+        $position = $script:irLayoutWorking[$commandId]
+        if ([string]$position.GroupKey -ne [string]$tag.GroupKey) {
+            return $false
+        }
+
+        $rowSpan = if ($null -ne $position.PSObject.Properties['RowSpan']) {
+            [Math]::Max(1, [int]$position.RowSpan)
+        }
+        else {
+            [Math]::Max(1, [int]$entry.RowSpan)
+        }
+        $columnSpan = if ($null -ne $position.PSObject.Properties['ColumnSpan']) {
+            [Math]::Max(1, [int]$position.ColumnSpan)
+        }
+        else {
+            [Math]::Max(1, [int]$entry.ColumnSpan)
+        }
+
+        if (-not (Test-IrLayoutRegionFree `
+                $occupancy `
+                ([int]$position.Row) `
+                ([int]$position.Column) `
+                $rowSpan `
+                $columnSpan `
+                $columns)) {
+            return $false
+        }
+
+        Add-IrLayoutRegion `
+            $occupancy `
+            ([int]$position.Row) `
+            ([int]$position.Column) `
+            $rowSpan `
+            $columnSpan `
+            $entry
+    }
+
+    return $true
+}
+
+function Register-IrLayoutGridHandlers($group, $grid) {
+    $grid.AllowDrop = $true
+    $grid.Tag = $group
+
+    $grid.Add_Paint({
+        param($sender, $eventArgs)
+
+        $targetGroup = $sender.Tag
+        if (-not $script:irLayoutEditMode -or
+            $null -eq $targetGroup -or
+            $null -eq $targetGroup.Tag -or
+            [string]$script:irLayoutDeviceId -ne
+                [string]$targetGroup.Tag.DeviceId) {
+            return
+        }
+
+        $tag = $targetGroup.Tag
+        $pen = New-Object System.Drawing.Pen(
+            [System.Drawing.Color]::FromArgb(185, 185, 185)
+        )
+
+        try {
+            $cellWidth = [Math]::Max(1, [int]$tag.CellWidth)
+            $cellHeight = [Math]::Max(1, [int]$tag.CellHeight)
+
+            for ($x = $cellWidth; $x -lt $sender.ClientSize.Width; $x += $cellWidth) {
+                $eventArgs.Graphics.DrawLine(
+                    $pen,
+                    $x,
+                    0,
+                    $x,
+                    $sender.ClientSize.Height
+                )
+            }
+
+            for ($y = $cellHeight; $y -lt $sender.ClientSize.Height; $y += $cellHeight) {
+                $eventArgs.Graphics.DrawLine(
+                    $pen,
+                    0,
+                    $y,
+                    $sender.ClientSize.Width,
+                    $y
+                )
+            }
+        }
+        finally {
+            $pen.Dispose()
+        }
+    })
+
+    $grid.Add_DragEnter({
+        param($sender, $eventArgs)
+
+        if ($script:irLayoutEditMode -and
+            $null -ne $script:irLayoutDraggedEntry) {
+            $eventArgs.Effect =
+                [System.Windows.Forms.DragDropEffects]::Move
+        }
+        else {
+            $eventArgs.Effect =
+                [System.Windows.Forms.DragDropEffects]::None
+        }
+    })
+
+    $grid.Add_DragOver({
+        param($sender, $eventArgs)
+
+        $targetGroup = $sender.Tag
+        $entry = $script:irLayoutDraggedEntry
+
+        if (-not $script:irLayoutEditMode -or
+            $null -eq $targetGroup -or
+            $null -eq $entry -or
+            [string]$targetGroup.Tag.DeviceId -ne
+                [string]$script:irLayoutDeviceId) {
+            $eventArgs.Effect =
+                [System.Windows.Forms.DragDropEffects]::None
+            return
+        }
+
+        $eventArgs.Effect =
+            [System.Windows.Forms.DragDropEffects]::Move
+    })
+
+    $grid.Add_DragDrop({
+        param($sender, $eventArgs)
+
+        $targetGroup = $sender.Tag
+        $entry = $script:irLayoutDraggedEntry
+        $script:irLayoutDraggedEntry = $null
+
+        if (-not $script:irLayoutEditMode -or
+            $null -eq $targetGroup -or
+            $null -eq $entry -or
+            [string]$targetGroup.Tag.DeviceId -ne
+                [string]$script:irLayoutDeviceId) {
+            return
+        }
+
+        $tag = $targetGroup.Tag
+        $point = $sender.PointToClient(
+            (New-Object System.Drawing.Point(
+                [int]$eventArgs.X,
+                [int]$eventArgs.Y
+            ))
+        )
+
+        $column = [int][Math]::Floor(
+            $point.X / [double][Math]::Max(1, [int]$tag.CellWidth)
+        )
+        $row = [int][Math]::Floor(
+            $point.Y / [double][Math]::Max(1, [int]$tag.CellHeight)
+        )
+        $columns = Get-IrLayoutAvailableColumns $tag
+
+        if ($row -lt 0 -or
+            $column -lt 0 -or
+            ($column + [int]$entry.ColumnSpan) -gt $columns) {
+            return
+        }
+
+        $commandId = [string]$entry.CommandId
+        if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
+            return
+        }
+
+        $sourceOld = $script:irLayoutWorking[$commandId]
+        $sourceGroup =
+            Get-IrManagedGroupByKey ([string]$sourceOld.GroupKey)
+
+        if ($null -eq $sourceGroup) {
+            return
+        }
+
+        $sameGroup =
+            [string]$sourceGroup.Tag.GroupKey -eq
+            [string]$targetGroup.Tag.GroupKey
+
+        $occupant = $null
+        foreach ($candidate in @($targetGroup.Tag.Entries)) {
+            if ([string]$candidate.CommandId -eq $commandId) {
+                continue
+            }
+
+            $candidateId = [string]$candidate.CommandId
+            if (-not $script:irLayoutWorking.ContainsKey($candidateId)) {
+                continue
+            }
+
+            $candidatePosition =
+                $script:irLayoutWorking[$candidateId]
+
+            $candidateRowSpan = if (
+                $null -ne $candidatePosition.PSObject.Properties['RowSpan']
+            ) {
+                [Math]::Max(1, [int]$candidatePosition.RowSpan)
+            }
+            else {
+                [Math]::Max(1, [int]$candidate.RowSpan)
+            }
+            $candidateColumnSpan = if (
+                $null -ne $candidatePosition.PSObject.Properties['ColumnSpan']
+            ) {
+                [Math]::Max(1, [int]$candidatePosition.ColumnSpan)
+            }
+            else {
+                [Math]::Max(1, [int]$candidate.ColumnSpan)
+            }
+
+            if ($row -ge [int]$candidatePosition.Row -and
+                $row -lt ([int]$candidatePosition.Row + $candidateRowSpan) -and
+                $column -ge [int]$candidatePosition.Column -and
+                $column -lt ([int]$candidatePosition.Column + $candidateColumnSpan)) {
+                $occupant = $candidate
+                break
+            }
+        }
+
+        $occupantOld = $null
+        if ($null -ne $occupant) {
+            $occupantOld =
+                $script:irLayoutWorking[[string]$occupant.CommandId]
+        }
+
+        # Move the source entry into the target group when crossing a GroupBox.
+        # An occupied target swaps back into the source group/slot, which keeps
+        # the drag behavior useful without silently deleting a command.
+        if (-not $sameGroup) {
+            [void]$sourceGroup.Tag.Entries.Remove($entry)
+            [void]$targetGroup.Tag.Entries.Add($entry)
+            $entry.GroupKey = [string]$targetGroup.Tag.GroupKey
+
+            if ($null -ne $occupant) {
+                [void]$targetGroup.Tag.Entries.Remove($occupant)
+                [void]$sourceGroup.Tag.Entries.Add($occupant)
+                $occupant.GroupKey =
+                    [string]$sourceGroup.Tag.GroupKey
+            }
+        }
+
+        $script:irLayoutWorking[$commandId] = [pscustomobject]@{
+            GroupKey = [string]$targetGroup.Tag.GroupKey
+            Row = $row
+            Column = $column
+            ColorKey = [string]$sourceOld.ColorKey
+            RowSpan = [Math]::Max(1, [int]$sourceOld.RowSpan)
+            ColumnSpan = [Math]::Max(1, [int]$sourceOld.ColumnSpan)
+        }
+
+        if ($null -ne $occupant) {
+            $script:irLayoutWorking[[string]$occupant.CommandId] =
+                [pscustomobject]@{
+                    GroupKey = if ($sameGroup) {
+                        [string]$targetGroup.Tag.GroupKey
+                    }
+                    else {
+                        [string]$sourceGroup.Tag.GroupKey
+                    }
+                    Row = [int]$sourceOld.Row
+                    Column = [int]$sourceOld.Column
+                    ColorKey = [string]$occupantOld.ColorKey
+                    RowSpan = [Math]::Max(1, [int]$occupantOld.RowSpan)
+                    ColumnSpan = [Math]::Max(1, [int]$occupantOld.ColumnSpan)
+                }
+        }
+
+        $valid =
+            (Test-IrWorkingGroupLayoutValid $targetGroup) -and
+            (Test-IrWorkingGroupLayoutValid $sourceGroup)
+
+        if (-not $valid) {
+            $script:irLayoutWorking[$commandId] = $sourceOld
+            if ($null -ne $occupant) {
+                $script:irLayoutWorking[[string]$occupant.CommandId] =
+                    $occupantOld
+            }
+
+            if (-not $sameGroup) {
+                [void]$targetGroup.Tag.Entries.Remove($entry)
+                [void]$sourceGroup.Tag.Entries.Add($entry)
+                $entry.GroupKey = [string]$sourceGroup.Tag.GroupKey
+
+                if ($null -ne $occupant) {
+                    [void]$sourceGroup.Tag.Entries.Remove($occupant)
+                    [void]$targetGroup.Tag.Entries.Add($occupant)
+                    $occupant.GroupKey =
+                        [string]$targetGroup.Tag.GroupKey
+                }
+            }
+
+            Set-TowerStatus 'That grid position cannot fit this button.'
+            Apply-IrManagedGroupLayout $sourceGroup
+            if (-not $sameGroup) {
+                Apply-IrManagedGroupLayout $targetGroup
+            }
+            return
+        }
+
+        Apply-IrManagedGroupLayout $sourceGroup
+        if (-not $sameGroup) {
+            Apply-IrManagedGroupLayout $targetGroup
+        }
+
+        Update-IrLayoutSelectionVisuals
+        Set-TowerStatus 'Layout changed - click Save Layout to keep it.'
+    })
+}
+
+function Update-IrLayoutSelectionVisuals {
+    foreach ($group in @($irCommandPanel.Controls)) {
+        if ($group -isnot [System.Windows.Forms.GroupBox] -or
+            $null -eq $group.Tag -or
+            [string]$group.Tag.LayoutKind -ne 'ManagedGrid') {
+            continue
+        }
+
+        foreach ($entry in @($group.Tag.Entries)) {
+            if ($null -eq $entry.Button) { continue }
+
+            $selected =
+                $script:irLayoutEditMode -and
+                $null -ne $script:irLayoutSelectedEntry -and
+                [string]$entry.CommandId -eq
+                    [string]$script:irLayoutSelectedEntry.CommandId
+
+            $entry.Button.FlatAppearance.BorderSize =
+                if ($selected) { 2 } else { 1 }
+            $entry.Button.FlatAppearance.BorderColor =
+                if ($selected) {
+                    [System.Drawing.Color]::FromArgb(70, 90, 115)
+                }
+                else {
+                    [System.Drawing.Color]::FromArgb(150, 150, 150)
+                }
+        }
+    }
+}
+
+function Select-IrLayoutEntry($entry) {
+    if (-not $script:irLayoutEditMode -or $null -eq $entry) {
+        return
+    }
+
+    $script:irLayoutSelectedEntry = $entry
+    Update-IrLayoutSelectionVisuals
+}
+
+function Set-IrSelectedLayoutColor([string]$colorKey) {
+    if (-not $script:irLayoutEditMode -or
+        $null -eq $script:irLayoutSelectedEntry) {
+        Set-TowerStatus 'Select a command button first, then choose its color.'
+        return
+    }
+
+    $entry = $script:irLayoutSelectedEntry
+    $commandId = [string]$entry.CommandId
+
+    if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
+        return
+    }
+
+    $current = $script:irLayoutWorking[$commandId]
+    $script:irLayoutWorking[$commandId] = [pscustomobject]@{
+        GroupKey = [string]$current.GroupKey
+        Row = [int]$current.Row
+        Column = [int]$current.Column
+        ColorKey = if ($colorKey -in @(
+            'Red', 'Blue', 'Green', 'Purple', 'Gold', 'Gray'
+        )) {
+            $colorKey
+        }
+        else {
+            'Auto'
+        }
+        RowSpan = [Math]::Max(1, [int]$current.RowSpan)
+        ColumnSpan = [Math]::Max(1, [int]$current.ColumnSpan)
+    }
+
+    Apply-IrEntryColor `
+        $entry `
+        ([string]$script:irLayoutWorking[$commandId].ColorKey)
+    Update-IrLayoutSelectionVisuals
+    Set-TowerStatus 'Button color changed - click Save Layout to keep it.'
+}
+
+function Set-IrSelectedLayoutSize([string]$sizeKey) {
+    if (-not $script:irLayoutEditMode -or
+        $null -eq $script:irLayoutSelectedEntry) {
+        Set-TowerStatus 'Select a command button first, then choose its size.'
+        return
+    }
+
+    $entry = $script:irLayoutSelectedEntry
+    $commandId = [string]$entry.CommandId
+    if (-not $script:irLayoutWorking.ContainsKey($commandId)) { return }
+
+    $current = $script:irLayoutWorking[$commandId]
+    $group = Get-IrManagedGroupByKey ([string]$current.GroupKey)
+    if ($null -eq $group) { return }
+
+    $rowSpan = 1
+    $columnSpan = 1
+    switch ($sizeKey) {
+        'Default' {
+            $rowSpan = [Math]::Max(1, [int]$entry.DefaultRowSpan)
+            $columnSpan = [Math]::Max(1, [int]$entry.DefaultColumnSpan)
+        }
+        '2x1' { $rowSpan = 1; $columnSpan = 2 }
+        '1x2' { $rowSpan = 2; $columnSpan = 1 }
+        '2x2' { $rowSpan = 2; $columnSpan = 2 }
+        default { $rowSpan = 1; $columnSpan = 1 }
+    }
+
+    $columns = Get-IrLayoutAvailableColumns $group.Tag
+    $occupancy = @{}
+    foreach ($candidate in @($group.Tag.Entries)) {
+        $candidateId = [string]$candidate.CommandId
+        if ($candidateId -eq $commandId -or
+            -not $script:irLayoutWorking.ContainsKey($candidateId)) {
+            continue
+        }
+
+        $candidatePosition = $script:irLayoutWorking[$candidateId]
+        $candidateRowSpan = if (
+            $null -ne $candidatePosition.PSObject.Properties['RowSpan']
+        ) {
+            [Math]::Max(1, [int]$candidatePosition.RowSpan)
+        }
+        else {
+            [Math]::Max(1, [int]$candidate.RowSpan)
+        }
+        $candidateColumnSpan = if (
+            $null -ne $candidatePosition.PSObject.Properties['ColumnSpan']
+        ) {
+            [Math]::Max(1, [int]$candidatePosition.ColumnSpan)
+        }
+        else {
+            [Math]::Max(1, [int]$candidate.ColumnSpan)
+        }
+
+        Add-IrLayoutRegion `
+            $occupancy `
+            ([int]$candidatePosition.Row) `
+            ([int]$candidatePosition.Column) `
+            $candidateRowSpan `
+            $candidateColumnSpan `
+            $candidate
+    }
+
+    if (-not (Test-IrLayoutRegionFree `
+            $occupancy `
+            ([int]$current.Row) `
+            ([int]$current.Column) `
+            $rowSpan `
+            $columnSpan `
+            $columns)) {
+        Set-TowerStatus (
+            "Size $sizeKey does not fit here - move the button to a free area first."
+        )
+        return
+    }
+
+    $script:irLayoutWorking[$commandId] = [pscustomobject]@{
+        GroupKey = [string]$current.GroupKey
+        Row = [int]$current.Row
+        Column = [int]$current.Column
+        ColorKey = [string]$current.ColorKey
+        RowSpan = $rowSpan
+        ColumnSpan = $columnSpan
+    }
+    $entry.RowSpan = $rowSpan
+    $entry.ColumnSpan = $columnSpan
+
+    Apply-IrManagedGroupLayout $group
+    Update-IrLayoutSelectionVisuals
+    Set-TowerStatus "Button size changed to $sizeKey - click Save Layout to keep it."
+}
+
+function Register-IrLayoutButtonHandler($button, $entry) {
+    if ($null -eq $button -or $null -eq $entry) { return }
+
+    if ($null -ne $button.Tag) {
+        $button.Tag | Add-Member `
+            -NotePropertyName LayoutEntry `
+            -NotePropertyValue $entry `
+            -Force
+    }
+
+    $button.Add_MouseDown({
+        param($sender, $eventArgs)
+
+        if (-not $script:irLayoutEditMode -or
+            $eventArgs.Button -ne
+                [System.Windows.Forms.MouseButtons]::Left -or
+            $null -eq $sender.Tag -or
+            $null -eq $sender.Tag.LayoutEntry) {
+            return
+        }
+
+        Select-IrLayoutEntry $sender.Tag.LayoutEntry
+        $script:irLayoutDraggedEntry = $sender.Tag.LayoutEntry
+        [void]$sender.DoDragDrop(
+            [string]$sender.Tag.LayoutEntry.CommandId,
+            [System.Windows.Forms.DragDropEffects]::Move
+        )
+    })
+}
+
+function Update-IrLayoutToolbarState {
+    $hasDevice = $null -ne $script:currentIrDevice
+    $irLayoutEditButton.Enabled = $hasDevice -and -not $script:irLayoutEditMode
+    $irLayoutEditButton.Visible = -not $script:irLayoutEditMode
+    $irLayoutSaveButton.Visible = $script:irLayoutEditMode
+    $irLayoutCancelButton.Visible = $script:irLayoutEditMode
+    $irLayoutColorPanel.Visible = $script:irLayoutEditMode
+    $irLayoutSizePanel.Visible = $script:irLayoutEditMode
+
+    if ($script:irLayoutEditMode) {
+        $irHeaderLayout.RowStyles[1].Height = 32
+        $irHeaderLayout.RowStyles[2].Height = 32
+        $irRightLayout.RowStyles[0].Height = 216
+    }
+    else {
+        $irHeaderLayout.RowStyles[1].Height = 0
+        $irHeaderLayout.RowStyles[2].Height = 0
+        $irRightLayout.RowStyles[0].Height = 152
+    }
+}
+
+function Start-IrCommandLayoutEdit {
+    if ($null -eq $script:currentIrDevice -or
+        $script:irLayoutEditMode) {
+        return
+    }
+
+    $script:irLayoutDeviceId =
+        [string]$script:currentIrDevice.id
+    $script:irLayoutWorking = @{}
+    $script:irLayoutSelectedEntry = $null
+
+    # Capture exactly what is currently visible as the starting logical layout,
+    # including manual group membership and any saved color override.
+    foreach ($group in @($irCommandPanel.Controls)) {
+        if ($group -isnot [System.Windows.Forms.GroupBox] -or
+            $null -eq $group.Tag -or
+            [string]$group.Tag.LayoutKind -ne 'ManagedGrid') {
+            continue
+        }
+
+        Apply-IrManagedGroupLayout $group
+        foreach ($entry in @($group.Tag.Entries)) {
+            $saved = Get-IrSavedLayoutEntryForCommand `
+                ([string]$script:irLayoutDeviceId) `
+                ([string]$entry.CommandId)
+
+            $colorKey = if ($null -ne $saved -and
+                $null -ne $saved.PSObject.Properties['colorKey'] -and
+                -not [string]::IsNullOrWhiteSpace([string]$saved.colorKey)) {
+                [string]$saved.colorKey
+            }
+            else {
+                'Auto'
+            }
+
+            $script:irLayoutWorking[[string]$entry.CommandId] =
+                [pscustomobject]@{
+                    GroupKey = [string]$group.Tag.GroupKey
+                    Row = [int]$entry.DisplayRow
+                    Column = [int]$entry.DisplayColumn
+                    ColorKey = $colorKey
+                    RowSpan = [Math]::Max(1, [int]$entry.RowSpan)
+                    ColumnSpan = [Math]::Max(1, [int]$entry.ColumnSpan)
+                }
+        }
+    }
+
+    $script:irLayoutEditMode = $true
+    $irDeviceList.Enabled = $false
+    $irDeviceToolbar.Enabled = $false
+    Update-IrLayoutToolbarState
+    Refresh-IrCommandGroupWidths
+    Update-IrLayoutSelectionVisuals
+    Set-TowerStatus (
+        'Edit Layout: drag buttons between groups or select one to change color/size.'
+    )
+}
+
+function Save-IrCommandLayoutEdit {
+    if (-not $script:irLayoutEditMode -or
+        [string]::IsNullOrWhiteSpace($script:irLayoutDeviceId)) {
+        return
+    }
+
+    $deviceId = [string]$script:irLayoutDeviceId
+    $scopePrefix = [string]$script:irLayoutScopeKey + '::'
+    $kept = @(
+        @($config.irCommandLayouts) |
+            Where-Object {
+                [string]$_.deviceId -ne $deviceId -or
+                -not ([string]$_.groupKey).StartsWith($scopePrefix)
+            }
+    )
+    $saved = New-Object System.Collections.ArrayList
+
+    foreach ($group in @($irCommandPanel.Controls)) {
+        if ($group -isnot [System.Windows.Forms.GroupBox] -or
+            $null -eq $group.Tag -or
+            [string]$group.Tag.LayoutKind -ne 'ManagedGrid') {
+            continue
+        }
+
+        foreach ($entry in @($group.Tag.Entries)) {
+            $commandId = [string]$entry.CommandId
+            if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
+                continue
+            }
+
+            $position = $script:irLayoutWorking[$commandId]
+            [void]$saved.Add([pscustomobject]@{
+                deviceId = $deviceId
+                groupKey = [string]$position.GroupKey
+                commandId = $commandId
+                row = [int]$position.Row
+                column = [int]$position.Column
+                colorKey = [string]$position.ColorKey
+                rowSpan = [Math]::Max(1, [int]$position.RowSpan)
+                columnSpan = [Math]::Max(1, [int]$position.ColumnSpan)
+            })
+        }
+    }
+
+    $config.irCommandLayouts = @($kept) + @($saved)
+    Save-TowerConfig
+
+    $script:irLayoutEditMode = $false
+    $script:irLayoutDeviceId = ''
+    $script:irLayoutWorking = @{}
+    $script:irLayoutDraggedEntry = $null
+    $script:irLayoutSelectedEntry = $null
+    $irDeviceList.Enabled = $true
+    $irDeviceToolbar.Enabled = $true
+    Update-IrLayoutToolbarState
+
+    Show-IrDevice $script:currentIrDevice
+    Set-TowerStatus 'IR command layout saved.'
+}
+
+function Cancel-IrCommandLayoutEdit {
+    if (-not $script:irLayoutEditMode) { return }
+
+    $script:irLayoutEditMode = $false
+    $script:irLayoutDeviceId = ''
+    $script:irLayoutWorking = @{}
+    $script:irLayoutDraggedEntry = $null
+    $script:irLayoutSelectedEntry = $null
+    $irDeviceList.Enabled = $true
+    $irDeviceToolbar.Enabled = $true
+    Update-IrLayoutToolbarState
+
+    Show-IrDevice $script:currentIrDevice
+    Set-TowerStatus 'IR command layout changes cancelled.'
+}
+
+$irLayoutEditButton.Add_Click({ Start-IrCommandLayoutEdit })
+$irLayoutSaveButton.Add_Click({ Save-IrCommandLayoutEdit })
+$irLayoutCancelButton.Add_Click({ Cancel-IrCommandLayoutEdit })
+Update-IrLayoutToolbarState
+
+function New-IrGridGroup(
+    [string]$title,
+    [int]$columns,
+    [int]$rows,
+    [int]$buttonWidth = 150,
+    [int]$buttonHeight = 46) {
+
+    $cellWidth = $buttonWidth + 12
+    $cellHeight = $buttonHeight + 12
+    $columns = [Math]::Max(1, $columns)
+    $rows = [Math]::Max(1, $rows)
+    $gridWidth = $columns * $cellWidth
+    $gridHeight = $rows * $cellHeight
+
+    $group = New-Object System.Windows.Forms.GroupBox
+    $group.Text = $title
+    $group.AutoSize = $false
+    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
+    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
+    $group.Size = New-Object System.Drawing.Size(
+        ($gridWidth + 18),
+        ($gridHeight + 36)
+    )
+
+    $grid = New-Object System.Windows.Forms.TableLayoutPanel
+    $grid.AutoSize = $false
+    $grid.GrowStyle =
+        [System.Windows.Forms.TableLayoutPanelGrowStyle]::FixedSize
+    $grid.Location = New-Object System.Drawing.Point(8, 22)
+    $grid.Size = New-Object System.Drawing.Size($gridWidth, $gridHeight)
+    $grid.Margin = New-Object System.Windows.Forms.Padding(0)
+    $grid.Padding = New-Object System.Windows.Forms.Padding(0)
+
+    Set-IrLayoutGridDimensions `
+        $grid `
+        $columns `
+        $rows `
+        $cellWidth `
+        $cellHeight
+
+    $entries = New-Object System.Collections.ArrayList
+    $group.Tag = [pscustomobject]@{
+        LayoutKind = 'ManagedGrid'
+        LayoutMode = 'Fixed'
+        Layout = $grid
+        Entries = $entries
+        DeviceId = ''
+        GroupKey = Get-IrLayoutGroupKey $title
+        BaseColumns = $columns
+        BaseRows = $rows
+        CellWidth = $cellWidth
+        CellHeight = $cellHeight
+        ButtonWidth = $buttonWidth
+        ButtonHeight = $buttonHeight
+    }
 
     $group.Controls.Add($grid)
+    Register-IrLayoutGridHandlers $group $grid
 
     return [pscustomobject]@{
         Group = $group
@@ -5624,6 +7218,7 @@ function New-IrGridGroup(
         ButtonHeight = $buttonHeight
     }
 }
+
 
 function Add-IrGridButton(
     $bundle,
@@ -5641,8 +7236,33 @@ function Add-IrGridButton(
     $button = New-IrCommandButton $device $command $category $labelOverride
     $button.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-    $bundle.Grid.Controls.Add($button, $column, $row)
+    $groupTag = $bundle.Group.Tag
+    if ([string]::IsNullOrWhiteSpace([string]$groupTag.DeviceId)) {
+        $groupTag.DeviceId = [string]$device.id
+    }
 
+    $entry = [pscustomobject]@{
+        Button = $button
+        CommandId = [string]$command.id
+        GroupKey = [string]$groupTag.GroupKey
+        DefaultRow = $row
+        DefaultColumn = $column
+        DefaultIndex = [int]$groupTag.Entries.Count
+        DefaultRowSpan = [Math]::Max(1, $rowSpan)
+        DefaultColumnSpan = [Math]::Max(1, $columnSpan)
+        RowSpan = [Math]::Max(1, $rowSpan)
+        ColumnSpan = [Math]::Max(1, $columnSpan)
+        LogicalRow = $row
+        LogicalColumn = $column
+        DisplayRow = $row
+        DisplayColumn = $column
+        ColorKey = 'Auto'
+    }
+
+    [void]$groupTag.Entries.Add($entry)
+    Register-IrLayoutButtonHandler $button $entry
+
+    $bundle.Grid.Controls.Add($button, $column, $row)
     if ($rowSpan -gt 1) {
         $bundle.Grid.SetRowSpan($button, $rowSpan)
     }
@@ -5650,6 +7270,7 @@ function Add-IrGridButton(
         $bundle.Grid.SetColumnSpan($button, $columnSpan)
     }
 }
+
 
 function Add-IrGridPlaceholder(
     $bundle,
@@ -5679,62 +7300,35 @@ function Add-IrGridPlaceholder(
 }
 
 function Resize-IrCommandGroup($group) {
-    if ($null -eq $group -or $null -eq $group.Tag) { return }
-
-    $buttonCount = [int]$group.Tag.ButtonCount
-    $layout = $group.Tag.Layout
-
-    $availableWidth = [Math]::Max(360, $irCommandPanel.ClientSize.Width - 34)
-    $group.Width = $availableWidth
-
-    $innerWidth = [Math]::Max(330, $availableWidth - 22)
-    $layout.Width = $innerWidth
-
-    $buttonOuterWidth = 162
-    $columns = [Math]::Max(
-        1,
-        [int][Math]::Floor($innerWidth / $buttonOuterWidth)
-    )
-    $rows = [Math]::Max(
-        1,
-        [int][Math]::Ceiling($buttonCount / [double]$columns)
-    )
-
-    $layout.Height = ($rows * 58) + 4
-    $group.Height = $layout.Height + 34
+    Apply-IrManagedGroupLayout $group
 }
+
 
 function Add-IrFlowGroup($device, [string]$title, $commands) {
     $commandList = @($commands)
     if ($commandList.Count -eq 0) { return }
 
-    $group = New-Object System.Windows.Forms.GroupBox
-    $group.Text = $title
-    $group.AutoSize = $false
-    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
-    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
+    $bundle = New-IrGridGroup `
+        $title `
+        1 `
+        ([Math]::Max(1, $commandList.Count))
+    $bundle.Group.Tag.LayoutMode = 'Flow'
+    $bundle.Group.Tag.DeviceId = [string]$device.id
 
-    $layout = New-Object System.Windows.Forms.FlowLayoutPanel
-    $layout.Location = New-Object System.Drawing.Point(8, 22)
-    $layout.WrapContents = $true
-    $layout.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
-    $layout.AutoScroll = $false
-
-    foreach ($command in $commandList) {
-        [void]$layout.Controls.Add(
-            (New-IrCommandButton $device $command $title)
-        )
+    for ($i = 0; $i -lt $commandList.Count; $i++) {
+        Add-IrGridButton `
+            $bundle `
+            $device `
+            $commandList[$i] `
+            $title `
+            $i `
+            0
     }
 
-    $group.Tag = [pscustomobject]@{
-        ButtonCount = $commandList.Count
-        Layout = $layout
-    }
-
-    $group.Controls.Add($layout)
-    [void]$irCommandPanel.Controls.Add($group)
-    Resize-IrCommandGroup $group
+    [void]$irCommandPanel.Controls.Add($bundle.Group)
+    Resize-IrCommandGroup $bundle.Group
 }
+
 
 function Render-IrGenericGroups($device, $commands) {
     $categorized = @{}
@@ -5802,11 +7396,19 @@ function Add-DenonModeSelector {
     }
 
     $mainButton.Add_Click({
+        if ($script:irLayoutEditMode) {
+            Set-TowerStatus 'Save or cancel Edit Layout before changing zone.'
+            return
+        }
         $script:denonZoneMode = 'Main'
         Show-IrDevice $script:currentIrDevice
     })
 
     $zoneButton.Add_Click({
+        if ($script:irLayoutEditMode) {
+            Set-TowerStatus 'Save or cancel Edit Layout before changing zone.'
+            return
+        }
         $script:denonZoneMode = 'Zone2'
         Show-IrDevice $script:currentIrDevice
     })
@@ -5877,34 +7479,30 @@ function Add-DenonFlowGroup(
     $commandList = @($commands)
     if ($commandList.Count -eq 0) { return }
 
-    $group = New-Object System.Windows.Forms.GroupBox
-    $group.Text = $title
-    $group.AutoSize = $false
-    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
-    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
+    $bundle = New-IrGridGroup `
+        $title `
+        1 `
+        ([Math]::Max(1, $commandList.Count))
+    $bundle.Group.Tag.LayoutMode = 'Flow'
+    $bundle.Group.Tag.DeviceId = [string]$device.id
 
-    $layout = New-Object System.Windows.Forms.FlowLayoutPanel
-    $layout.Location = New-Object System.Drawing.Point(8, 22)
-    $layout.WrapContents = $true
-    $layout.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
-    $layout.AutoScroll = $false
-
-    foreach ($command in $commandList) {
+    for ($i = 0; $i -lt $commandList.Count; $i++) {
+        $command = $commandList[$i]
         $label = Get-DenonButtonLabel $command
-        [void]$layout.Controls.Add(
-            (New-IrCommandButton $device $command $title $label)
-        )
+        Add-IrGridButton `
+            $bundle `
+            $device `
+            $command `
+            $title `
+            $i `
+            0 `
+            $label
     }
 
-    $group.Tag = [pscustomobject]@{
-        ButtonCount = $commandList.Count
-        Layout = $layout
-    }
-
-    $group.Controls.Add($layout)
-    [void]$irCommandPanel.Controls.Add($group)
-    Resize-IrCommandGroup $group
+    [void]$irCommandPanel.Controls.Add($bundle.Group)
+    Resize-IrCommandGroup $bundle.Group
 }
+
 
 function Render-DenonGenericGroups($device, $commands) {
     $categorized = @{}
@@ -9159,9 +10757,32 @@ function Ensure-IrDeviceRendered($device) {
 }
 
 function Show-IrDevice($device) {
+    if ($script:irLayoutEditMode) {
+        $incomingId = if ($null -eq $device) {
+            ''
+        }
+        else {
+            [string]$device.id
+        }
+
+        if ($incomingId -ne [string]$script:irLayoutDeviceId) {
+            Set-TowerStatus 'Save or cancel Edit Layout before changing remote.'
+            return
+        }
+    }
+
     $renderTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
     $script:currentIrDevice = $device
+    $script:irLayoutGroupCounts = @{}
+    $script:irLayoutScopeKey = if ($null -ne $device -and
+        [string]$device.name -eq 'AVR X2800H') {
+        'Denon-' + [string]$script:denonZoneMode
+    }
+    else {
+        'Default'
+    }
+    Update-IrLayoutToolbarState
     $irCommandPanel.SuspendLayout()
     $irCommandPanel.Controls.Clear()
 
@@ -9231,6 +10852,7 @@ function Show-IrDevice($device) {
         Render-IrGenericGroups $device $commands
     }
 
+    Apply-IrSavedGroupAssignmentsAndStyles
     Refresh-IrCommandGroupWidths
     $irCommandPanel.ResumeLayout()
 
@@ -9597,11 +11219,24 @@ function Move-SelectedIrDevice([int]$direction) {
     Refresh-IrDeviceListFromMemory $selectedId
 }
 
-function Show-IrRenameDialog(
-    [string]$currentName) {
+function Show-IrCommandLearnDialog(
+    $device,
+    $command = $null,
+    [bool]$replaceExisting = $false,
+    $owner = $form) {
+
+    if ($null -eq $device) { return $null }
+
+    $deviceId = [string]$device.id
+    $deviceName = [string]$device.name
 
     $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = 'Rename IR remote'
+    $dialog.Text = if ($replaceExisting) {
+        'Re-record IR Command'
+    }
+    else {
+        'Add IR Command'
+    }
     $dialog.StartPosition = 'CenterParent'
     $dialog.FormBorderStyle =
         [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -9609,189 +11244,653 @@ function Show-IrRenameDialog(
     $dialog.MinimizeBox = $false
     $dialog.ShowInTaskbar = $false
     $dialog.ClientSize =
-        New-Object System.Drawing.Size(430, 158)
+        New-Object System.Drawing.Size(650, 665)
     $dialog.Font =
-        New-Object System.Drawing.Font(
-            'Segoe UI',
-            10
-        )
+        New-Object System.Drawing.Font('Segoe UI', 10)
 
-    $label = New-Object System.Windows.Forms.Label
-    $label.Text = 'Remote name'
-    $label.Location =
-        New-Object System.Drawing.Point(22, 22)
-    $label.Size =
-        New-Object System.Drawing.Size(110, 24)
-    $dialog.Controls.Add($label)
+    $state = [pscustomobject]@{
+        LastCapture = $null
+        Saved = $false
+    }
 
-    $nameBox = New-Object System.Windows.Forms.TextBox
-    $nameBox.Text = $currentName
-    $nameBox.Location =
-        New-Object System.Drawing.Point(136, 19)
-    $nameBox.Size =
-        New-Object System.Drawing.Size(270, 27)
-    $nameBox.MaxLength = 120
-    $dialog.Controls.Add($nameBox)
+    $title = New-Object System.Windows.Forms.Label
+    $title.Text = if ($replaceExisting) {
+        'Re-record IR Command'
+    }
+    else {
+        'Add IR Command'
+    }
+    $title.Font =
+        New-Object System.Drawing.Font('Segoe UI Semibold', 15)
+    $title.Location =
+        New-Object System.Drawing.Point(28, 22)
+    $title.Size =
+        New-Object System.Drawing.Size(570, 34)
+    $dialog.Controls.Add($title)
 
-    $note = New-Object System.Windows.Forms.Label
-    $note.Text =
-        'Only the displayed name changes. The internal Tower device ID stays unchanged.'
-    $note.Location =
-        New-Object System.Drawing.Point(24, 59)
-    $note.Size =
-        New-Object System.Drawing.Size(382, 38)
-    $note.ForeColor =
-        [System.Drawing.Color]::DimGray
-    $dialog.Controls.Add($note)
+    $deviceLabel = New-Object System.Windows.Forms.Label
+    $deviceLabel.Text = $deviceName
+    $deviceLabel.Location =
+        New-Object System.Drawing.Point(30, 60)
+    $deviceLabel.Size =
+        New-Object System.Drawing.Size(570, 24)
+    $deviceLabel.ForeColor = [System.Drawing.Color]::DimGray
+    $dialog.Controls.Add($deviceLabel)
 
-    $cancel = New-Object System.Windows.Forms.Button
-    $cancel.Text = 'Cancel'
-    $cancel.Size =
-        New-Object System.Drawing.Size(92, 34)
-    $cancel.Location =
-        New-Object System.Drawing.Point(22, 108)
-    $cancel.DialogResult =
-        [System.Windows.Forms.DialogResult]::Cancel
-    Set-IrButtonVisualStyle $cancel
-    $dialog.Controls.Add($cancel)
+    $commandLabel = New-Object System.Windows.Forms.Label
+    $commandLabel.Text = 'Command name'
+    $commandLabel.Location =
+        New-Object System.Drawing.Point(30, 108)
+    $commandLabel.Size =
+        New-Object System.Drawing.Size(150, 24)
+    $dialog.Controls.Add($commandLabel)
 
-    $rename = New-Object System.Windows.Forms.Button
-    $rename.Text = 'Rename'
-    $rename.Size =
-        New-Object System.Drawing.Size(100, 34)
-    $rename.Location =
-        New-Object System.Drawing.Point(306, 108)
-    Set-IrButtonVisualStyle $rename
-    $dialog.Controls.Add($rename)
+    $commandBox = New-Object System.Windows.Forms.TextBox
+    $commandBox.Location =
+        New-Object System.Drawing.Point(190, 105)
+    $commandBox.Size =
+        New-Object System.Drawing.Size(405, 28)
+    $commandBox.MaxLength = 120
+    $dialog.Controls.Add($commandBox)
 
-    $dialog.CancelButton = $cancel
-    $dialog.Tag = $null
+    $descriptionLabel = New-Object System.Windows.Forms.Label
+    $descriptionLabel.Text = 'Description'
+    $descriptionLabel.Location =
+        New-Object System.Drawing.Point(30, 150)
+    $descriptionLabel.Size =
+        New-Object System.Drawing.Size(150, 24)
+    $dialog.Controls.Add($descriptionLabel)
 
-    $rename.Add_Click({
-        $candidate =
-            $nameBox.Text.Trim()
+    $descriptionBox = New-Object System.Windows.Forms.TextBox
+    $descriptionBox.Location =
+        New-Object System.Drawing.Point(190, 147)
+    $descriptionBox.Size =
+        New-Object System.Drawing.Size(405, 28)
+    $descriptionBox.MaxLength = 240
+    $dialog.Controls.Add($descriptionBox)
 
-        if ([string]::IsNullOrWhiteSpace(
-                $candidate)) {
+    if ($replaceExisting -and $null -ne $command) {
+        $commandBox.Text = [string]$command.id
+        $commandBox.ReadOnly = $true
+        $descriptionBox.Text = [string]$command.description
+    }
 
-            [System.Windows.Forms.MessageBox]::Show(
-                'Enter a name for the IR remote.',
-                'Rename IR remote',
-                'OK',
-                'Information'
-            ) | Out-Null
+    $instruction = New-Object System.Windows.Forms.Label
+    $instruction.Text =
+        "Aim the remote at the receiver array. When you press READY, " +
+        "Tower records all six receivers for 8 seconds. Press the same " +
+        "remote button several times during that recording."
+    $instruction.Location =
+        New-Object System.Drawing.Point(30, 194)
+    $instruction.Size =
+        New-Object System.Drawing.Size(565, 58)
+    $instruction.ForeColor = [System.Drawing.Color]::DimGray
+    $dialog.Controls.Add($instruction)
 
-            $nameBox.Focus()
-            return
-        }
+    $resultGroup = New-Object System.Windows.Forms.GroupBox
+    $resultGroup.Text = 'Capture result'
+    $resultGroup.Location =
+        New-Object System.Drawing.Point(30, 267)
+    $resultGroup.Size =
+        New-Object System.Drawing.Size(565, 286)
+    $dialog.Controls.Add($resultGroup)
 
-        # WinForms event handlers execute in their own PowerShell scope.
-        # Store the value on the dialog itself so the caller receives it
-        # reliably after ShowDialog returns.
-        $dialog.Tag = $candidate
+    $resultText = New-Object System.Windows.Forms.Label
+    $resultText.Text = 'No capture yet.'
+    $resultText.Location =
+        New-Object System.Drawing.Point(16, 26)
+    $resultText.Size =
+        New-Object System.Drawing.Size(532, 92)
+    $resultText.Font =
+        New-Object System.Drawing.Font('Consolas', 9)
+    $resultGroup.Controls.Add($resultText)
 
-        $dialog.DialogResult =
-            [System.Windows.Forms.DialogResult]::OK
+    $receiverList = New-Object System.Windows.Forms.ListView
+    $receiverList.Location =
+        New-Object System.Drawing.Point(16, 124)
+    $receiverList.Size =
+        New-Object System.Drawing.Size(532, 146)
+    $receiverList.View =
+        [System.Windows.Forms.View]::Details
+    $receiverList.FullRowSelect = $true
+    $receiverList.GridLines = $true
+    $receiverList.HeaderStyle =
+        [System.Windows.Forms.ColumnHeaderStyle]::Nonclickable
+    $receiverList.Font =
+        New-Object System.Drawing.Font('Consolas', 8.5)
 
+    [void]$receiverList.Columns.Add('GPIO', 46)
+    [void]$receiverList.Columns.Add('Receiver', 92)
+    [void]$receiverList.Columns.Add('kHz', 44)
+    [void]$receiverList.Columns.Add('Timings', 60)
+    [void]$receiverList.Columns.Add('Pulses', 55)
+    [void]$receiverList.Columns.Add('Frames', 54)
+    [void]$receiverList.Columns.Add('Valid', 48)
+    [void]$receiverList.Columns.Add('Result', 76)
+    $resultGroup.Controls.Add($receiverList)
+
+    $cancelButton = New-RfSmoothButton `
+        'Cancel' `
+        100 `
+        38 `
+        ([System.Drawing.Color]::White) `
+        ([System.Drawing.Color]::FromArgb(35, 35, 35)) `
+        ([System.Drawing.Color]::FromArgb(150, 145, 185))
+    $cancelButton.Location =
+        New-Object System.Drawing.Point(30, 580)
+    $dialog.Controls.Add($cancelButton)
+
+    $retryButton = New-RfSmoothButton `
+        'Retry' `
+        95 `
+        38 `
+        ([System.Drawing.Color]::White) `
+        ([System.Drawing.Color]::FromArgb(35, 35, 35)) `
+        ([System.Drawing.Color]::FromArgb(150, 145, 185))
+    $retryButton.Location =
+        New-Object System.Drawing.Point(345, 580)
+    $retryButton.Visible = $false
+    $dialog.Controls.Add($retryButton)
+
+    $saveButton = New-RfSmoothButton `
+        'Save Command' `
+        125 `
+        38 `
+        ([System.Drawing.Color]::FromArgb(224, 244, 228)) `
+        ([System.Drawing.Color]::FromArgb(30, 80, 40)) `
+        ([System.Drawing.Color]::FromArgb(130, 175, 135))
+    $saveButton.Location =
+        New-Object System.Drawing.Point(470, 580)
+    $saveButton.Visible = $false
+    $dialog.Controls.Add($saveButton)
+
+    $readyButton = New-RfSmoothButton `
+        'READY - RECORD' `
+        145 `
+        38 `
+        ([System.Drawing.Color]::FromArgb(224, 236, 250)) `
+        ([System.Drawing.Color]::FromArgb(30, 70, 115)) `
+        ([System.Drawing.Color]::FromArgb(115, 155, 195))
+    $readyButton.Location =
+        New-Object System.Drawing.Point(450, 580)
+    $dialog.Controls.Add($readyButton)
+
+    $cancelButton.Add_Click({
         $dialog.Close()
     })
 
-    $dialog.Add_Shown({
-        $nameBox.SelectAll()
-        $nameBox.Focus()
+    $retryButton.Add_Click({
+        $state.LastCapture = $null
+        $resultText.Text = 'No capture yet.'
+        $receiverList.Items.Clear()
+        $retryButton.Visible = $false
+        $saveButton.Visible = $false
+        $readyButton.Visible = $true
+
+        if (-not $replaceExisting) {
+            $commandBox.Focus()
+        }
     })
 
-    $dialogResult =
-        $dialog.ShowDialog($form)
+    $readyButton.Add_Click({
+        $commandName = $commandBox.Text.Trim()
 
-    $renamedValue =
-        [string]$dialog.Tag
+        if ([string]::IsNullOrWhiteSpace($commandName)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                'Enter a command name first.',
+                'Learn IR Command',
+                'OK',
+                'Warning'
+            ) | Out-Null
+            $commandBox.Focus()
+            return
+        }
 
+        try {
+            $readyButton.Enabled = $false
+            $resultText.Text =
+                "RECORDING NOW...`r`n`r`n" +
+                "Press '$commandName' several times during the 8-second capture."
+            $dialog.Refresh()
+
+            $response = Invoke-TowerPost '/api/v1/ir/learn/capture' @{
+                device = $deviceId
+                command = $commandName
+                description = $descriptionBox.Text.Trim()
+                seconds = 8.0
+                force = $replaceExisting
+            }
+
+            $state.LastCapture = $response
+            $receiverList.BeginUpdate()
+            $receiverList.Items.Clear()
+
+            foreach ($receiver in @($response.receivers)) {
+                $item = New-Object System.Windows.Forms.ListViewItem(
+                    [string]$receiver.gpio
+                )
+                [void]$item.SubItems.Add([string]$receiver.receiver)
+                [void]$item.SubItems.Add([string]$receiver.carrierKhz)
+                [void]$item.SubItems.Add([string]$receiver.timings)
+                [void]$item.SubItems.Add([string]$receiver.pulses)
+                [void]$item.SubItems.Add([string]$receiver.frames)
+                [void]$item.SubItems.Add([string]$receiver.valid)
+                [void]$item.SubItems.Add([string]$receiver.result)
+                [void]$receiverList.Items.Add($item)
+            }
+            $receiverList.EndUpdate()
+
+            $protocol = [string]$response.protocol
+            if ([string]::IsNullOrWhiteSpace($protocol)) {
+                $protocol = 'RAW'
+            }
+
+            $addressText = if ($protocol -eq 'RAW') {
+                '-'
+            }
+            else {
+                ('0x{0:X}' -f [uint32]$response.address)
+            }
+
+            $commandCodeText = if ($protocol -eq 'RAW') {
+                '-'
+            }
+            else {
+                ('0x{0:X2}' -f [uint32]$response.decodedCommand)
+            }
+
+            $duplicateText = ''
+            $duplicates = @($response.duplicates)
+            if ($duplicates.Count -gt 0) {
+                $duplicateText =
+                    "`r`nDUPLICATE: " +
+                    ($duplicates -join ', ')
+            }
+
+            $noteText = ''
+            if (-not [string]::IsNullOrWhiteSpace([string]$response.note)) {
+                $noteText = "`r`n" + [string]$response.note
+            }
+
+            $resultText.Text =
+                "Protocol : $protocol`r`n" +
+                "Address  : $addressText    Command: $commandCodeText`r`n" +
+                "Carrier  : $([string]$response.carrierKhz) kHz`r`n" +
+                "Receiver : GPIO$([string]$response.receiverGpio) " +
+                "$([string]$response.receiverModel)`r`n" +
+                "Frames   : $([string]$response.initialFrames) initial / " +
+                "$([string]$response.repeatFrames) repeat" +
+                $duplicateText +
+                $noteText
+
+            $readyButton.Visible = $false
+            $retryButton.Visible = $true
+            $saveButton.Visible = $true
+        }
+        catch {
+            $state.LastCapture = $null
+            $details = Get-TowerHttpErrorDetails `
+                $_ `
+                'POST' `
+                '/api/v1/ir/learn/capture' `
+                @{
+                    device = $deviceId
+                    command = $commandName
+                    description = $descriptionBox.Text.Trim()
+                    seconds = 8.0
+                    force = $replaceExisting
+                }
+
+            $resultText.Text =
+                "Recording was not saved.`r`n`r`n" +
+                $details.Text
+            $retryButton.Visible = $true
+            $saveButton.Visible = $false
+            $readyButton.Visible = $false
+        }
+        finally {
+            $readyButton.Enabled = $true
+        }
+    })
+
+    $saveButton.Add_Click({
+        if ($null -eq $state.LastCapture) { return }
+
+        $duplicates = @($state.LastCapture.duplicates)
+        $acceptDuplicate = $false
+
+        if ($duplicates.Count -gt 0) {
+            $answer = [System.Windows.Forms.MessageBox]::Show(
+                "This IR signal is already stored as:`r`n`r`n" +
+                ($duplicates -join "`r`n") +
+                "`r`n`r`nKeep this duplicate command anyway?",
+                'Duplicate IR signal',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Warning,
+                [System.Windows.Forms.MessageBoxDefaultButton]::Button2
+            )
+
+            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+                return
+            }
+
+            $acceptDuplicate = $true
+        }
+
+        try {
+            $saveButton.Enabled = $false
+            $commandName = $commandBox.Text.Trim()
+            $description = $descriptionBox.Text.Trim()
+
+            Invoke-TowerPost '/api/v1/ir/learn/save' @{
+                captureId = [string]$state.LastCapture.captureId
+                device = $deviceId
+                command = $commandName
+                description = $description
+                force = $replaceExisting
+                acceptDuplicate = $acceptDuplicate
+            } | Out-Null
+
+            $state.Saved = $true
+            $dialog.Tag = [pscustomobject]@{
+                id = $commandName
+                name = $commandName
+                description = $description
+                transport = 'IR'
+                enabled = $true
+            }
+
+            $statusText = if ($replaceExisting) {
+                "Re-recorded IR command $commandName"
+            }
+            else {
+                "Added IR command $commandName"
+            }
+
+            Set-TowerStatus $statusText
+
+            $dialog.DialogResult =
+                [System.Windows.Forms.DialogResult]::OK
+            $dialog.Close()
+        }
+        catch {
+            $details = Get-TowerHttpErrorDetails `
+                $_ `
+                'POST' `
+                '/api/v1/ir/learn/save' `
+                @{
+                    captureId = [string]$state.LastCapture.captureId
+                    device = $deviceId
+                    command = $commandBox.Text.Trim()
+                    description = $descriptionBox.Text.Trim()
+                    force = $replaceExisting
+                    acceptDuplicate = $acceptDuplicate
+                }
+
+            [System.Windows.Forms.MessageBox]::Show(
+                $details.Text,
+                'Save IR Command',
+                'OK',
+                'Error'
+            ) | Out-Null
+        }
+        finally {
+            $saveButton.Enabled = $true
+        }
+    })
+
+    $dialog.Add_Shown({
+        if ($replaceExisting) {
+            $descriptionBox.Focus()
+        }
+        else {
+            $commandBox.Focus()
+        }
+    })
+
+    [void]$dialog.ShowDialog($owner)
+    $savedCommand = $dialog.Tag
     $dialog.Dispose()
 
-    if ($dialogResult -eq
-            [System.Windows.Forms.DialogResult]::OK -and
-        -not [string]::IsNullOrWhiteSpace(
-            $renamedValue)) {
-
-        return $renamedValue
+    if ([bool]$state.Saved) {
+        return $savedCommand
     }
 
     return $null
 }
 
-function Rename-SelectedIrDevice {
-    if ($null -eq $irDeviceList.SelectedItem) {
-        return
-    }
+function Show-EditIrDeviceDialog($device) {
+    if ($null -eq $device) { return }
 
-    $device =
-        $irDeviceList.SelectedItem
+    $deviceId = [string]$device.id
 
-    $deviceId =
-        [string]$device.id
+    $dialog = New-Object System.Windows.Forms.Form
+    $dialog.Text = 'Edit IR Remote'
+    $dialog.StartPosition = 'CenterParent'
+    $dialog.FormBorderStyle =
+        [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+    $dialog.ShowInTaskbar = $false
+    $dialog.ClientSize =
+        New-Object System.Drawing.Size(720, 555)
+    $dialog.Font =
+        New-Object System.Drawing.Font('Segoe UI', 10)
 
-    $oldName =
-        [string]$device.name
+    $title = New-Object System.Windows.Forms.Label
+    $title.Text = 'Edit IR Remote'
+    $title.Font =
+        New-Object System.Drawing.Font('Segoe UI Semibold', 15)
+    $title.Location =
+        New-Object System.Drawing.Point(24, 20)
+    $title.Size =
+        New-Object System.Drawing.Size(650, 34)
+    $dialog.Controls.Add($title)
 
-    $newName =
-        Show-IrRenameDialog $oldName
+    $nameLabel = New-Object System.Windows.Forms.Label
+    $nameLabel.Text = 'Remote name'
+    $nameLabel.Location =
+        New-Object System.Drawing.Point(26, 70)
+    $nameLabel.Size =
+        New-Object System.Drawing.Size(115, 24)
+    $dialog.Controls.Add($nameLabel)
 
-    if ([string]::IsNullOrWhiteSpace(
-            $newName)) {
-        return
-    }
+    $nameBox = New-Object System.Windows.Forms.TextBox
+    $nameBox.Text = [string]$device.name
+    $nameBox.Location =
+        New-Object System.Drawing.Point(146, 67)
+    $nameBox.Size =
+        New-Object System.Drawing.Size(420, 28)
+    $nameBox.MaxLength = 120
+    $dialog.Controls.Add($nameBox)
 
-    if ($newName -eq $oldName) {
-        return
-    }
+    $saveNameButton = New-RfSmoothButton `
+        'Save Name' `
+        105 `
+        30 `
+        ([System.Drawing.Color]::FromArgb(224, 236, 250)) `
+        ([System.Drawing.Color]::FromArgb(30, 70, 115)) `
+        ([System.Drawing.Color]::FromArgb(115, 155, 195))
+    $saveNameButton.Location =
+        New-Object System.Drawing.Point(580, 66)
+    $dialog.Controls.Add($saveNameButton)
 
-    try {
-        Set-TowerStatus (
-            "Renaming $oldName..."
-        )
+    $nameHint = New-Object System.Windows.Forms.Label
+    $nameHint.Text =
+        'The internal Tower device ID stays unchanged.'
+    $nameHint.Location =
+        New-Object System.Drawing.Point(147, 100)
+    $nameHint.Size =
+        New-Object System.Drawing.Size(420, 22)
+    $nameHint.ForeColor = [System.Drawing.Color]::DimGray
+    $dialog.Controls.Add($nameHint)
 
-        $response =
-            Invoke-TowerPost `
-                '/api/v1/devices/rename' `
-                @{
-                    device = $deviceId
-                    name = $newName
-                }
+    $commandsLabel = New-Object System.Windows.Forms.Label
+    $commandsLabel.Text = 'Commands'
+    $commandsLabel.Font =
+        New-Object System.Drawing.Font('Segoe UI Semibold', 11)
+    $commandsLabel.Location =
+        New-Object System.Drawing.Point(26, 137)
+    $commandsLabel.Size =
+        New-Object System.Drawing.Size(200, 26)
+    $dialog.Controls.Add($commandsLabel)
 
-        foreach ($candidate in
-            @($script:irDevices)) {
+    $grid = New-Object System.Windows.Forms.DataGridView
+    $grid.Location =
+        New-Object System.Drawing.Point(26, 166)
+    $grid.Size =
+        New-Object System.Drawing.Size(660, 300)
+    $grid.AllowUserToAddRows = $false
+    $grid.AllowUserToDeleteRows = $false
+    $grid.AllowUserToResizeRows = $false
+    $grid.RowHeadersVisible = $false
+    $grid.MultiSelect = $false
+    $grid.SelectionMode =
+        [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
+    $grid.AutoGenerateColumns = $false
+    $grid.ReadOnly = $true
+    $grid.BackgroundColor = [System.Drawing.Color]::White
+    $grid.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $grid.AutoSizeRowsMode =
+        [System.Windows.Forms.DataGridViewAutoSizeRowsMode]::AllCells
+    $grid.DefaultCellStyle.WrapMode =
+        [System.Windows.Forms.DataGridViewTriState]::False
 
-            if ([string]$candidate.id -eq
-                $deviceId) {
+    $commandColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+    $commandColumn.Name = 'Command'
+    $commandColumn.HeaderText = 'Command'
+    $commandColumn.Width = 180
+    [void]$grid.Columns.Add($commandColumn)
 
-                $candidate.name =
-                    [string]$response.name
+    $descriptionColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
+    $descriptionColumn.Name = 'Description'
+    $descriptionColumn.HeaderText = 'Description'
+    $descriptionColumn.Width = 260
+    [void]$grid.Columns.Add($descriptionColumn)
+
+    $rerecordColumn = New-Object System.Windows.Forms.DataGridViewButtonColumn
+    $rerecordColumn.Name = 'Rerecord'
+    $rerecordColumn.HeaderText = ''
+    $rerecordColumn.Text = 'Re-record'
+    $rerecordColumn.UseColumnTextForButtonValue = $true
+    $rerecordColumn.Width = 88
+    [void]$grid.Columns.Add($rerecordColumn)
+
+    $removeColumn = New-Object System.Windows.Forms.DataGridViewButtonColumn
+    $removeColumn.Name = 'Remove'
+    $removeColumn.HeaderText = ''
+    $removeColumn.Text = 'Remove'
+    $removeColumn.UseColumnTextForButtonValue = $true
+    $removeColumn.Width = 76
+    [void]$grid.Columns.Add($removeColumn)
+
+    $dialog.Controls.Add($grid)
+
+    $commandMap = @{}
+
+    $refreshGrid = {
+        param([string]$selectCommandId = '')
+
+        $grid.Rows.Clear()
+        $commandMap.Clear()
+        $rowToSelect = -1
+
+        foreach ($item in @($device.commands | Where-Object {
+            $_.transport -eq 'IR'
+        })) {
+            $row = $grid.Rows.Add(
+                [string]$item.id,
+                [string]$item.description,
+                'Re-record',
+                'Remove'
+            )
+            $commandMap[[int]$row] = $item
+
+            if (-not [string]::IsNullOrWhiteSpace($selectCommandId) -and
+                [string]$item.id -eq $selectCommandId) {
+                $rowToSelect = [int]$row
             }
         }
 
-        Save-CurrentIrDeviceCache
-        $script:irInventorySignature =
-            Get-IrInventorySignature $script:irDevices
+        if ($rowToSelect -ge 0 -and $rowToSelect -lt $grid.Rows.Count) {
+            $grid.ClearSelection()
+            $grid.Rows[$rowToSelect].Selected = $true
+            $grid.CurrentCell = $grid.Rows[$rowToSelect].Cells[0]
+            try {
+                $grid.FirstDisplayedScrollingRowIndex = $rowToSelect
+            }
+            catch {}
+        }
+    }
 
-        Refresh-IrDeviceListFromMemory `
-            $deviceId
-        Refresh-HomeDevices
+    & $refreshGrid
 
-        if ($tabs.SelectedTab -eq $irTab -and
-            $null -ne $irDeviceList.SelectedItem) {
+    $addButton = New-RfSmoothButton `
+        '+ Add Command' `
+        135 `
+        38 `
+        ([System.Drawing.Color]::FromArgb(224, 244, 228)) `
+        ([System.Drawing.Color]::FromArgb(30, 80, 40)) `
+        ([System.Drawing.Color]::FromArgb(130, 175, 135))
+    $addButton.Location =
+        New-Object System.Drawing.Point(26, 484)
+    $dialog.Controls.Add($addButton)
 
-            Ensure-IrDeviceRendered `
-                $irDeviceList.SelectedItem
+    $closeButton = New-RfSmoothButton `
+        'Close' `
+        100 `
+        38 `
+        ([System.Drawing.Color]::White) `
+        ([System.Drawing.Color]::FromArgb(35, 35, 35)) `
+        ([System.Drawing.Color]::FromArgb(150, 145, 185))
+    $closeButton.Location =
+        New-Object System.Drawing.Point(586, 484)
+    $dialog.Controls.Add($closeButton)
+
+    $saveNameButton.Add_Click({
+        $newName = $nameBox.Text.Trim()
+        $oldName = [string]$device.name
+
+        if ([string]::IsNullOrWhiteSpace($newName)) {
+            [System.Windows.Forms.MessageBox]::Show(
+                'Enter a name for the IR remote.',
+                'Edit IR Remote',
+                'OK',
+                'Information'
+            ) | Out-Null
+            $nameBox.Focus()
+            return
         }
 
-        Set-TowerStatus (
-            [string]$response.message
-        )
-    }
-    catch {
-        $details =
-            Get-TowerHttpErrorDetails `
+        if ($newName -eq $oldName) {
+            Set-TowerStatus 'IR remote name is unchanged'
+            return
+        }
+
+        try {
+            $saveNameButton.Enabled = $false
+            $response = Invoke-TowerPost '/api/v1/devices/rename' @{
+                device = $deviceId
+                name = $newName
+            }
+
+            $device.name = [string]$response.name
+
+            foreach ($candidate in @($script:irDevices)) {
+                if ([string]$candidate.id -eq $deviceId) {
+                    $candidate.name = [string]$response.name
+                }
+            }
+
+            Save-CurrentIrDeviceCache
+            $script:irInventorySignature =
+                Get-IrInventorySignature $script:irDevices
+            Refresh-IrDeviceListFromMemory $deviceId
+            Refresh-HomeDevices
+            Set-TowerStatus ([string]$response.message)
+        }
+        catch {
+            $details = Get-TowerHttpErrorDetails `
                 $_ `
                 'POST' `
                 '/api/v1/devices/rename' `
@@ -9800,13 +11899,152 @@ function Rename-SelectedIrDevice {
                     name = $newName
                 }
 
-        [System.Windows.Forms.MessageBox]::Show(
-            $details.Text,
-            'Rename IR remote failed',
-            'OK',
-            'Error'
-        ) | Out-Null
+            [System.Windows.Forms.MessageBox]::Show(
+                $details.Text,
+                'Rename IR remote failed',
+                'OK',
+                'Error'
+            ) | Out-Null
+        }
+        finally {
+            $saveNameButton.Enabled = $true
+        }
+    })
+
+    $addButton.Add_Click({
+        $created = Show-IrCommandLearnDialog `
+            $device `
+            $null `
+            $false `
+            $dialog
+
+        if ($null -eq $created) { return }
+
+        $device.commands = @($device.commands) + @($created)
+        & $refreshGrid ([string]$created.id)
+        Refresh-IrInventoryAfterWizard
+    })
+
+    $grid.Add_CellContentClick({
+        param($sender, $eventArgs)
+
+        if ($eventArgs.RowIndex -lt 0 -or
+            $eventArgs.ColumnIndex -lt 0) {
+            return
+        }
+
+        $selectedCommand = $commandMap[[int]$eventArgs.RowIndex]
+        if ($null -eq $selectedCommand) { return }
+
+        $columnName =
+            [string]$grid.Columns[$eventArgs.ColumnIndex].Name
+
+        if ($columnName -eq 'Rerecord') {
+            $updated = Show-IrCommandLearnDialog `
+                $device `
+                $selectedCommand `
+                $true `
+                $dialog
+
+            if ($null -eq $updated) { return }
+
+            foreach ($candidate in @($device.commands)) {
+                if ([string]$candidate.id -eq [string]$updated.id) {
+                    $candidate.name = [string]$updated.name
+                    $candidate.description = [string]$updated.description
+                    $candidate.enabled = $true
+                    break
+                }
+            }
+
+            & $refreshGrid ([string]$updated.id)
+            Refresh-IrInventoryAfterWizard
+            return
+        }
+
+        if ($columnName -eq 'Remove') {
+            $irCommands = @($device.commands | Where-Object {
+                $_.transport -eq 'IR'
+            })
+
+            if ($irCommands.Count -le 1) {
+                [System.Windows.Forms.MessageBox]::Show(
+                    'The last command cannot be removed. Delete the remote instead.',
+                    'Remove IR Command',
+                    'OK',
+                    'Information'
+                ) | Out-Null
+                return
+            }
+
+            $commandId = [string]$selectedCommand.id
+            $answer = [System.Windows.Forms.MessageBox]::Show(
+                "Remove '$commandId' from this remote?`r`n`r`n" +
+                'Its dedicated IR recording will also be removed when it is not shared.',
+                'Remove IR Command',
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Warning,
+                [System.Windows.Forms.MessageBoxDefaultButton]::Button2
+            )
+
+            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
+                return
+            }
+
+            try {
+                Invoke-TowerPost '/api/v1/ir/commands/delete' @{
+                    device = $deviceId
+                    command = $commandId
+                } | Out-Null
+
+                $device.commands = @($device.commands | Where-Object {
+                    [string]$_.id -ne $commandId
+                })
+
+                & $refreshGrid
+                Refresh-IrInventoryAfterWizard
+                Set-TowerStatus "Removed IR command $commandId"
+            }
+            catch {
+                $details = Get-TowerHttpErrorDetails `
+                    $_ `
+                    'POST' `
+                    '/api/v1/ir/commands/delete' `
+                    @{
+                        device = $deviceId
+                        command = $commandId
+                    }
+
+                [System.Windows.Forms.MessageBox]::Show(
+                    $details.Text,
+                    'Remove IR Command failed',
+                    'OK',
+                    'Error'
+                ) | Out-Null
+            }
+        }
+    })
+
+    $closeButton.Add_Click({
+        $dialog.Close()
+    })
+
+    $dialog.Add_FormClosed({
+        $script:renderedIrDeviceId = ''
+        $script:renderedIrDeviceSignature = ''
+        Refresh-IrInventoryAfterWizard
+    })
+
+    [void]$dialog.ShowDialog($form)
+    $dialog.Dispose()
+}
+
+function Edit-SelectedIrDevice {
+    if ($null -eq $irDeviceList.SelectedItem) {
+        return
     }
+
+    Show-EditIrDeviceDialog $irDeviceList.SelectedItem
 }
 
 function Delete-SelectedIrDevice {
@@ -9999,7 +12237,7 @@ $irDeviceList.Add_SelectedIndexChanged({
 $tabs.Add_SelectedIndexChanged({ Load-SelectedTabIfNeeded })
 $irDeviceUpButton.Add_Click({ Move-SelectedIrDevice -1 })
 $irDeviceDownButton.Add_Click({ Move-SelectedIrDevice 1 })
-$irDeviceRenameButton.Add_Click({ Rename-SelectedIrDevice })
+$irDeviceRenameButton.Add_Click({ Edit-SelectedIrDevice })
 $irDeviceDeleteButton.Add_Click({ Delete-SelectedIrDevice })
 $irDeviceAddButton.Add_Click({ Show-AddIrDeviceWizard })
 $remotePreviewAddImageButton.Add_Click({ Select-CustomRemoteImage })
