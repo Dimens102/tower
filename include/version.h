@@ -1,3 +1,3 @@
 #pragma once
 
-#define TOWER_VERSION "0.11.02"
+#define TOWER_VERSION "0.11.03"

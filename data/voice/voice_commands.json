@@ -1,0 +1,54 @@
+{
+  "wake_phrase": "radio tower",
+  "microphone_name_contains": "C930e",
+  "speaker_name_contains": "bcm2835 Headphones",
+  "sample_rate": 16000,
+  "chunk_size": 4000,
+  "command_timeout_seconds": 5.0,
+  "minimum_command_confidence": 0.0,
+  "vosk_log_level": -1,
+  "model_path": "runtime/voice/models/vosk-model-small-en-us-0.15",
+  "dry_run": true,
+  "cancel_phrases": [
+    "never mind",
+    "cancel"
+  ],
+  "audio": {
+    "alsa_card": "C930e",
+    "capture_control": "Mic",
+    "capture_gain": 50
+  },
+  "beep": {
+    "enabled": true,
+    "frequency_hz": 880,
+    "duration_ms": 90,
+    "volume": 0.18,
+    "sample_rate": 16000
+  },
+  "api": {
+    "execute_url": "http://127.0.0.1:8080/api/v1/execute",
+    "token_env": "TOWER_API_TOKEN",
+    "timeout_seconds": 4.0
+  },
+  "commands": {
+    "volume up": [
+      {
+        "device": "AVR X2800H",
+        "command": "Volume Up"
+      }
+    ],
+    "volume down": [
+      {
+        "device": "AVR X2800H",
+        "command": "Volume Down"
+      }
+    ],
+    "receiver power": [
+      {
+        "device": "AVR X2800H",
+        "command": "Power"
+      }
+    ],
+    "watch television": []
+  }
+}

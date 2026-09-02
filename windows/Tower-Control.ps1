@@ -1,5 +1,6 @@
 ﻿Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Management
 Add-Type -AssemblyName Microsoft.VisualBasic
 
 # Native top-level window movement avoids pushing every animation frame through
@@ -85,7 +86,7 @@ function Get-TowerConfig {
         server = $server.TrimEnd('/')
         token = $token
     }
-    $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
+    $config | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
     return $config
 }
 
@@ -136,9 +137,6 @@ if ($null -eq $config.PSObject.Properties['selectedIrTransmitters']) {
 if ($null -eq $config.PSObject.Properties['irDeviceOrder']) {
     $config | Add-Member -NotePropertyName irDeviceOrder -NotePropertyValue @()
 }
-if ($null -eq $config.PSObject.Properties['irCommandLayouts']) {
-    $config | Add-Member -NotePropertyName irCommandLayouts -NotePropertyValue @()
-}
 
 if ($null -eq $config.PSObject.Properties['rfPreset1Devices']) {
     $config | Add-Member -NotePropertyName rfPreset1Devices -NotePropertyValue @()
@@ -166,7 +164,7 @@ if ([string]$config.sensorViewMode -notin @('cards', 'list', 'details')) {
 
 function Save-TowerConfig {
     New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
-    $config | ConvertTo-Json -Depth 6 | Set-Content -Path $configPath -Encoding UTF8
+    $config | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
 }
 
 $headers = @{ Authorization = "Bearer $($config.token)" }
@@ -180,15 +178,46 @@ $script:irTransmitterButtons = @{}
 $script:selectedIrTransmitters = @()
 $script:currentIrDevice = $null
 $script:denonZoneMode = 'Main'
-$script:irLayoutEditMode = $false
-$script:irLayoutDeviceId = ''
-$script:irLayoutWorking = @{}
-$script:irLayoutDraggedEntry = $null
-$script:irLayoutSelectedEntry = $null
-$script:irLayoutGroupCounts = @{}
-$script:irLayoutScopeKey = 'Default'
 $script:sensorRefreshFailures = 0
 $script:remotePreviewFullTitle = 'Remote'
+$script:pcManagementScope = $null
+$script:pcHelperProcess = $null
+$script:pcHelperPath = Join-Path $scriptDirectory 'Tower-PC-Monitor.ps1'
+$script:pcHelperInstanceId = [string]$PID
+$script:pcHelperSnapshotPath = Join-Path $configDirectory (
+    'pc-thermal-' + $script:pcHelperInstanceId + '.json'
+)
+$script:pcHelperStopPath = Join-Path $configDirectory (
+    'pc-thermal-' + $script:pcHelperInstanceId + '.stop'
+)
+$script:pcCoolingCommandPath = Join-Path $configDirectory (
+    'pc-cooling-command-' + $script:pcHelperInstanceId + '.json'
+)
+$script:pcHelperLastSnapshotWrite = [datetime]::MinValue
+$script:pcHelperNextStart = [datetime]::MinValue
+$script:pcManagementError = ''
+$script:pcTelemetryLoaded = $false
+$script:pcCapabilitiesLoaded = $false
+$script:pcLastCapabilityRead = [datetime]::MinValue
+$script:pcSensors = @()
+$script:pcGpu = $null
+$script:pcStorage = @()
+$script:pcPerc = $null
+$script:pcSourceStatus = @()
+$script:pcHardwareItems = @{}
+$script:pcHardwareDesiredKeys = @()
+$script:pcCoolingRows = @{}
+$script:pcCoolingCapabilitySignature = ''
+$script:pcCoolingControlAvailable = $false
+$script:pcCoolingControlWritable = $false
+$script:pcCoolingCurrentLevel = $null
+$script:pcCoolingCommandPending = $false
+$script:pcCoolingLastCommandId = ''
+$script:pcCoolingSliderDirty = $false
+$script:pcThermalProfile = 'Not exposed'
+$script:pcFanMode = 'Not exposed'
+$script:pcCapabilityCount = 0
+$script:pcWritableCapabilityCount = 0
 
 # Background read state. Read-only API calls run in isolated PowerShell jobs,
 # never on the WinForms message thread. Button/send operations keep the proven
@@ -256,6 +285,49 @@ function Write-TowerLog([string]$level, [string]$message) {
     catch {
         # Logging must never prevent Tower control from operating.
     }
+}
+
+$script:towerTimerLastError = @{}
+
+function Add-TowerSafeTimerTick(
+    [System.Windows.Forms.Timer]$timer,
+    [string]$name,
+    [scriptblock]$action) {
+
+    $timerErrorState = $script:towerTimerLastError
+    $handler = {
+        try {
+            & $action
+        }
+        catch {
+            # A WinForms Timer runs on the UI thread. Letting an exception leave
+            # this callback opens a modal .NET error dialog and makes the main
+            # window appear frozen. Log it instead, throttled per timer.
+            try {
+                $now = [datetime]::Now
+                $last = $timerErrorState[$name]
+
+                if ($null -eq $last -or
+                    ($now - [datetime]$last).TotalSeconds -ge 30) {
+                    $timerErrorState[$name] = $now
+                    $details = (
+                        "Timer '$name' failed: " +
+                        [string]$_.Exception.Message
+                    )
+                    $trace = [string]$_.ScriptStackTrace
+                    if (-not [string]::IsNullOrWhiteSpace($trace)) {
+                        $details += "; stack=$trace"
+                    }
+                    Write-TowerLog 'ERROR' $details
+                }
+            }
+            catch {
+                # The exception boundary itself must never open a modal dialog.
+            }
+        }
+    }.GetNewClosure()
+
+    $timer.Add_Tick($handler)
 }
 
 function Enable-TowerUiSchedulingBoost {
@@ -557,18 +629,13 @@ function Add-TowerShapeBorder(
         # clipped by Windows. That was especially obvious on the unfilled
         # Settings chamfer buttons: the left/right vertical edges disappeared.
         #
-        # Keep the Region itself full-sized, but draw the visible outline 1px
-        # inward so every segment remains inside the clipped Region.
+        # Keep the Region itself full-sized, but draw the Chamfer outline 1px
+        # inward so every segment remains inside the visible Region.
         $paintWidth = [int]($sender.ClientSize.Width - 1)
         $paintHeight = [int]($sender.ClientSize.Height - 1)
         $translate = $false
 
-        if ($capturedShape -eq 'Chamfer' -or
-            $capturedShape -eq 'Rounded' -or
-            $capturedShape -eq 'Pill') {
-            # Keep the anti-aliased outline fully inside the clipped control
-            # region. A line centered on the Region boundary loses half of its
-            # pixels and makes rounded IR buttons look soft/jagged.
+        if ($capturedShape -eq 'Chamfer') {
             $paintWidth = [Math]::Max(
                 2,
                 [int]($sender.ClientSize.Width - 3)
@@ -1254,6 +1321,38 @@ function Get-OrderedScreens {
     )
 }
 
+function Get-WindowsMonitorNumber($screen) {
+    if ($null -eq $screen) {
+        return 0
+    }
+
+    $deviceName = [string]$screen.DeviceName
+    if ($deviceName -match 'DISPLAY([0-9]+)$') {
+        return [int]$Matches[1]
+    }
+
+    return 0
+}
+
+function Get-SettingsScreens {
+    return @(
+        [System.Windows.Forms.Screen]::AllScreens |
+            Sort-Object `
+                @{
+                    Expression = {
+                        $number = Get-WindowsMonitorNumber $_
+                        if ($number -gt 0) {
+                            $number
+                        }
+                        else {
+                            [int]::MaxValue
+                        }
+                    }
+                }, `
+                @{ Expression = { $_.DeviceName } }
+    )
+}
+
 function Get-DisplayTopologySignature {
     $parts = @()
 
@@ -1522,9 +1621,11 @@ function Initialize-SidebarAnimationTimer {
     # ~100 Hz request. Windows/WinForms may coalesce callbacks, but elapsed-time
     # positioning keeps the motion correct even when some frames are skipped.
     $script:sidebarAnimationTimer.Interval = 10
-    $script:sidebarAnimationTimer.Add_Tick({
+    Add-TowerSafeTimerTick `
+        $script:sidebarAnimationTimer `
+        'Sidebar animation' {
         Update-SidebarAnimationFrame
-    })
+    }
 }
 
 function Animate-Sidebar([bool]$show) {
@@ -1900,14 +2001,17 @@ function Refresh-MonitorButtons {
     $settingsMonitorPanel.Controls.Clear()
     $script:monitorButtons = @()
 
-    $screens = Get-OrderedScreens
+    $screens = Get-SettingsScreens
     $savedDeviceName = [string]$config.monitorDeviceName
 
     for ($i = 0; $i -lt $screens.Count; $i++) {
         $screen = $screens[$i]
         $button = New-Object System.Windows.Forms.Button
 
-        $number = $i + 1
+        $number = Get-WindowsMonitorNumber $screen
+        if ($number -le 0) {
+            $number = $i + 1
+        }
         $button.Text =
             "Monitor $number`n" +
             "$($screen.Bounds.Width)x$($screen.Bounds.Height)"
@@ -2254,6 +2358,331 @@ $sensorPanel.Visible =
     ([string]$config.sensorViewMode -ne 'details')
 $sensorListView.Visible =
     ([string]$config.sensorViewMode -eq 'details')
+
+
+
+# PC / Dell thermal monitoring tab -----------------------------------------
+$pcTab = New-Object System.Windows.Forms.TabPage
+$pcTab.Text = 'PC'
+$pcTab.Padding = New-Object System.Windows.Forms.Padding(10)
+$tabs.TabPages.Add($pcTab)
+
+$pcScroll = New-Object System.Windows.Forms.Panel
+$pcScroll.Dock = 'Fill'
+$pcScroll.AutoScroll = $true
+$pcScroll.BackColor =
+    [System.Drawing.Color]::FromArgb(240, 240, 240)
+$pcTab.Controls.Add($pcScroll)
+
+$pcSummaryGroup = New-Object System.Windows.Forms.GroupBox
+$pcSummaryGroup.Text = 'Dell Precision Thermal / Fan Control'
+$pcSummaryGroup.Location = New-Object System.Drawing.Point(8, 6)
+$pcSummaryGroup.Size = New-Object System.Drawing.Size(580, 92)
+$pcScroll.Controls.Add($pcSummaryGroup)
+
+$pcDcmCaption = New-Object System.Windows.Forms.Label
+$pcDcmCaption.Text = 'Dell Command | Monitor:'
+$pcDcmCaption.Location =
+    New-Object System.Drawing.Point(16, 24)
+$pcDcmCaption.Size =
+    New-Object System.Drawing.Size(155, 22)
+$pcSummaryGroup.Controls.Add($pcDcmCaption)
+
+$pcDcmValue = New-Object System.Windows.Forms.Label
+$pcDcmValue.Text = 'Not checked'
+$pcDcmValue.Font =
+    New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+$pcDcmValue.Location =
+    New-Object System.Drawing.Point(174, 24)
+$pcDcmValue.Size =
+    New-Object System.Drawing.Size(150, 22)
+$pcSummaryGroup.Controls.Add($pcDcmValue)
+
+$pcDcmToolTip = New-Object System.Windows.Forms.ToolTip
+$pcDcmToolTip.SetToolTip(
+    $pcDcmValue,
+    'Dell Command | Monitor has not been queried yet.'
+)
+
+$pcSourceStatusValue = New-Object System.Windows.Forms.Label
+$pcSourceStatusValue.Text =
+    'Sources: Dell -- | GPU -- | Storage -- | PERC -- | BIOS --'
+$pcSourceStatusValue.ForeColor =
+    [System.Drawing.Color]::DimGray
+$pcSourceStatusValue.Location =
+    New-Object System.Drawing.Point(16, 54)
+$pcSourceStatusValue.Size =
+    New-Object System.Drawing.Size(540, 22)
+$pcSummaryGroup.Controls.Add($pcSourceStatusValue)
+
+$pcHardwareGroup = New-Object System.Windows.Forms.GroupBox
+$pcHardwareGroup.Text = 'Hardware Thermal / Fan Overview'
+$pcHardwareGroup.Location =
+    New-Object System.Drawing.Point(8, 106)
+$pcHardwareGroup.Size =
+    New-Object System.Drawing.Size(580, 570)
+$pcScroll.Controls.Add($pcHardwareGroup)
+
+$pcHardwareList = New-Object System.Windows.Forms.ListView
+$pcHardwareList.Location =
+    New-Object System.Drawing.Point(12, 24)
+$pcHardwareList.Size =
+    New-Object System.Drawing.Size(554, 532)
+$pcHardwareList.View =
+    [System.Windows.Forms.View]::Details
+$pcHardwareList.FullRowSelect = $true
+$pcHardwareList.GridLines = $true
+$pcHardwareList.HideSelection = $false
+$pcHardwareList.MultiSelect = $false
+$pcHardwareList.HeaderStyle =
+    [System.Windows.Forms.ColumnHeaderStyle]::Nonclickable
+$pcHardwareList.Font =
+    New-Object System.Drawing.Font('Segoe UI', 9)
+$pcHardwareList.BackColor =
+    [System.Drawing.Color]::FromArgb(248, 248, 248)
+$pcHardwareList.BorderStyle =
+    [System.Windows.Forms.BorderStyle]::FixedSingle
+
+try {
+    $doubleBufferedProperty =
+        [System.Windows.Forms.Control].GetProperty(
+            'DoubleBuffered',
+            [System.Reflection.BindingFlags]::Instance -bor
+                [System.Reflection.BindingFlags]::NonPublic
+        )
+
+    if ($null -ne $doubleBufferedProperty) {
+        $doubleBufferedProperty.SetValue(
+            $pcHardwareList,
+            $true,
+            $null
+        )
+    }
+}
+catch {
+    # Persistent rows still prevent the destructive clear/rebuild flicker.
+}
+
+[void]$pcHardwareList.Columns.Add('Component', 170)
+[void]$pcHardwareList.Columns.Add('Temp', 70)
+[void]$pcHardwareList.Columns.Add('Fan', 88)
+[void]$pcHardwareList.Columns.Add('Load', 58)
+[void]$pcHardwareList.Columns.Add('Power', 68)
+[void]$pcHardwareList.Columns.Add('Limits W/C', 100)
+[void]$pcHardwareList.Columns.Add('Health', 82)
+
+$pcHardwareGroup.Controls.Add($pcHardwareList)
+
+$pcCoolingGroup = New-Object System.Windows.Forms.GroupBox
+$pcCoolingGroup.Text = 'Main Cooling Bank'
+$pcCoolingGroup.Location =
+    New-Object System.Drawing.Point(8, 684)
+$pcCoolingGroup.Size =
+    New-Object System.Drawing.Size(580, 250)
+$pcScroll.Controls.Add($pcCoolingGroup)
+
+$pcCoolingCurrentCaption = New-Object System.Windows.Forms.Label
+$pcCoolingCurrentCaption.Text = 'Current Dell level:'
+$pcCoolingCurrentCaption.Location =
+    New-Object System.Drawing.Point(14, 24)
+$pcCoolingCurrentCaption.Size =
+    New-Object System.Drawing.Size(125, 22)
+$pcCoolingGroup.Controls.Add($pcCoolingCurrentCaption)
+
+$pcCoolingCurrentValue = New-Object System.Windows.Forms.Label
+$pcCoolingCurrentValue.Text = '--'
+$pcCoolingCurrentValue.Font =
+    New-Object System.Drawing.Font('Segoe UI Semibold', 10)
+$pcCoolingCurrentValue.Location =
+    New-Object System.Drawing.Point(140, 22)
+$pcCoolingCurrentValue.Size =
+    New-Object System.Drawing.Size(245, 24)
+$pcCoolingGroup.Controls.Add($pcCoolingCurrentValue)
+
+$pcCoolingSlider = New-Object System.Windows.Forms.TrackBar
+$pcCoolingSlider.Minimum = 0
+$pcCoolingSlider.Maximum = 100
+$pcCoolingSlider.TickFrequency = 10
+$pcCoolingSlider.SmallChange = 1
+$pcCoolingSlider.LargeChange = 10
+$pcCoolingSlider.Value = 0
+$pcCoolingSlider.Enabled = $false
+$pcCoolingSlider.Location =
+    New-Object System.Drawing.Point(10, 52)
+$pcCoolingSlider.Size =
+    New-Object System.Drawing.Size(385, 45)
+$pcCoolingGroup.Controls.Add($pcCoolingSlider)
+
+$pcCoolingTargetValue = New-Object System.Windows.Forms.Label
+$pcCoolingTargetValue.Text = 'Target: 0 / 100'
+$pcCoolingTargetValue.Font =
+    New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+$pcCoolingTargetValue.TextAlign = 'MiddleRight'
+$pcCoolingTargetValue.Location =
+    New-Object System.Drawing.Point(397, 56)
+$pcCoolingTargetValue.Size =
+    New-Object System.Drawing.Size(90, 24)
+$pcCoolingGroup.Controls.Add($pcCoolingTargetValue)
+
+$pcCoolingApplyButton = New-Object System.Windows.Forms.Button
+$pcCoolingApplyButton.Text = 'Apply'
+$pcCoolingApplyButton.Enabled = $false
+$pcCoolingApplyButton.Location =
+    New-Object System.Drawing.Point(490, 52)
+$pcCoolingApplyButton.Size =
+    New-Object System.Drawing.Size(70, 30)
+$pcCoolingGroup.Controls.Add($pcCoolingApplyButton)
+
+$pcCoolingAutoButton = New-Object System.Windows.Forms.Button
+$pcCoolingAutoButton.Text = 'Dell Auto'
+$pcCoolingAutoButton.Enabled = $false
+$pcCoolingAutoButton.Location =
+    New-Object System.Drawing.Point(490, 86)
+$pcCoolingAutoButton.Size =
+    New-Object System.Drawing.Size(70, 30)
+$pcCoolingGroup.Controls.Add($pcCoolingAutoButton)
+
+$pcCoolingStatusValue = New-Object System.Windows.Forms.Label
+$pcCoolingStatusValue.Text = 'Waiting for Dell BIOS capability data...'
+$pcCoolingStatusValue.ForeColor =
+    [System.Drawing.Color]::DimGray
+$pcCoolingStatusValue.Location =
+    New-Object System.Drawing.Point(14, 108)
+$pcCoolingStatusValue.Size =
+    New-Object System.Drawing.Size(465, 24)
+$pcCoolingGroup.Controls.Add($pcCoolingStatusValue)
+
+$pcCoolingFansCaption = New-Object System.Windows.Forms.Label
+$pcCoolingFansCaption.Text = 'Affected fan bank - live RPM'
+$pcCoolingFansCaption.Font =
+    New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+$pcCoolingFansCaption.Location =
+    New-Object System.Drawing.Point(14, 140)
+$pcCoolingFansCaption.Size =
+    New-Object System.Drawing.Size(220, 22)
+$pcCoolingGroup.Controls.Add($pcCoolingFansCaption)
+
+$pcCoolingFansValue = New-Object System.Windows.Forms.Label
+$pcCoolingFansValue.Text =
+    "CPU0 --   CPU1 --   SYS1 --`r`nSYS2 --   REAR0 --   REAR1 --"
+$pcCoolingFansValue.Font =
+    New-Object System.Drawing.Font('Consolas', 9)
+$pcCoolingFansValue.Location =
+    New-Object System.Drawing.Point(14, 164)
+$pcCoolingFansValue.Size =
+    New-Object System.Drawing.Size(545, 44)
+$pcCoolingGroup.Controls.Add($pcCoolingFansValue)
+
+$pcCoolingSys0Caption = New-Object System.Windows.Forms.Label
+$pcCoolingSys0Caption.Text = 'SYS0 (Dell automatic only):'
+$pcCoolingSys0Caption.Location =
+    New-Object System.Drawing.Point(14, 216)
+$pcCoolingSys0Caption.Size =
+    New-Object System.Drawing.Size(180, 22)
+$pcCoolingGroup.Controls.Add($pcCoolingSys0Caption)
+
+$pcCoolingSys0Value = New-Object System.Windows.Forms.Label
+$pcCoolingSys0Value.Text = '--'
+$pcCoolingSys0Value.Font =
+    New-Object System.Drawing.Font('Segoe UI Semibold', 9)
+$pcCoolingSys0Value.Location =
+    New-Object System.Drawing.Point(198, 216)
+$pcCoolingSys0Value.Size =
+    New-Object System.Drawing.Size(120, 22)
+$pcCoolingGroup.Controls.Add($pcCoolingSys0Value)
+
+$pcCoolingSlider.Add_Scroll({
+    $script:pcCoolingSliderDirty = $true
+    $pcCoolingTargetValue.Text =
+        'Target: ' +
+        [string]$pcCoolingSlider.Value +
+        ' / 100'
+})
+
+$pcCoolingApplyButton.Add_Click({
+    Submit-PcCoolingLevel `
+        ([int]$pcCoolingSlider.Value)
+})
+
+$pcCoolingAutoButton.Add_Click({
+    $pcCoolingSlider.Value = 0
+    $pcCoolingTargetValue.Text = 'Target: 0 / 100'
+    $script:pcCoolingSliderDirty = $false
+    Submit-PcCoolingLevel 0
+})
+
+function Position-PcLayout {
+    if ($null -eq $pcScroll) {
+        return
+    }
+
+    $contentWidth =
+        [Math]::Max(
+            580,
+            $pcTab.ClientSize.Width - 38
+        )
+
+    foreach ($group in @(
+        $pcSummaryGroup,
+        $pcHardwareGroup,
+        $pcCoolingGroup
+    )) {
+        $group.Width = $contentWidth
+    }
+
+    $innerWidth =
+        [Math]::Max(
+            554,
+            $contentWidth - 26
+        )
+
+    $pcSourceStatusValue.Width =
+        [Math]::Max(
+            280,
+            $contentWidth - 34
+        )
+
+    $pcHardwareList.Width = $innerWidth
+    $pcHardwareList.Height =
+        [Math]::Max(
+            300,
+            $pcHardwareGroup.Height - 38
+        )
+
+    $pcCoolingFansValue.Width = $innerWidth
+
+    $pcCoolingSlider.Width =
+        [Math]::Max(
+            260,
+            $contentWidth - 195
+        )
+
+    $pcCoolingTargetValue.Left =
+        [Math]::Max(
+            397,
+            $contentWidth - 183
+        )
+
+    $pcCoolingApplyButton.Left =
+        [Math]::Max(
+            490,
+            $contentWidth - 90
+        )
+
+    $pcCoolingAutoButton.Left =
+        $pcCoolingApplyButton.Left
+
+    $pcCoolingStatusValue.Width =
+        [Math]::Max(
+            300,
+            $pcCoolingApplyButton.Left - 28
+        )
+}
+
+$pcTab.Add_Resize({
+    Position-PcLayout
+})
+Position-PcLayout
 
 
 $rfTab = New-Object System.Windows.Forms.TabPage
@@ -2714,7 +3143,7 @@ $irDeviceDeleteButton.Font =
 $toolTip.SetToolTip($irDeviceAddButton, 'Add a new IR remote')
 $toolTip.SetToolTip($irDeviceUpButton, 'Move selected remote up')
 $toolTip.SetToolTip($irDeviceDownButton, 'Move selected remote down')
-$toolTip.SetToolTip($irDeviceRenameButton, 'Edit selected remote')
+$toolTip.SetToolTip($irDeviceRenameButton, 'Rename selected remote')
 $toolTip.SetToolTip($irDeviceDeleteButton, 'Delete selected remote')
 
 $irDeviceList = New-Object System.Windows.Forms.ListBox
@@ -2874,208 +3303,52 @@ $irRightLayout = New-Object System.Windows.Forms.TableLayoutPanel
 $irRightLayout.Dock = 'Fill'
 $irRightLayout.RowCount = 2
 $irRightLayout.ColumnCount = 1
-[void]$irRightLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 152)))
+[void]$irRightLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 148)))
 [void]$irRightLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100)))
 $irSplit.Panel2.Controls.Add($irRightLayout)
 
 $irHeaderLayout = New-Object System.Windows.Forms.TableLayoutPanel
 $irHeaderLayout.Dock = 'Fill'
-$irHeaderLayout.RowCount = 7
+$irHeaderLayout.RowCount = 5
 $irHeaderLayout.ColumnCount = 1
-[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 40)))
-[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 0)))
-[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 0)))
+[void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 36)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 25)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 23)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 40)))
 [void]$irHeaderLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 24)))
 $irRightLayout.Controls.Add($irHeaderLayout, 0, 0)
 
-$irHeadingPanel = New-Object System.Windows.Forms.Panel
-$irHeadingPanel.Dock = 'Fill'
-$irHeaderLayout.Controls.Add($irHeadingPanel, 0, 0)
-
-$irLayoutEditButton = New-RfSmoothButton `
-    'Edit Layout' `
-    92 `
-    29 `
-    ([System.Drawing.Color]::FromArgb(232, 239, 249)) `
-    ([System.Drawing.Color]::FromArgb(30, 65, 105)) `
-    ([System.Drawing.Color]::FromArgb(120, 155, 195))
-$irLayoutEditButton.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
-
-$irLayoutSaveButton = New-RfSmoothButton `
-    'Save Layout' `
-    92 `
-    29 `
-    ([System.Drawing.Color]::FromArgb(224, 244, 228)) `
-    ([System.Drawing.Color]::FromArgb(30, 80, 40)) `
-    ([System.Drawing.Color]::FromArgb(130, 175, 135))
-$irLayoutSaveButton.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
-$irLayoutSaveButton.Visible = $false
-
-$irLayoutCancelButton = New-RfSmoothButton `
-    'Cancel' `
-    72 `
-    29 `
-    ([System.Drawing.Color]::White) `
-    ([System.Drawing.Color]::FromArgb(50, 50, 50)) `
-    ([System.Drawing.Color]::FromArgb(155, 155, 155))
-$irLayoutCancelButton.Margin = New-Object System.Windows.Forms.Padding(4, 0, 0, 0)
-$irLayoutCancelButton.Visible = $false
-
-$irLayoutColorPanel = New-Object System.Windows.Forms.FlowLayoutPanel
-$irLayoutColorPanel.Dock = [System.Windows.Forms.DockStyle]::Fill
-$irLayoutColorPanel.FlowDirection =
-    [System.Windows.Forms.FlowDirection]::LeftToRight
-$irLayoutColorPanel.WrapContents = $false
-$irLayoutColorPanel.Padding = New-Object System.Windows.Forms.Padding(10, 2, 0, 0)
-$irLayoutColorPanel.Visible = $false
-$irHeaderLayout.Controls.Add($irLayoutColorPanel, 0, 1)
-
-$irLayoutColorLabel = New-Object System.Windows.Forms.Label
-$irLayoutColorLabel.Text = 'Button color:'
-$irLayoutColorLabel.AutoSize = $true
-$irLayoutColorLabel.Margin = New-Object System.Windows.Forms.Padding(0, 5, 8, 0)
-[void]$irLayoutColorPanel.Controls.Add($irLayoutColorLabel)
-
-$irLayoutColorChoices = @(
-    @{ Key = 'Auto';   Name = 'Auto / original'; Color = [System.Drawing.Color]::White },
-    @{ Key = 'Red';    Name = 'Red';    Color = [System.Drawing.Color]::FromArgb(246, 226, 226) },
-    @{ Key = 'Blue';   Name = 'Blue';   Color = [System.Drawing.Color]::FromArgb(229, 238, 250) },
-    @{ Key = 'Green';  Name = 'Green';  Color = [System.Drawing.Color]::FromArgb(230, 244, 232) },
-    @{ Key = 'Purple'; Name = 'Purple'; Color = [System.Drawing.Color]::FromArgb(238, 233, 246) },
-    @{ Key = 'Gold';   Name = 'Gold';   Color = [System.Drawing.Color]::FromArgb(251, 241, 224) },
-    @{ Key = 'Gray';   Name = 'Gray';   Color = [System.Drawing.Color]::FromArgb(242, 242, 242) }
-)
-
-foreach ($choice in $irLayoutColorChoices) {
-    $swatch = New-Object System.Windows.Forms.Button
-    $swatch.Size = New-Object System.Drawing.Size(28, 24)
-    $swatch.Margin = New-Object System.Windows.Forms.Padding(2, 1, 2, 0)
-    $swatch.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $swatch.FlatAppearance.BorderSize = 1
-    $swatch.FlatAppearance.BorderColor =
-        [System.Drawing.Color]::FromArgb(150, 150, 150)
-    $swatch.BackColor = $choice.Color
-    $swatch.Text = if ($choice.Key -eq 'Auto') { 'A' } else { '' }
-    $swatch.Tag = [string]$choice.Key
-    $toolTip.SetToolTip($swatch, [string]$choice.Name)
-    $swatch.Add_Click({
-        param($sender, $eventArgs)
-        Set-IrSelectedLayoutColor ([string]$sender.Tag)
-    })
-    [void]$irLayoutColorPanel.Controls.Add($swatch)
-}
-
-$irLayoutSizePanel = New-Object System.Windows.Forms.FlowLayoutPanel
-$irLayoutSizePanel.Dock = [System.Windows.Forms.DockStyle]::Fill
-$irLayoutSizePanel.FlowDirection =
-    [System.Windows.Forms.FlowDirection]::LeftToRight
-$irLayoutSizePanel.WrapContents = $false
-$irLayoutSizePanel.Padding = New-Object System.Windows.Forms.Padding(10, 2, 0, 0)
-$irLayoutSizePanel.Visible = $false
-$irHeaderLayout.Controls.Add($irLayoutSizePanel, 0, 2)
-
-$irLayoutSizeLabel = New-Object System.Windows.Forms.Label
-$irLayoutSizeLabel.Text = 'Button size:'
-$irLayoutSizeLabel.AutoSize = $true
-$irLayoutSizeLabel.Margin = New-Object System.Windows.Forms.Padding(0, 5, 8, 0)
-[void]$irLayoutSizePanel.Controls.Add($irLayoutSizeLabel)
-
-# Width x height in logical grid cells. Add larger presets here later without
-# changing the persistence or layout engine.
-$irLayoutSizeChoices = @(
-    @{ Key = 'Default'; Label = 'Default'; ColumnSpan = 0; RowSpan = 0 },
-    @{ Key = '1x1';     Label = '1x1';     ColumnSpan = 1; RowSpan = 1 },
-    @{ Key = '2x1';     Label = '2x1';     ColumnSpan = 2; RowSpan = 1 },
-    @{ Key = '1x2';     Label = '1x2';     ColumnSpan = 1; RowSpan = 2 },
-    @{ Key = '2x2';     Label = '2x2';     ColumnSpan = 2; RowSpan = 2 }
-)
-
-foreach ($choice in $irLayoutSizeChoices) {
-    $sizeButtonWidth = if ($choice.Key -eq 'Default') { 64 } else { 48 }
-    $sizeButton = New-RfSmoothButton `
-        ([string]$choice.Label) `
-        $sizeButtonWidth `
-        24 `
-        ([System.Drawing.Color]::FromArgb(244, 244, 244)) `
-        ([System.Drawing.Color]::FromArgb(45, 45, 45)) `
-        ([System.Drawing.Color]::FromArgb(155, 155, 155))
-    $sizeButton.Margin = New-Object System.Windows.Forms.Padding(2, 1, 2, 0)
-    $sizeButton.Tag = [string]$choice.Key
-    $sizeTip = if ($choice.Key -eq 'Default') {
-        'Restore this command button to its original renderer size.'
-    }
-    else {
-        ('Set button size to ' + [string]$choice.Label + ' grid cells.')
-    }
-    $toolTip.SetToolTip($sizeButton, $sizeTip)
-    $sizeButton.Add_Click({
-        param($sender, $eventArgs)
-        Set-IrSelectedLayoutSize ([string]$sender.Tag)
-    })
-    [void]$irLayoutSizePanel.Controls.Add($sizeButton)
-}
-
 $irHeading = New-Object System.Windows.Forms.Label
 $irHeading.Dock = 'Fill'
 $irHeading.Padding = New-Object System.Windows.Forms.Padding(10, 6, 4, 0)
 $irHeading.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 14)
 $irHeading.Text = 'Select an IR device'
-$irHeadingPanel.Controls.Add($irHeading)
+$irHeaderLayout.Controls.Add($irHeading, 0, 0)
 
 $irDetailLabel = New-Object System.Windows.Forms.Label
 $irDetailLabel.Dock = 'Fill'
 $irDetailLabel.Padding = New-Object System.Windows.Forms.Padding(11, 0, 4, 0)
 $irDetailLabel.ForeColor = [System.Drawing.Color]::DimGray
-$irHeaderLayout.Controls.Add($irDetailLabel, 0, 3)
+$irHeaderLayout.Controls.Add($irDetailLabel, 0, 1)
 
 $irTxLabel = New-Object System.Windows.Forms.Label
 $irTxLabel.Text = 'Active IR transmitters'
 $irTxLabel.Dock = 'Fill'
 $irTxLabel.Padding = New-Object System.Windows.Forms.Padding(11, 2, 4, 0)
 $irTxLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
-$irHeaderLayout.Controls.Add($irTxLabel, 0, 4)
-
-$irTransmitterRow = New-Object System.Windows.Forms.TableLayoutPanel
-$irTransmitterRow.Dock = 'Fill'
-$irTransmitterRow.RowCount = 1
-$irTransmitterRow.ColumnCount = 2
-$irTransmitterRow.Margin = New-Object System.Windows.Forms.Padding(0)
-$irTransmitterRow.Padding = New-Object System.Windows.Forms.Padding(0)
-[void]$irTransmitterRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
-[void]$irTransmitterRow.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize)))
-$irHeaderLayout.Controls.Add($irTransmitterRow, 0, 5)
+$irHeaderLayout.Controls.Add($irTxLabel, 0, 2)
 
 $irTransmitterPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 $irTransmitterPanel.Dock = 'Fill'
-$irTransmitterPanel.Padding = New-Object System.Windows.Forms.Padding(8, 2, 0, 2)
+$irTransmitterPanel.Padding = New-Object System.Windows.Forms.Padding(8, 2, 8, 2)
 $irTransmitterPanel.WrapContents = $false
-$irTransmitterPanel.Margin = New-Object System.Windows.Forms.Padding(0)
-$irTransmitterRow.Controls.Add($irTransmitterPanel, 0, 0)
-
-# Keep Edit/Save/Cancel on the transmitter row, aligned against the far-right
-# edge while transmitter selectors and Calibrate remain grouped on the left.
-$irLayoutToolbar = New-Object System.Windows.Forms.FlowLayoutPanel
-$irLayoutToolbar.AutoSize = $true
-$irLayoutToolbar.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
-$irLayoutToolbar.Dock = 'Fill'
-$irLayoutToolbar.FlowDirection =
-    [System.Windows.Forms.FlowDirection]::RightToLeft
-$irLayoutToolbar.WrapContents = $false
-$irLayoutToolbar.Margin = New-Object System.Windows.Forms.Padding(0)
-$irLayoutToolbar.Padding = New-Object System.Windows.Forms.Padding(0, 2, 11, 2)
-$irTransmitterRow.Controls.Add($irLayoutToolbar, 1, 0)
-[void]$irLayoutToolbar.Controls.Add($irLayoutEditButton)
-[void]$irLayoutToolbar.Controls.Add($irLayoutSaveButton)
-[void]$irLayoutToolbar.Controls.Add($irLayoutCancelButton)
+$irHeaderLayout.Controls.Add($irTransmitterPanel, 0, 3)
 
 $irTxHintLabel = New-Object System.Windows.Forms.Label
 $irTxHintLabel.Dock = 'Fill'
 $irTxHintLabel.Padding = New-Object System.Windows.Forms.Padding(11, 2, 4, 0)
 $irTxHintLabel.ForeColor = [System.Drawing.Color]::DimGray
-$irHeaderLayout.Controls.Add($irTxHintLabel, 0, 6)
+$irHeaderLayout.Controls.Add($irTxHintLabel, 0, 4)
 
 $irCommandPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 $irCommandPanel.Dock = 'Fill'
@@ -5687,8 +5960,6 @@ function New-IrCommandButton(
     $button.Tag = [pscustomobject]@{
         BaseColor = $baseColor
         PressedColor = $pressedColor
-        DefaultBaseColor = $baseColor
-        DefaultPressedColor = $pressedColor
     }
 
     $button.Add_MouseDown({
@@ -5711,7 +5982,6 @@ function New-IrCommandButton(
     $capturedCommandId = [string]$command.id
     $capturedDisplayName = "$($device.name) - $displayText"
     $button.Add_Click({
-        if ($script:irLayoutEditMode) { return }
         Send-IrCommand $capturedDeviceId $capturedCommandId $capturedDisplayName
     }.GetNewClosure())
 
@@ -5740,340 +6010,40 @@ function Find-IrCommand($commands, [string]$name) {
     return $null
 }
 
-function Get-IrLayoutGroupKey([string]$title) {
-    $key = if ([string]::IsNullOrWhiteSpace($title)) {
-        'Commands'
-    }
-    else {
-        $title
-    }
-
-    if (-not $script:irLayoutGroupCounts.ContainsKey($key)) {
-        $script:irLayoutGroupCounts[$key] = 0
-    }
-
-    $script:irLayoutGroupCounts[$key] =
-        [int]$script:irLayoutGroupCounts[$key] + 1
-
-    $count = [int]$script:irLayoutGroupCounts[$key]
-    $instanceKey = if ($count -le 1) {
-        $key
-    }
-    else {
-        "$key#$count"
-    }
-
-    return ([string]$script:irLayoutScopeKey + '::' + $instanceKey)
-}
-
-function Get-IrLayoutEntryKey(
-    [string]$groupKey,
-    [string]$commandId) {
-
-    return ($groupKey + '|' + $commandId)
-}
-
-function Get-IrSavedLayoutEntry(
-    [string]$deviceId,
-    [string]$groupKey,
-    [string]$commandId) {
-
-    foreach ($item in @($config.irCommandLayouts)) {
-        if ([string]$item.deviceId -eq $deviceId -and
-            [string]$item.groupKey -eq $groupKey -and
-            [string]$item.commandId -eq $commandId) {
-            return $item
-        }
-    }
-
-    return $null
-}
-
-function Get-IrSavedLayoutEntryForCommand(
-    [string]$deviceId,
-    [string]$commandId) {
-
-    $scopePrefix = [string]$script:irLayoutScopeKey + '::'
-
-    foreach ($item in @($config.irCommandLayouts)) {
-        if ([string]$item.deviceId -eq $deviceId -and
-            [string]$item.commandId -eq $commandId -and
-            ([string]$item.groupKey).StartsWith($scopePrefix)) {
-            return $item
-        }
-    }
-
-    return $null
-}
-
-function Get-IrLayoutColorPair([string]$colorKey) {
-    switch ($colorKey) {
-        'Red' {
-            return [pscustomobject]@{
-                Base = [System.Drawing.Color]::FromArgb(246, 226, 226)
-                Pressed = [System.Drawing.Color]::FromArgb(223, 188, 188)
-            }
-        }
-        'Blue' {
-            return [pscustomobject]@{
-                Base = [System.Drawing.Color]::FromArgb(229, 238, 250)
-                Pressed = [System.Drawing.Color]::FromArgb(184, 208, 239)
-            }
-        }
-        'Green' {
-            return [pscustomobject]@{
-                Base = [System.Drawing.Color]::FromArgb(230, 244, 232)
-                Pressed = [System.Drawing.Color]::FromArgb(188, 224, 194)
-            }
-        }
-        'Purple' {
-            return [pscustomobject]@{
-                Base = [System.Drawing.Color]::FromArgb(238, 233, 246)
-                Pressed = [System.Drawing.Color]::FromArgb(212, 198, 231)
-            }
-        }
-        'Gold' {
-            return [pscustomobject]@{
-                Base = [System.Drawing.Color]::FromArgb(251, 241, 224)
-                Pressed = [System.Drawing.Color]::FromArgb(240, 216, 176)
-            }
-        }
-        'Gray' {
-            return [pscustomobject]@{
-                Base = [System.Drawing.Color]::FromArgb(242, 242, 242)
-                Pressed = [System.Drawing.Color]::FromArgb(219, 219, 219)
-            }
-        }
-        default {
-            return $null
-        }
-    }
-}
-
-function Apply-IrEntryColor($entry, [string]$colorKey) {
-    if ($null -eq $entry -or $null -eq $entry.Button -or
-        $null -eq $entry.Button.Tag) {
-        return
-    }
-
-    $button = $entry.Button
-    $pair = Get-IrLayoutColorPair $colorKey
-
-    if ($null -eq $pair) {
-        $button.Tag.BaseColor = $button.Tag.DefaultBaseColor
-        $button.Tag.PressedColor = $button.Tag.DefaultPressedColor
-        $entry.ColorKey = 'Auto'
-    }
-    else {
-        $button.Tag.BaseColor = $pair.Base
-        $button.Tag.PressedColor = $pair.Pressed
-        $entry.ColorKey = $colorKey
-    }
-
-    $button.BackColor = $button.Tag.BaseColor
-}
-
-function Get-IrManagedGroupByKey([string]$groupKey) {
-    foreach ($group in @($irCommandPanel.Controls)) {
-        if ($group -is [System.Windows.Forms.GroupBox] -and
-            $null -ne $group.Tag -and
-            [string]$group.Tag.LayoutKind -eq 'ManagedGrid' -and
-            [string]$group.Tag.GroupKey -eq $groupKey) {
-            return $group
-        }
-    }
-
-    return $null
-}
-
-function Apply-IrSavedGroupAssignmentsAndStyles {
-    if ($null -eq $script:currentIrDevice) { return }
-
-    $deviceId = [string]$script:currentIrDevice.id
-    $groups = @(
-        $irCommandPanel.Controls |
-            Where-Object {
-                $_ -is [System.Windows.Forms.GroupBox] -and
-                $null -ne $_.Tag -and
-                [string]$_.Tag.LayoutKind -eq 'ManagedGrid'
-            }
-    )
-
-    # Start from the renderer's default group membership, then move any command
-    # that has a persisted manual group override into its saved target group.
-    foreach ($sourceGroup in $groups) {
-        foreach ($entry in @($sourceGroup.Tag.Entries)) {
-            $saved = Get-IrSavedLayoutEntryForCommand `
-                $deviceId `
-                ([string]$entry.CommandId)
-
-            if ($null -eq $saved) {
-                $entry.RowSpan = [int]$entry.DefaultRowSpan
-                $entry.ColumnSpan = [int]$entry.DefaultColumnSpan
-                Apply-IrEntryColor $entry 'Auto'
-                continue
-            }
-
-            $targetKey = [string]$saved.groupKey
-            if (-not [string]::IsNullOrWhiteSpace($targetKey) -and
-                $targetKey -ne [string]$sourceGroup.Tag.GroupKey) {
-                $targetGroup = Get-IrManagedGroupByKey $targetKey
-                if ($null -ne $targetGroup) {
-                    [void]$sourceGroup.Tag.Entries.Remove($entry)
-                    [void]$targetGroup.Tag.Entries.Add($entry)
-                    $entry.GroupKey = [string]$targetGroup.Tag.GroupKey
-                }
-            }
-
-            $entry.RowSpan = if (
-                $null -ne $saved.PSObject.Properties['rowSpan'] -and
-                [int]$saved.rowSpan -gt 0
-            ) {
-                [int]$saved.rowSpan
-            }
-            else {
-                [int]$entry.DefaultRowSpan
-            }
-            $entry.ColumnSpan = if (
-                $null -ne $saved.PSObject.Properties['columnSpan'] -and
-                [int]$saved.columnSpan -gt 0
-            ) {
-                [int]$saved.columnSpan
-            }
-            else {
-                [int]$entry.DefaultColumnSpan
-            }
-
-            $colorKey = 'Auto'
-            if ($null -ne $saved.PSObject.Properties['colorKey'] -and
-                -not [string]::IsNullOrWhiteSpace([string]$saved.colorKey)) {
-                $colorKey = [string]$saved.colorKey
-            }
-            Apply-IrEntryColor $entry $colorKey
-        }
-    }
-}
-
-function Test-IrGroupHasSavedLayout(
-    [string]$deviceId,
-    [string]$groupKey) {
-
-    foreach ($item in @($config.irCommandLayouts)) {
-        if ([string]$item.deviceId -eq $deviceId -and
-            [string]$item.groupKey -eq $groupKey) {
-            return $true
-        }
-    }
-
-    return $false
-}
-
-function Get-IrLayoutAvailableWidth {
-    # Keep command GroupBox borders on the same horizontal anchors as the IR
-    # header controls. The FlowLayoutPanel contributes 7 px padding plus the
-    # GroupBox contributes a 4 px margin, so each group begins 11 px from the
-    # left. Reserve the same 11 px on the right: this keeps both outer margins
-    # exactly equal and aligns the group border with the right edge of the
-    # Edit/Save Layout toolbar.
-    return [Math]::Max(
-        360,
-        [int]$irCommandPanel.ClientSize.Width - 22
-    )
-}
-
-function Get-IrLayoutAvailableColumns($tag) {
-    if ($null -eq $tag) { return 1 }
-
-    $availableWidth = Get-IrLayoutAvailableWidth
-    $innerWidth = [Math]::Max(162, $availableWidth - 22)
-    $cellWidth = [Math]::Max(1, [int]$tag.CellWidth)
-
-    return [Math]::Max(
-        1,
-        [int][Math]::Floor($innerWidth / [double]$cellWidth)
-    )
-}
-
-function Test-IrLayoutRegionFree(
-    $occupancy,
-    [int]$row,
-    [int]$column,
-    [int]$rowSpan,
-    [int]$columnSpan,
-    [int]$columnLimit) {
-
-    if ($row -lt 0 -or $column -lt 0) { return $false }
-    if (($column + $columnSpan) -gt $columnLimit) { return $false }
-
-    for ($r = $row; $r -lt ($row + $rowSpan); $r++) {
-        for ($c = $column; $c -lt ($column + $columnSpan); $c++) {
-            if ($occupancy.ContainsKey("$r,$c")) {
-                return $false
-            }
-        }
-    }
-
-    return $true
-}
-
-function Add-IrLayoutRegion(
-    $occupancy,
-    [int]$row,
-    [int]$column,
-    [int]$rowSpan,
-    [int]$columnSpan,
-    $value) {
-
-    for ($r = $row; $r -lt ($row + $rowSpan); $r++) {
-        for ($c = $column; $c -lt ($column + $columnSpan); $c++) {
-            $occupancy["$r,$c"] = $value
-        }
-    }
-}
-
-function Get-IrFirstFreeLayoutPosition(
-    $occupancy,
-    [int]$rowSpan,
-    [int]$columnSpan,
-    [int]$columnLimit) {
-
-    for ($row = 0; $row -lt 1000; $row++) {
-        for ($column = 0; $column -lt $columnLimit; $column++) {
-            if (Test-IrLayoutRegionFree `
-                    $occupancy `
-                    $row `
-                    $column `
-                    $rowSpan `
-                    $columnSpan `
-                    $columnLimit) {
-                return [pscustomobject]@{
-                    Row = $row
-                    Column = $column
-                }
-            }
-        }
-    }
-
-    return [pscustomobject]@{
-        Row = 0
-        Column = 0
-    }
-}
-
-function Set-IrLayoutGridDimensions(
-    $grid,
+function New-IrGridGroup(
+    [string]$title,
     [int]$columns,
     [int]$rows,
-    [int]$cellWidth,
-    [int]$cellHeight) {
+    [int]$buttonWidth = 150,
+    [int]$buttonHeight = 46) {
 
-    $columns = [Math]::Max(1, $columns)
-    $rows = [Math]::Max(1, $rows)
+    $cellWidth = $buttonWidth + 12
+    $cellHeight = $buttonHeight + 12
+    $gridWidth = $columns * $cellWidth
+    $gridHeight = $rows * $cellHeight
 
-    $grid.ColumnStyles.Clear()
-    $grid.RowStyles.Clear()
+    $group = New-Object System.Windows.Forms.GroupBox
+    $group.Text = $title
+    $group.AutoSize = $false
+    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
+    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
+
+    # Keep the child grid away from the GroupBox caption/border. The previous
+    # AutoSize + 0,0 child position caused the grid to paint across the border.
+    $group.Size = New-Object System.Drawing.Size(
+        ($gridWidth + 18),
+        ($gridHeight + 36)
+    )
+
+    $grid = New-Object System.Windows.Forms.TableLayoutPanel
+    $grid.AutoSize = $false
+    $grid.GrowStyle = [System.Windows.Forms.TableLayoutPanelGrowStyle]::FixedSize
     $grid.ColumnCount = $columns
     $grid.RowCount = $rows
+    $grid.Location = New-Object System.Drawing.Point(8, 22)
+    $grid.Size = New-Object System.Drawing.Size($gridWidth, $gridHeight)
+    $grid.Margin = New-Object System.Windows.Forms.Padding(0)
+    $grid.Padding = New-Object System.Windows.Forms.Padding(0)
 
     for ($c = 0; $c -lt $columns; $c++) {
         $style = New-Object System.Windows.Forms.ColumnStyle
@@ -6088,1128 +6058,8 @@ function Set-IrLayoutGridDimensions(
         $style.Height = $cellHeight
         [void]$grid.RowStyles.Add($style)
     }
-}
-
-function Get-IrEntryConfiguredPosition($groupTag, $entry) {
-    $deviceId = [string]$groupTag.DeviceId
-    $groupKey = [string]$groupTag.GroupKey
-    $commandId = [string]$entry.CommandId
-
-    if ($script:irLayoutEditMode -and
-        [string]$script:irLayoutDeviceId -eq $deviceId -and
-        $script:irLayoutWorking.ContainsKey($commandId)) {
-        $working = $script:irLayoutWorking[$commandId]
-        if ([string]$working.GroupKey -eq $groupKey) {
-            return [pscustomobject]@{
-                Row = [int]$working.Row
-                Column = [int]$working.Column
-            }
-        }
-    }
-
-    $saved = Get-IrSavedLayoutEntry $deviceId $groupKey $commandId
-    if ($null -ne $saved) {
-        return [pscustomobject]@{
-            Row = [int]$saved.row
-            Column = [int]$saved.column
-        }
-    }
-
-    return $null
-}
-
-function Apply-IrManagedGroupLayout($group) {
-    if ($null -eq $group -or $null -eq $group.Tag) { return }
-
-    $tag = $group.Tag
-    if ([string]$tag.LayoutKind -ne 'ManagedGrid') { return }
-
-    $grid = $tag.Layout
-    $entries = @($tag.Entries)
-
-    $deviceId = [string]$tag.DeviceId
-    $groupKey = [string]$tag.GroupKey
-    $availableColumns = Get-IrLayoutAvailableColumns $tag
-    $availableWidth = Get-IrLayoutAvailableWidth
-    $hasSaved = Test-IrGroupHasSavedLayout $deviceId $groupKey
-    $isEditing =
-        $script:irLayoutEditMode -and
-        [string]$script:irLayoutDeviceId -eq $deviceId
-
-    if ($entries.Count -eq 0) {
-        if (-not $isEditing) {
-            $group.Visible = $false
-            return
-        }
-
-        $group.Visible = $true
-        $group.Width = $availableWidth
-        $grid.SuspendLayout()
-        $grid.Controls.Clear()
-        Set-IrLayoutGridDimensions `
-            $grid `
-            $availableColumns `
-            2 `
-            ([int]$tag.CellWidth) `
-            ([int]$tag.CellHeight)
-        $grid.CellBorderStyle =
-            [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::None
-        $grid.Width = [Math]::Max(
-            [int]$tag.CellWidth,
-            ($availableColumns * [int]$tag.CellWidth)
-        )
-        # Keep a fixed-width command grid visually centred inside the wider
-        # group. This is especially noticeable for one-row remotes/categories.
-        $grid.Left = [Math]::Max(
-            8,
-            [int][Math]::Floor(
-                ($group.ClientSize.Width - $grid.Width) / 2.0
-            )
-        )
-        $grid.Height = 2 * [int]$tag.CellHeight
-        $group.Height = $grid.Height + 36
-        $grid.ResumeLayout()
-        $grid.Invalidate()
-        return
-    }
-
-    $group.Visible = $true
-
-    $useManagedWidth =
-        [string]$tag.LayoutMode -eq 'Flow' -or
-        $hasSaved -or
-        $isEditing
-
-    if (-not $useManagedWidth) {
-        $columns = [Math]::Max(1, [int]$tag.BaseColumns)
-        $rows = [Math]::Max(1, [int]$tag.BaseRows)
-
-        $grid.SuspendLayout()
-        $grid.Controls.Clear()
-        Set-IrLayoutGridDimensions `
-            $grid `
-            $columns `
-            $rows `
-            ([int]$tag.CellWidth) `
-            ([int]$tag.CellHeight)
-
-        foreach ($entry in $entries) {
-            $entry.LogicalRow = [int]$entry.DefaultRow
-            $entry.LogicalColumn = [int]$entry.DefaultColumn
-            $entry.DisplayRow = [int]$entry.DefaultRow
-            $entry.DisplayColumn = [int]$entry.DefaultColumn
-
-            $grid.Controls.Add(
-                $entry.Button,
-                [int]$entry.DefaultColumn,
-                [int]$entry.DefaultRow
-            )
-            # TableLayoutPanel stores span values on the control itself. Always
-            # write both values, including 1, so a previously enlarged button can
-            # shrink back to 1x1/2x1/1x2 without retaining an old span.
-            $grid.SetRowSpan(
-                $entry.Button,
-                [Math]::Max(1, [int]$entry.RowSpan)
-            )
-            $grid.SetColumnSpan(
-                $entry.Button,
-                [Math]::Max(1, [int]$entry.ColumnSpan)
-            )
-
-            $entry.Button.Cursor = [System.Windows.Forms.Cursors]::Default
-        }
-
-        $grid.CellBorderStyle =
-            [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::None
-        $grid.Size = New-Object System.Drawing.Size(
-            ($columns * [int]$tag.CellWidth),
-            ($rows * [int]$tag.CellHeight)
-        )
-        $group.Size = New-Object System.Drawing.Size(
-            ($grid.Width + 18),
-            ($grid.Height + 36)
-        )
-        $grid.ResumeLayout()
-        return
-    }
-
-    $group.Width = $availableWidth
-    # Keep every command column exactly CellWidth wide. TableLayoutPanel will
-    # otherwise assign any leftover client width to its last column even when
-    # the ColumnStyles are Absolute, making the right-most buttons wider.
-    $grid.Width = [Math]::Max(
-        [int]$tag.CellWidth,
-        ($availableColumns * [int]$tag.CellWidth)
-    )
-    # Fixed-size columns can leave spare pixels in the group when another full
-    # column will not fit. Split that spare width evenly on both sides instead
-    # of leaving the command rows visually anchored to the left.
-    $grid.Left = [Math]::Max(
-        8,
-        [int][Math]::Floor(
-            ($group.ClientSize.Width - $grid.Width) / 2.0
-        )
-    )
-
-    # Build logical positions first. Saved/edit coordinates win. Commands that
-    # do not yet have a saved slot use their renderer default when possible,
-    # otherwise the next free logical cell.
-    $logicalOccupancy = @{}
-    $positioned = New-Object System.Collections.ArrayList
-    $unpositioned = New-Object System.Collections.ArrayList
-
-    foreach ($entry in $entries) {
-        $position = Get-IrEntryConfiguredPosition $tag $entry
-        if ($null -ne $position) {
-            $entry.LogicalRow = [int]$position.Row
-            $entry.LogicalColumn = [int]$position.Column
-            [void]$positioned.Add($entry)
-        }
-        else {
-            [void]$unpositioned.Add($entry)
-        }
-    }
-
-    $logicalColumnLimit = [Math]::Max(
-        $availableColumns,
-        [Math]::Max(1, [int]$tag.BaseColumns)
-    )
-
-    foreach ($entry in $positioned) {
-        $logicalColumnLimit = [Math]::Max(
-            $logicalColumnLimit,
-            ([int]$entry.LogicalColumn + [int]$entry.ColumnSpan)
-        )
-    }
-
-    foreach ($entry in @($positioned | Sort-Object LogicalRow, LogicalColumn, DefaultIndex)) {
-        if (Test-IrLayoutRegionFree `
-                $logicalOccupancy `
-                ([int]$entry.LogicalRow) `
-                ([int]$entry.LogicalColumn) `
-                ([int]$entry.RowSpan) `
-                ([int]$entry.ColumnSpan) `
-                $logicalColumnLimit) {
-            Add-IrLayoutRegion `
-                $logicalOccupancy `
-                ([int]$entry.LogicalRow) `
-                ([int]$entry.LogicalColumn) `
-                ([int]$entry.RowSpan) `
-                ([int]$entry.ColumnSpan) `
-                $entry
-        }
-        else {
-            [void]$unpositioned.Add($entry)
-        }
-    }
-
-    $defaultIndex = 0
-    foreach ($entry in @($unpositioned | Sort-Object DefaultIndex)) {
-        $preferred = $null
-
-        if ([string]$tag.LayoutMode -eq 'Fixed') {
-            if (Test-IrLayoutRegionFree `
-                    $logicalOccupancy `
-                    ([int]$entry.DefaultRow) `
-                    ([int]$entry.DefaultColumn) `
-                    ([int]$entry.RowSpan) `
-                    ([int]$entry.ColumnSpan) `
-                    $logicalColumnLimit) {
-                $preferred = [pscustomobject]@{
-                    Row = [int]$entry.DefaultRow
-                    Column = [int]$entry.DefaultColumn
-                }
-            }
-        }
-        elseif (-not $hasSaved -and -not $isEditing) {
-            $candidateRow =
-                [int][Math]::Floor($defaultIndex / [double]$availableColumns)
-            $candidateColumn = $defaultIndex % $availableColumns
-            if (Test-IrLayoutRegionFree `
-                    $logicalOccupancy `
-                    $candidateRow `
-                    $candidateColumn `
-                    ([int]$entry.RowSpan) `
-                    ([int]$entry.ColumnSpan) `
-                    $logicalColumnLimit) {
-                $preferred = [pscustomobject]@{
-                    Row = $candidateRow
-                    Column = $candidateColumn
-                }
-            }
-            $defaultIndex++
-        }
-
-        if ($null -eq $preferred) {
-            $preferred = Get-IrFirstFreeLayoutPosition `
-                $logicalOccupancy `
-                ([int]$entry.RowSpan) `
-                ([int]$entry.ColumnSpan) `
-                $logicalColumnLimit
-        }
-
-        $entry.LogicalRow = [int]$preferred.Row
-        $entry.LogicalColumn = [int]$preferred.Column
-        Add-IrLayoutRegion `
-            $logicalOccupancy `
-            ([int]$entry.LogicalRow) `
-            ([int]$entry.LogicalColumn) `
-            ([int]$entry.RowSpan) `
-            ([int]$entry.ColumnSpan) `
-            $entry
-    }
-
-    # If the sidebar becomes too narrow for the saved columns, compact only the
-    # display. Logical positions remain untouched and return when width allows.
-    $displayFits = $true
-    $displayOccupancy = @{}
-    foreach ($entry in @($entries | Sort-Object LogicalRow, LogicalColumn, DefaultIndex)) {
-        if (-not (Test-IrLayoutRegionFree `
-                $displayOccupancy `
-                ([int]$entry.LogicalRow) `
-                ([int]$entry.LogicalColumn) `
-                ([int]$entry.RowSpan) `
-                ([int]$entry.ColumnSpan) `
-                $availableColumns)) {
-            $displayFits = $false
-            break
-        }
-
-        Add-IrLayoutRegion `
-            $displayOccupancy `
-            ([int]$entry.LogicalRow) `
-            ([int]$entry.LogicalColumn) `
-            ([int]$entry.RowSpan) `
-            ([int]$entry.ColumnSpan) `
-            $entry
-    }
-
-    if ($displayFits) {
-        foreach ($entry in $entries) {
-            $entry.DisplayRow = [int]$entry.LogicalRow
-            $entry.DisplayColumn = [int]$entry.LogicalColumn
-        }
-    }
-    else {
-        $displayOccupancy = @{}
-        foreach ($entry in @($entries | Sort-Object LogicalRow, LogicalColumn, DefaultIndex)) {
-            $position = Get-IrFirstFreeLayoutPosition `
-                $displayOccupancy `
-                ([int]$entry.RowSpan) `
-                ([int]$entry.ColumnSpan) `
-                $availableColumns
-
-            $entry.DisplayRow = [int]$position.Row
-            $entry.DisplayColumn = [int]$position.Column
-            Add-IrLayoutRegion `
-                $displayOccupancy `
-                ([int]$entry.DisplayRow) `
-                ([int]$entry.DisplayColumn) `
-                ([int]$entry.RowSpan) `
-                ([int]$entry.ColumnSpan) `
-                $entry
-        }
-    }
-
-    $maxRow = 0
-    foreach ($entry in $entries) {
-        $maxRow = [Math]::Max(
-            $maxRow,
-            ([int]$entry.DisplayRow + [int]$entry.RowSpan)
-        )
-    }
-    $rowCount = [Math]::Max(1, $maxRow)
-    if ($isEditing) {
-        # One empty row is deliberately kept visible so a button can be dragged
-        # down into a new row without first changing anything else.
-        $rowCount++
-    }
-
-    $grid.SuspendLayout()
-    $grid.Controls.Clear()
-    Set-IrLayoutGridDimensions `
-        $grid `
-        $availableColumns `
-        $rowCount `
-        ([int]$tag.CellWidth) `
-        ([int]$tag.CellHeight)
-
-    foreach ($entry in $entries) {
-        $grid.Controls.Add(
-            $entry.Button,
-            [int]$entry.DisplayColumn,
-            [int]$entry.DisplayRow
-        )
-        # Explicitly reset spans to 1 as well as applying larger values. WinForms
-        # otherwise retains the previous TableLayoutPanel span on this control.
-        $grid.SetRowSpan(
-            $entry.Button,
-            [Math]::Max(1, [int]$entry.RowSpan)
-        )
-        $grid.SetColumnSpan(
-            $entry.Button,
-            [Math]::Max(1, [int]$entry.ColumnSpan)
-        )
-
-        $entry.Button.Cursor = if ($isEditing) {
-            [System.Windows.Forms.Cursors]::SizeAll
-        }
-        else {
-            [System.Windows.Forms.Cursors]::Default
-        }
-    }
-
-    # Edit-mode guides are painted manually so only the internal row/column
-    # separators are visible. The GroupBox remains the only outer border.
-    $grid.CellBorderStyle =
-        [System.Windows.Forms.TableLayoutPanelCellBorderStyle]::None
-
-    $grid.Height = $rowCount * [int]$tag.CellHeight
-    $group.Height = $grid.Height + 36
-    $grid.ResumeLayout()
-    $grid.Invalidate()
-}
-
-function Test-IrWorkingGroupLayoutValid($group) {
-    if ($null -eq $group -or $null -eq $group.Tag) { return $false }
-
-    $tag = $group.Tag
-    $columns = Get-IrLayoutAvailableColumns $tag
-    $occupancy = @{}
-
-    foreach ($entry in @($tag.Entries)) {
-        $commandId = [string]$entry.CommandId
-
-        if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
-            return $false
-        }
-
-        $position = $script:irLayoutWorking[$commandId]
-        if ([string]$position.GroupKey -ne [string]$tag.GroupKey) {
-            return $false
-        }
-
-        $rowSpan = if ($null -ne $position.PSObject.Properties['RowSpan']) {
-            [Math]::Max(1, [int]$position.RowSpan)
-        }
-        else {
-            [Math]::Max(1, [int]$entry.RowSpan)
-        }
-        $columnSpan = if ($null -ne $position.PSObject.Properties['ColumnSpan']) {
-            [Math]::Max(1, [int]$position.ColumnSpan)
-        }
-        else {
-            [Math]::Max(1, [int]$entry.ColumnSpan)
-        }
-
-        if (-not (Test-IrLayoutRegionFree `
-                $occupancy `
-                ([int]$position.Row) `
-                ([int]$position.Column) `
-                $rowSpan `
-                $columnSpan `
-                $columns)) {
-            return $false
-        }
-
-        Add-IrLayoutRegion `
-            $occupancy `
-            ([int]$position.Row) `
-            ([int]$position.Column) `
-            $rowSpan `
-            $columnSpan `
-            $entry
-    }
-
-    return $true
-}
-
-function Register-IrLayoutGridHandlers($group, $grid) {
-    $grid.AllowDrop = $true
-    $grid.Tag = $group
-
-    $grid.Add_Paint({
-        param($sender, $eventArgs)
-
-        $targetGroup = $sender.Tag
-        if (-not $script:irLayoutEditMode -or
-            $null -eq $targetGroup -or
-            $null -eq $targetGroup.Tag -or
-            [string]$script:irLayoutDeviceId -ne
-                [string]$targetGroup.Tag.DeviceId) {
-            return
-        }
-
-        $tag = $targetGroup.Tag
-        $pen = New-Object System.Drawing.Pen(
-            [System.Drawing.Color]::FromArgb(185, 185, 185)
-        )
-
-        try {
-            $cellWidth = [Math]::Max(1, [int]$tag.CellWidth)
-            $cellHeight = [Math]::Max(1, [int]$tag.CellHeight)
-
-            for ($x = $cellWidth; $x -lt $sender.ClientSize.Width; $x += $cellWidth) {
-                $eventArgs.Graphics.DrawLine(
-                    $pen,
-                    $x,
-                    0,
-                    $x,
-                    $sender.ClientSize.Height
-                )
-            }
-
-            for ($y = $cellHeight; $y -lt $sender.ClientSize.Height; $y += $cellHeight) {
-                $eventArgs.Graphics.DrawLine(
-                    $pen,
-                    0,
-                    $y,
-                    $sender.ClientSize.Width,
-                    $y
-                )
-            }
-        }
-        finally {
-            $pen.Dispose()
-        }
-    })
-
-    $grid.Add_DragEnter({
-        param($sender, $eventArgs)
-
-        if ($script:irLayoutEditMode -and
-            $null -ne $script:irLayoutDraggedEntry) {
-            $eventArgs.Effect =
-                [System.Windows.Forms.DragDropEffects]::Move
-        }
-        else {
-            $eventArgs.Effect =
-                [System.Windows.Forms.DragDropEffects]::None
-        }
-    })
-
-    $grid.Add_DragOver({
-        param($sender, $eventArgs)
-
-        $targetGroup = $sender.Tag
-        $entry = $script:irLayoutDraggedEntry
-
-        if (-not $script:irLayoutEditMode -or
-            $null -eq $targetGroup -or
-            $null -eq $entry -or
-            [string]$targetGroup.Tag.DeviceId -ne
-                [string]$script:irLayoutDeviceId) {
-            $eventArgs.Effect =
-                [System.Windows.Forms.DragDropEffects]::None
-            return
-        }
-
-        $eventArgs.Effect =
-            [System.Windows.Forms.DragDropEffects]::Move
-    })
-
-    $grid.Add_DragDrop({
-        param($sender, $eventArgs)
-
-        $targetGroup = $sender.Tag
-        $entry = $script:irLayoutDraggedEntry
-        $script:irLayoutDraggedEntry = $null
-
-        if (-not $script:irLayoutEditMode -or
-            $null -eq $targetGroup -or
-            $null -eq $entry -or
-            [string]$targetGroup.Tag.DeviceId -ne
-                [string]$script:irLayoutDeviceId) {
-            return
-        }
-
-        $tag = $targetGroup.Tag
-        $point = $sender.PointToClient(
-            (New-Object System.Drawing.Point(
-                [int]$eventArgs.X,
-                [int]$eventArgs.Y
-            ))
-        )
-
-        $column = [int][Math]::Floor(
-            $point.X / [double][Math]::Max(1, [int]$tag.CellWidth)
-        )
-        $row = [int][Math]::Floor(
-            $point.Y / [double][Math]::Max(1, [int]$tag.CellHeight)
-        )
-        $columns = Get-IrLayoutAvailableColumns $tag
-
-        if ($row -lt 0 -or
-            $column -lt 0 -or
-            ($column + [int]$entry.ColumnSpan) -gt $columns) {
-            return
-        }
-
-        $commandId = [string]$entry.CommandId
-        if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
-            return
-        }
-
-        $sourceOld = $script:irLayoutWorking[$commandId]
-        $sourceGroup =
-            Get-IrManagedGroupByKey ([string]$sourceOld.GroupKey)
-
-        if ($null -eq $sourceGroup) {
-            return
-        }
-
-        $sameGroup =
-            [string]$sourceGroup.Tag.GroupKey -eq
-            [string]$targetGroup.Tag.GroupKey
-
-        $occupant = $null
-        foreach ($candidate in @($targetGroup.Tag.Entries)) {
-            if ([string]$candidate.CommandId -eq $commandId) {
-                continue
-            }
-
-            $candidateId = [string]$candidate.CommandId
-            if (-not $script:irLayoutWorking.ContainsKey($candidateId)) {
-                continue
-            }
-
-            $candidatePosition =
-                $script:irLayoutWorking[$candidateId]
-
-            $candidateRowSpan = if (
-                $null -ne $candidatePosition.PSObject.Properties['RowSpan']
-            ) {
-                [Math]::Max(1, [int]$candidatePosition.RowSpan)
-            }
-            else {
-                [Math]::Max(1, [int]$candidate.RowSpan)
-            }
-            $candidateColumnSpan = if (
-                $null -ne $candidatePosition.PSObject.Properties['ColumnSpan']
-            ) {
-                [Math]::Max(1, [int]$candidatePosition.ColumnSpan)
-            }
-            else {
-                [Math]::Max(1, [int]$candidate.ColumnSpan)
-            }
-
-            if ($row -ge [int]$candidatePosition.Row -and
-                $row -lt ([int]$candidatePosition.Row + $candidateRowSpan) -and
-                $column -ge [int]$candidatePosition.Column -and
-                $column -lt ([int]$candidatePosition.Column + $candidateColumnSpan)) {
-                $occupant = $candidate
-                break
-            }
-        }
-
-        $occupantOld = $null
-        if ($null -ne $occupant) {
-            $occupantOld =
-                $script:irLayoutWorking[[string]$occupant.CommandId]
-        }
-
-        # Move the source entry into the target group when crossing a GroupBox.
-        # An occupied target swaps back into the source group/slot, which keeps
-        # the drag behavior useful without silently deleting a command.
-        if (-not $sameGroup) {
-            [void]$sourceGroup.Tag.Entries.Remove($entry)
-            [void]$targetGroup.Tag.Entries.Add($entry)
-            $entry.GroupKey = [string]$targetGroup.Tag.GroupKey
-
-            if ($null -ne $occupant) {
-                [void]$targetGroup.Tag.Entries.Remove($occupant)
-                [void]$sourceGroup.Tag.Entries.Add($occupant)
-                $occupant.GroupKey =
-                    [string]$sourceGroup.Tag.GroupKey
-            }
-        }
-
-        $script:irLayoutWorking[$commandId] = [pscustomobject]@{
-            GroupKey = [string]$targetGroup.Tag.GroupKey
-            Row = $row
-            Column = $column
-            ColorKey = [string]$sourceOld.ColorKey
-            RowSpan = [Math]::Max(1, [int]$sourceOld.RowSpan)
-            ColumnSpan = [Math]::Max(1, [int]$sourceOld.ColumnSpan)
-        }
-
-        if ($null -ne $occupant) {
-            $script:irLayoutWorking[[string]$occupant.CommandId] =
-                [pscustomobject]@{
-                    GroupKey = if ($sameGroup) {
-                        [string]$targetGroup.Tag.GroupKey
-                    }
-                    else {
-                        [string]$sourceGroup.Tag.GroupKey
-                    }
-                    Row = [int]$sourceOld.Row
-                    Column = [int]$sourceOld.Column
-                    ColorKey = [string]$occupantOld.ColorKey
-                    RowSpan = [Math]::Max(1, [int]$occupantOld.RowSpan)
-                    ColumnSpan = [Math]::Max(1, [int]$occupantOld.ColumnSpan)
-                }
-        }
-
-        $valid =
-            (Test-IrWorkingGroupLayoutValid $targetGroup) -and
-            (Test-IrWorkingGroupLayoutValid $sourceGroup)
-
-        if (-not $valid) {
-            $script:irLayoutWorking[$commandId] = $sourceOld
-            if ($null -ne $occupant) {
-                $script:irLayoutWorking[[string]$occupant.CommandId] =
-                    $occupantOld
-            }
-
-            if (-not $sameGroup) {
-                [void]$targetGroup.Tag.Entries.Remove($entry)
-                [void]$sourceGroup.Tag.Entries.Add($entry)
-                $entry.GroupKey = [string]$sourceGroup.Tag.GroupKey
-
-                if ($null -ne $occupant) {
-                    [void]$sourceGroup.Tag.Entries.Remove($occupant)
-                    [void]$targetGroup.Tag.Entries.Add($occupant)
-                    $occupant.GroupKey =
-                        [string]$targetGroup.Tag.GroupKey
-                }
-            }
-
-            Set-TowerStatus 'That grid position cannot fit this button.'
-            Apply-IrManagedGroupLayout $sourceGroup
-            if (-not $sameGroup) {
-                Apply-IrManagedGroupLayout $targetGroup
-            }
-            return
-        }
-
-        Apply-IrManagedGroupLayout $sourceGroup
-        if (-not $sameGroup) {
-            Apply-IrManagedGroupLayout $targetGroup
-        }
-
-        Update-IrLayoutSelectionVisuals
-        Set-TowerStatus 'Layout changed - click Save Layout to keep it.'
-    })
-}
-
-function Update-IrLayoutSelectionVisuals {
-    foreach ($group in @($irCommandPanel.Controls)) {
-        if ($group -isnot [System.Windows.Forms.GroupBox] -or
-            $null -eq $group.Tag -or
-            [string]$group.Tag.LayoutKind -ne 'ManagedGrid') {
-            continue
-        }
-
-        foreach ($entry in @($group.Tag.Entries)) {
-            if ($null -eq $entry.Button) { continue }
-
-            $selected =
-                $script:irLayoutEditMode -and
-                $null -ne $script:irLayoutSelectedEntry -and
-                [string]$entry.CommandId -eq
-                    [string]$script:irLayoutSelectedEntry.CommandId
-
-            $entry.Button.FlatAppearance.BorderSize =
-                if ($selected) { 2 } else { 1 }
-            $entry.Button.FlatAppearance.BorderColor =
-                if ($selected) {
-                    [System.Drawing.Color]::FromArgb(70, 90, 115)
-                }
-                else {
-                    [System.Drawing.Color]::FromArgb(150, 150, 150)
-                }
-        }
-    }
-}
-
-function Select-IrLayoutEntry($entry) {
-    if (-not $script:irLayoutEditMode -or $null -eq $entry) {
-        return
-    }
-
-    $script:irLayoutSelectedEntry = $entry
-    Update-IrLayoutSelectionVisuals
-}
-
-function Set-IrSelectedLayoutColor([string]$colorKey) {
-    if (-not $script:irLayoutEditMode -or
-        $null -eq $script:irLayoutSelectedEntry) {
-        Set-TowerStatus 'Select a command button first, then choose its color.'
-        return
-    }
-
-    $entry = $script:irLayoutSelectedEntry
-    $commandId = [string]$entry.CommandId
-
-    if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
-        return
-    }
-
-    $current = $script:irLayoutWorking[$commandId]
-    $script:irLayoutWorking[$commandId] = [pscustomobject]@{
-        GroupKey = [string]$current.GroupKey
-        Row = [int]$current.Row
-        Column = [int]$current.Column
-        ColorKey = if ($colorKey -in @(
-            'Red', 'Blue', 'Green', 'Purple', 'Gold', 'Gray'
-        )) {
-            $colorKey
-        }
-        else {
-            'Auto'
-        }
-        RowSpan = [Math]::Max(1, [int]$current.RowSpan)
-        ColumnSpan = [Math]::Max(1, [int]$current.ColumnSpan)
-    }
-
-    Apply-IrEntryColor `
-        $entry `
-        ([string]$script:irLayoutWorking[$commandId].ColorKey)
-    Update-IrLayoutSelectionVisuals
-    Set-TowerStatus 'Button color changed - click Save Layout to keep it.'
-}
-
-function Set-IrSelectedLayoutSize([string]$sizeKey) {
-    if (-not $script:irLayoutEditMode -or
-        $null -eq $script:irLayoutSelectedEntry) {
-        Set-TowerStatus 'Select a command button first, then choose its size.'
-        return
-    }
-
-    $entry = $script:irLayoutSelectedEntry
-    $commandId = [string]$entry.CommandId
-    if (-not $script:irLayoutWorking.ContainsKey($commandId)) { return }
-
-    $current = $script:irLayoutWorking[$commandId]
-    $group = Get-IrManagedGroupByKey ([string]$current.GroupKey)
-    if ($null -eq $group) { return }
-
-    $rowSpan = 1
-    $columnSpan = 1
-    switch ($sizeKey) {
-        'Default' {
-            $rowSpan = [Math]::Max(1, [int]$entry.DefaultRowSpan)
-            $columnSpan = [Math]::Max(1, [int]$entry.DefaultColumnSpan)
-        }
-        '2x1' { $rowSpan = 1; $columnSpan = 2 }
-        '1x2' { $rowSpan = 2; $columnSpan = 1 }
-        '2x2' { $rowSpan = 2; $columnSpan = 2 }
-        default { $rowSpan = 1; $columnSpan = 1 }
-    }
-
-    $columns = Get-IrLayoutAvailableColumns $group.Tag
-    $occupancy = @{}
-    foreach ($candidate in @($group.Tag.Entries)) {
-        $candidateId = [string]$candidate.CommandId
-        if ($candidateId -eq $commandId -or
-            -not $script:irLayoutWorking.ContainsKey($candidateId)) {
-            continue
-        }
-
-        $candidatePosition = $script:irLayoutWorking[$candidateId]
-        $candidateRowSpan = if (
-            $null -ne $candidatePosition.PSObject.Properties['RowSpan']
-        ) {
-            [Math]::Max(1, [int]$candidatePosition.RowSpan)
-        }
-        else {
-            [Math]::Max(1, [int]$candidate.RowSpan)
-        }
-        $candidateColumnSpan = if (
-            $null -ne $candidatePosition.PSObject.Properties['ColumnSpan']
-        ) {
-            [Math]::Max(1, [int]$candidatePosition.ColumnSpan)
-        }
-        else {
-            [Math]::Max(1, [int]$candidate.ColumnSpan)
-        }
-
-        Add-IrLayoutRegion `
-            $occupancy `
-            ([int]$candidatePosition.Row) `
-            ([int]$candidatePosition.Column) `
-            $candidateRowSpan `
-            $candidateColumnSpan `
-            $candidate
-    }
-
-    if (-not (Test-IrLayoutRegionFree `
-            $occupancy `
-            ([int]$current.Row) `
-            ([int]$current.Column) `
-            $rowSpan `
-            $columnSpan `
-            $columns)) {
-        Set-TowerStatus (
-            "Size $sizeKey does not fit here - move the button to a free area first."
-        )
-        return
-    }
-
-    $script:irLayoutWorking[$commandId] = [pscustomobject]@{
-        GroupKey = [string]$current.GroupKey
-        Row = [int]$current.Row
-        Column = [int]$current.Column
-        ColorKey = [string]$current.ColorKey
-        RowSpan = $rowSpan
-        ColumnSpan = $columnSpan
-    }
-    $entry.RowSpan = $rowSpan
-    $entry.ColumnSpan = $columnSpan
-
-    Apply-IrManagedGroupLayout $group
-    Update-IrLayoutSelectionVisuals
-    Set-TowerStatus "Button size changed to $sizeKey - click Save Layout to keep it."
-}
-
-function Register-IrLayoutButtonHandler($button, $entry) {
-    if ($null -eq $button -or $null -eq $entry) { return }
-
-    if ($null -ne $button.Tag) {
-        $button.Tag | Add-Member `
-            -NotePropertyName LayoutEntry `
-            -NotePropertyValue $entry `
-            -Force
-    }
-
-    $button.Add_MouseDown({
-        param($sender, $eventArgs)
-
-        if (-not $script:irLayoutEditMode -or
-            $eventArgs.Button -ne
-                [System.Windows.Forms.MouseButtons]::Left -or
-            $null -eq $sender.Tag -or
-            $null -eq $sender.Tag.LayoutEntry) {
-            return
-        }
-
-        Select-IrLayoutEntry $sender.Tag.LayoutEntry
-        $script:irLayoutDraggedEntry = $sender.Tag.LayoutEntry
-        [void]$sender.DoDragDrop(
-            [string]$sender.Tag.LayoutEntry.CommandId,
-            [System.Windows.Forms.DragDropEffects]::Move
-        )
-    })
-}
-
-function Update-IrLayoutToolbarState {
-    $hasDevice = $null -ne $script:currentIrDevice
-    $irLayoutEditButton.Enabled = $hasDevice -and -not $script:irLayoutEditMode
-    $irLayoutEditButton.Visible = -not $script:irLayoutEditMode
-    $irLayoutSaveButton.Visible = $script:irLayoutEditMode
-    $irLayoutCancelButton.Visible = $script:irLayoutEditMode
-    $irLayoutColorPanel.Visible = $script:irLayoutEditMode
-    $irLayoutSizePanel.Visible = $script:irLayoutEditMode
-
-    if ($script:irLayoutEditMode) {
-        $irHeaderLayout.RowStyles[1].Height = 32
-        $irHeaderLayout.RowStyles[2].Height = 32
-        $irRightLayout.RowStyles[0].Height = 216
-    }
-    else {
-        $irHeaderLayout.RowStyles[1].Height = 0
-        $irHeaderLayout.RowStyles[2].Height = 0
-        $irRightLayout.RowStyles[0].Height = 152
-    }
-}
-
-function Start-IrCommandLayoutEdit {
-    if ($null -eq $script:currentIrDevice -or
-        $script:irLayoutEditMode) {
-        return
-    }
-
-    $script:irLayoutDeviceId =
-        [string]$script:currentIrDevice.id
-    $script:irLayoutWorking = @{}
-    $script:irLayoutSelectedEntry = $null
-
-    # Capture exactly what is currently visible as the starting logical layout,
-    # including manual group membership and any saved color override.
-    foreach ($group in @($irCommandPanel.Controls)) {
-        if ($group -isnot [System.Windows.Forms.GroupBox] -or
-            $null -eq $group.Tag -or
-            [string]$group.Tag.LayoutKind -ne 'ManagedGrid') {
-            continue
-        }
-
-        Apply-IrManagedGroupLayout $group
-        foreach ($entry in @($group.Tag.Entries)) {
-            $saved = Get-IrSavedLayoutEntryForCommand `
-                ([string]$script:irLayoutDeviceId) `
-                ([string]$entry.CommandId)
-
-            $colorKey = if ($null -ne $saved -and
-                $null -ne $saved.PSObject.Properties['colorKey'] -and
-                -not [string]::IsNullOrWhiteSpace([string]$saved.colorKey)) {
-                [string]$saved.colorKey
-            }
-            else {
-                'Auto'
-            }
-
-            $script:irLayoutWorking[[string]$entry.CommandId] =
-                [pscustomobject]@{
-                    GroupKey = [string]$group.Tag.GroupKey
-                    Row = [int]$entry.DisplayRow
-                    Column = [int]$entry.DisplayColumn
-                    ColorKey = $colorKey
-                    RowSpan = [Math]::Max(1, [int]$entry.RowSpan)
-                    ColumnSpan = [Math]::Max(1, [int]$entry.ColumnSpan)
-                }
-        }
-    }
-
-    $script:irLayoutEditMode = $true
-    $irDeviceList.Enabled = $false
-    $irDeviceToolbar.Enabled = $false
-    Update-IrLayoutToolbarState
-    Refresh-IrCommandGroupWidths
-    Update-IrLayoutSelectionVisuals
-    Set-TowerStatus (
-        'Edit Layout: drag buttons between groups or select one to change color/size.'
-    )
-}
-
-function Save-IrCommandLayoutEdit {
-    if (-not $script:irLayoutEditMode -or
-        [string]::IsNullOrWhiteSpace($script:irLayoutDeviceId)) {
-        return
-    }
-
-    $deviceId = [string]$script:irLayoutDeviceId
-    $scopePrefix = [string]$script:irLayoutScopeKey + '::'
-    $kept = @(
-        @($config.irCommandLayouts) |
-            Where-Object {
-                [string]$_.deviceId -ne $deviceId -or
-                -not ([string]$_.groupKey).StartsWith($scopePrefix)
-            }
-    )
-    $saved = New-Object System.Collections.ArrayList
-
-    foreach ($group in @($irCommandPanel.Controls)) {
-        if ($group -isnot [System.Windows.Forms.GroupBox] -or
-            $null -eq $group.Tag -or
-            [string]$group.Tag.LayoutKind -ne 'ManagedGrid') {
-            continue
-        }
-
-        foreach ($entry in @($group.Tag.Entries)) {
-            $commandId = [string]$entry.CommandId
-            if (-not $script:irLayoutWorking.ContainsKey($commandId)) {
-                continue
-            }
-
-            $position = $script:irLayoutWorking[$commandId]
-            [void]$saved.Add([pscustomobject]@{
-                deviceId = $deviceId
-                groupKey = [string]$position.GroupKey
-                commandId = $commandId
-                row = [int]$position.Row
-                column = [int]$position.Column
-                colorKey = [string]$position.ColorKey
-                rowSpan = [Math]::Max(1, [int]$position.RowSpan)
-                columnSpan = [Math]::Max(1, [int]$position.ColumnSpan)
-            })
-        }
-    }
-
-    $config.irCommandLayouts = @($kept) + @($saved)
-    Save-TowerConfig
-
-    $script:irLayoutEditMode = $false
-    $script:irLayoutDeviceId = ''
-    $script:irLayoutWorking = @{}
-    $script:irLayoutDraggedEntry = $null
-    $script:irLayoutSelectedEntry = $null
-    $irDeviceList.Enabled = $true
-    $irDeviceToolbar.Enabled = $true
-    Update-IrLayoutToolbarState
-
-    Show-IrDevice $script:currentIrDevice
-    Set-TowerStatus 'IR command layout saved.'
-}
-
-function Cancel-IrCommandLayoutEdit {
-    if (-not $script:irLayoutEditMode) { return }
-
-    $script:irLayoutEditMode = $false
-    $script:irLayoutDeviceId = ''
-    $script:irLayoutWorking = @{}
-    $script:irLayoutDraggedEntry = $null
-    $script:irLayoutSelectedEntry = $null
-    $irDeviceList.Enabled = $true
-    $irDeviceToolbar.Enabled = $true
-    Update-IrLayoutToolbarState
-
-    Show-IrDevice $script:currentIrDevice
-    Set-TowerStatus 'IR command layout changes cancelled.'
-}
-
-$irLayoutEditButton.Add_Click({ Start-IrCommandLayoutEdit })
-$irLayoutSaveButton.Add_Click({ Save-IrCommandLayoutEdit })
-$irLayoutCancelButton.Add_Click({ Cancel-IrCommandLayoutEdit })
-Update-IrLayoutToolbarState
-
-function New-IrGridGroup(
-    [string]$title,
-    [int]$columns,
-    [int]$rows,
-    [int]$buttonWidth = 150,
-    [int]$buttonHeight = 46) {
-
-    $cellWidth = $buttonWidth + 12
-    $cellHeight = $buttonHeight + 12
-    $columns = [Math]::Max(1, $columns)
-    $rows = [Math]::Max(1, $rows)
-    $gridWidth = $columns * $cellWidth
-    $gridHeight = $rows * $cellHeight
-
-    $group = New-Object System.Windows.Forms.GroupBox
-    $group.Text = $title
-    $group.AutoSize = $false
-    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
-    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
-    $group.Size = New-Object System.Drawing.Size(
-        ($gridWidth + 18),
-        ($gridHeight + 36)
-    )
-
-    $grid = New-Object System.Windows.Forms.TableLayoutPanel
-    $grid.AutoSize = $false
-    $grid.GrowStyle =
-        [System.Windows.Forms.TableLayoutPanelGrowStyle]::FixedSize
-    $grid.Location = New-Object System.Drawing.Point(8, 22)
-    $grid.Size = New-Object System.Drawing.Size($gridWidth, $gridHeight)
-    $grid.Margin = New-Object System.Windows.Forms.Padding(0)
-    $grid.Padding = New-Object System.Windows.Forms.Padding(0)
-
-    Set-IrLayoutGridDimensions `
-        $grid `
-        $columns `
-        $rows `
-        $cellWidth `
-        $cellHeight
-
-    $entries = New-Object System.Collections.ArrayList
-    $group.Tag = [pscustomobject]@{
-        LayoutKind = 'ManagedGrid'
-        LayoutMode = 'Fixed'
-        Layout = $grid
-        Entries = $entries
-        DeviceId = ''
-        GroupKey = Get-IrLayoutGroupKey $title
-        BaseColumns = $columns
-        BaseRows = $rows
-        CellWidth = $cellWidth
-        CellHeight = $cellHeight
-        ButtonWidth = $buttonWidth
-        ButtonHeight = $buttonHeight
-    }
 
     $group.Controls.Add($grid)
-    Register-IrLayoutGridHandlers $group $grid
 
     return [pscustomobject]@{
         Group = $group
@@ -7218,7 +6068,6 @@ function New-IrGridGroup(
         ButtonHeight = $buttonHeight
     }
 }
-
 
 function Add-IrGridButton(
     $bundle,
@@ -7236,33 +6085,8 @@ function Add-IrGridButton(
     $button = New-IrCommandButton $device $command $category $labelOverride
     $button.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-    $groupTag = $bundle.Group.Tag
-    if ([string]::IsNullOrWhiteSpace([string]$groupTag.DeviceId)) {
-        $groupTag.DeviceId = [string]$device.id
-    }
-
-    $entry = [pscustomobject]@{
-        Button = $button
-        CommandId = [string]$command.id
-        GroupKey = [string]$groupTag.GroupKey
-        DefaultRow = $row
-        DefaultColumn = $column
-        DefaultIndex = [int]$groupTag.Entries.Count
-        DefaultRowSpan = [Math]::Max(1, $rowSpan)
-        DefaultColumnSpan = [Math]::Max(1, $columnSpan)
-        RowSpan = [Math]::Max(1, $rowSpan)
-        ColumnSpan = [Math]::Max(1, $columnSpan)
-        LogicalRow = $row
-        LogicalColumn = $column
-        DisplayRow = $row
-        DisplayColumn = $column
-        ColorKey = 'Auto'
-    }
-
-    [void]$groupTag.Entries.Add($entry)
-    Register-IrLayoutButtonHandler $button $entry
-
     $bundle.Grid.Controls.Add($button, $column, $row)
+
     if ($rowSpan -gt 1) {
         $bundle.Grid.SetRowSpan($button, $rowSpan)
     }
@@ -7270,7 +6094,6 @@ function Add-IrGridButton(
         $bundle.Grid.SetColumnSpan($button, $columnSpan)
     }
 }
-
 
 function Add-IrGridPlaceholder(
     $bundle,
@@ -7300,35 +6123,62 @@ function Add-IrGridPlaceholder(
 }
 
 function Resize-IrCommandGroup($group) {
-    Apply-IrManagedGroupLayout $group
-}
+    if ($null -eq $group -or $null -eq $group.Tag) { return }
 
+    $buttonCount = [int]$group.Tag.ButtonCount
+    $layout = $group.Tag.Layout
+
+    $availableWidth = [Math]::Max(360, $irCommandPanel.ClientSize.Width - 34)
+    $group.Width = $availableWidth
+
+    $innerWidth = [Math]::Max(330, $availableWidth - 22)
+    $layout.Width = $innerWidth
+
+    $buttonOuterWidth = 162
+    $columns = [Math]::Max(
+        1,
+        [int][Math]::Floor($innerWidth / $buttonOuterWidth)
+    )
+    $rows = [Math]::Max(
+        1,
+        [int][Math]::Ceiling($buttonCount / [double]$columns)
+    )
+
+    $layout.Height = ($rows * 58) + 4
+    $group.Height = $layout.Height + 34
+}
 
 function Add-IrFlowGroup($device, [string]$title, $commands) {
     $commandList = @($commands)
     if ($commandList.Count -eq 0) { return }
 
-    $bundle = New-IrGridGroup `
-        $title `
-        1 `
-        ([Math]::Max(1, $commandList.Count))
-    $bundle.Group.Tag.LayoutMode = 'Flow'
-    $bundle.Group.Tag.DeviceId = [string]$device.id
+    $group = New-Object System.Windows.Forms.GroupBox
+    $group.Text = $title
+    $group.AutoSize = $false
+    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
+    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
 
-    for ($i = 0; $i -lt $commandList.Count; $i++) {
-        Add-IrGridButton `
-            $bundle `
-            $device `
-            $commandList[$i] `
-            $title `
-            $i `
-            0
+    $layout = New-Object System.Windows.Forms.FlowLayoutPanel
+    $layout.Location = New-Object System.Drawing.Point(8, 22)
+    $layout.WrapContents = $true
+    $layout.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+    $layout.AutoScroll = $false
+
+    foreach ($command in $commandList) {
+        [void]$layout.Controls.Add(
+            (New-IrCommandButton $device $command $title)
+        )
     }
 
-    [void]$irCommandPanel.Controls.Add($bundle.Group)
-    Resize-IrCommandGroup $bundle.Group
-}
+    $group.Tag = [pscustomobject]@{
+        ButtonCount = $commandList.Count
+        Layout = $layout
+    }
 
+    $group.Controls.Add($layout)
+    [void]$irCommandPanel.Controls.Add($group)
+    Resize-IrCommandGroup $group
+}
 
 function Render-IrGenericGroups($device, $commands) {
     $categorized = @{}
@@ -7396,19 +6246,11 @@ function Add-DenonModeSelector {
     }
 
     $mainButton.Add_Click({
-        if ($script:irLayoutEditMode) {
-            Set-TowerStatus 'Save or cancel Edit Layout before changing zone.'
-            return
-        }
         $script:denonZoneMode = 'Main'
         Show-IrDevice $script:currentIrDevice
     })
 
     $zoneButton.Add_Click({
-        if ($script:irLayoutEditMode) {
-            Set-TowerStatus 'Save or cancel Edit Layout before changing zone.'
-            return
-        }
         $script:denonZoneMode = 'Zone2'
         Show-IrDevice $script:currentIrDevice
     })
@@ -7479,30 +6321,34 @@ function Add-DenonFlowGroup(
     $commandList = @($commands)
     if ($commandList.Count -eq 0) { return }
 
-    $bundle = New-IrGridGroup `
-        $title `
-        1 `
-        ([Math]::Max(1, $commandList.Count))
-    $bundle.Group.Tag.LayoutMode = 'Flow'
-    $bundle.Group.Tag.DeviceId = [string]$device.id
+    $group = New-Object System.Windows.Forms.GroupBox
+    $group.Text = $title
+    $group.AutoSize = $false
+    $group.Padding = New-Object System.Windows.Forms.Padding(8, 22, 8, 8)
+    $group.Margin = New-Object System.Windows.Forms.Padding(4, 4, 4, 10)
 
-    for ($i = 0; $i -lt $commandList.Count; $i++) {
-        $command = $commandList[$i]
+    $layout = New-Object System.Windows.Forms.FlowLayoutPanel
+    $layout.Location = New-Object System.Drawing.Point(8, 22)
+    $layout.WrapContents = $true
+    $layout.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+    $layout.AutoScroll = $false
+
+    foreach ($command in $commandList) {
         $label = Get-DenonButtonLabel $command
-        Add-IrGridButton `
-            $bundle `
-            $device `
-            $command `
-            $title `
-            $i `
-            0 `
-            $label
+        [void]$layout.Controls.Add(
+            (New-IrCommandButton $device $command $title $label)
+        )
     }
 
-    [void]$irCommandPanel.Controls.Add($bundle.Group)
-    Resize-IrCommandGroup $bundle.Group
-}
+    $group.Tag = [pscustomobject]@{
+        ButtonCount = $commandList.Count
+        Layout = $layout
+    }
 
+    $group.Controls.Add($layout)
+    [void]$irCommandPanel.Controls.Add($group)
+    Resize-IrCommandGroup $group
+}
 
 function Render-DenonGenericGroups($device, $commands) {
     $categorized = @{}
@@ -8350,6 +7196,2438 @@ function Complete-SensorRead {
     finally {
         Remove-TowerReadJob $job
     }
+}
+
+
+
+# PC / Dell Command | Monitor integration ---------------------------------
+function Get-PcManagementProperty(
+    $managementObject,
+    [string]$name) {
+
+    if ($null -eq $managementObject -or
+        [string]::IsNullOrWhiteSpace($name)) {
+        return $null
+    }
+
+    try {
+        $property =
+            $managementObject.PSObject.Properties[$name]
+
+        if ($null -ne $property) {
+            return $property.Value
+        }
+    }
+    catch {}
+
+    try {
+        $property =
+            $managementObject.Properties[$name]
+
+        if ($null -ne $property) {
+            return $property.Value
+        }
+    }
+    catch {}
+
+    return $null
+}
+
+function Convert-PcDellNumber(
+    $value,
+    $unitModifier) {
+
+    if ($null -eq $value) {
+        return $null
+    }
+
+    try {
+        $number =
+            [double]$value
+
+        $modifier = 0
+        if ($null -ne $unitModifier) {
+            $modifier =
+                [int]$unitModifier
+        }
+
+        if ($modifier -ne 0) {
+            $number *=
+                [Math]::Pow(
+                    10.0,
+                    [double]$modifier
+                )
+        }
+
+        return $number
+    }
+    catch {
+        return $null
+    }
+}
+
+function Ensure-PcManagementScope {
+    if ($null -ne $script:pcManagementScope) {
+        try {
+            if ($script:pcManagementScope.IsConnected) {
+                return $true
+            }
+        }
+        catch {}
+    }
+
+    try {
+        $options =
+            New-Object System.Management.ConnectionOptions
+
+        $options.Impersonation =
+            [System.Management.ImpersonationLevel]::Impersonate
+
+        $options.EnablePrivileges = $true
+
+        $scope =
+            New-Object System.Management.ManagementScope(
+                '\\.\root\DCIM\SYSMAN',
+                $options
+            )
+
+        $scope.Connect()
+
+        $script:pcManagementScope = $scope
+        $script:pcManagementError = ''
+
+        $pcDcmValue.Text = 'Connected'
+        $pcDcmValue.ForeColor =
+            [System.Drawing.Color]::DarkGreen
+
+        return $true
+    }
+    catch {
+        $script:pcManagementScope = $null
+        $script:pcManagementError =
+            [string]$_.Exception.Message
+
+        $pcDcmValue.Text =
+            'Unavailable'
+
+        $pcDcmValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+
+        return $false
+    }
+}
+
+function Invoke-PcManagementQuery(
+    [string]$queryText,
+    [bool]$quiet = $false) {
+
+    if (-not (Ensure-PcManagementScope)) {
+        return @()
+    }
+
+    $searcher = $null
+    $collection = $null
+    $results = @()
+
+    try {
+        $query =
+            New-Object System.Management.ObjectQuery(
+                $queryText
+            )
+
+        $searcher =
+            New-Object System.Management.ManagementObjectSearcher(
+                $script:pcManagementScope,
+                $query
+            )
+
+        $collection =
+            $searcher.Get()
+
+        foreach ($item in $collection) {
+            try {
+                $values = [ordered]@{}
+
+                foreach ($property in $item.Properties) {
+                    $values[[string]$property.Name] =
+                        $property.Value
+                }
+
+                $results +=
+                    [pscustomobject]$values
+            }
+            finally {
+                try { $item.Dispose() } catch {}
+            }
+        }
+
+        return @($results)
+    }
+    catch {
+        if (-not $quiet) {
+            $script:pcManagementError =
+                [string]$_.Exception.Message
+
+            $pcDcmValue.Text =
+                'Query failed'
+
+            $pcDcmValue.ForeColor =
+                [System.Drawing.Color]::DarkRed
+        }
+
+        return @()
+    }
+    finally {
+        if ($null -ne $collection) {
+            try { $collection.Dispose() } catch {}
+        }
+
+        if ($null -ne $searcher) {
+            try { $searcher.Dispose() } catch {}
+        }
+    }
+}
+
+function Get-PcFriendlyTemperatureName(
+    [string]$name) {
+
+    $clean =
+        ([string]$name) -replace
+            '^Temperature Sensor:',
+            ''
+
+    switch -Regex ($clean) {
+        '^CPU0 PECI$' {
+            return 'CPU0'
+        }
+        '^CPU1 PECI$' {
+            return 'CPU1'
+        }
+        '^MEM_TOP PECI$' {
+            return 'Memory'
+        }
+        '^CPU1 VR$' {
+            return 'CPU VR'
+        }
+        '^FRONT PANEL$' {
+            return 'Front Ambient'
+        }
+        '^PCIE_AMB$' {
+            return 'PCIe Ambient'
+        }
+        default {
+            return $clean
+        }
+    }
+}
+
+function Get-PcFriendlyFanName(
+    [string]$name) {
+
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return 'Unknown fan'
+    }
+
+    $clean =
+        ([string]$name) -replace
+            '^Fan Speed Sensor:',
+            ''
+
+    return (
+        $clean -replace '\s+FAN$', ''
+    )
+}
+
+function Get-PcSensorSeverity($sensor) {
+    $severity = 0
+
+    if ($null -eq $sensor) {
+        return $severity
+    }
+
+    if ($null -ne $sensor.HealthState) {
+        try {
+            $healthState =
+                [int]$sensor.HealthState
+
+            if ($healthState -ge 20) {
+                $severity = 2
+            }
+            elseif ($healthState -ge 10) {
+                $severity =
+                    [Math]::Max(
+                        $severity,
+                        1
+                    )
+            }
+        }
+        catch {}
+    }
+
+    # Dell's fan objects expose threshold numbers such as 245/255 while
+    # CurrentReading is actual RPM (often 1000-2200+). Those fields are not
+    # valid RPM limits, so fan health uses Dell HealthState only.
+    if ([int]$sensor.SensorType -eq 5) {
+        return $severity
+    }
+
+    if ($null -eq $sensor.Reading) {
+        return $severity
+    }
+
+    $reading =
+        [double]$sensor.Reading
+
+    if (($null -ne $sensor.UpperCritical -and
+         $reading -ge
+             [double]$sensor.UpperCritical) -or
+        ($null -ne $sensor.LowerCritical -and
+         $reading -le
+             [double]$sensor.LowerCritical)) {
+
+        return 2
+    }
+
+    if (($null -ne $sensor.UpperWarning -and
+         $reading -ge
+             [double]$sensor.UpperWarning) -or
+        ($null -ne $sensor.LowerWarning -and
+         $reading -le
+             [double]$sensor.LowerWarning)) {
+
+        return [Math]::Max(
+            $severity,
+            1
+        )
+    }
+
+    return $severity
+}
+
+function Get-PcNumericSensorSnapshot {
+    $objects =
+        Invoke-PcManagementQuery `
+            'SELECT * FROM DCIM_NumericSensor'
+
+    if (@($objects).Count -eq 0) {
+        return @()
+    }
+
+    $snapshot = @()
+
+    foreach ($object in $objects) {
+        try {
+            $sensorTypeRaw =
+                Get-PcManagementProperty `
+                    $object `
+                    'SensorType'
+
+            if ($null -eq $sensorTypeRaw) {
+                continue
+            }
+
+            $sensorType =
+                [int]$sensorTypeRaw
+
+            if ($sensorType -notin @(2, 5)) {
+                continue
+            }
+
+            $unitModifier =
+                Get-PcManagementProperty `
+                    $object `
+                    'UnitModifier'
+
+            $reading =
+                Convert-PcDellNumber `
+                    (Get-PcManagementProperty `
+                        $object `
+                        'CurrentReading') `
+                    $unitModifier
+
+            $upperWarning =
+                Convert-PcDellNumber `
+                    (Get-PcManagementProperty `
+                        $object `
+                        'UpperThresholdNonCritical') `
+                    $unitModifier
+
+            $upperCritical =
+                Convert-PcDellNumber `
+                    (Get-PcManagementProperty `
+                        $object `
+                        'UpperThresholdCritical') `
+                    $unitModifier
+
+            $lowerWarning =
+                Convert-PcDellNumber `
+                    (Get-PcManagementProperty `
+                        $object `
+                        'LowerThresholdNonCritical') `
+                    $unitModifier
+
+            $lowerCritical =
+                Convert-PcDellNumber `
+                    (Get-PcManagementProperty `
+                        $object `
+                        'LowerThresholdCritical') `
+                    $unitModifier
+
+            $name =
+                [string](
+                    Get-PcManagementProperty `
+                        $object `
+                        'ElementName'
+                )
+
+            if ([string]::IsNullOrWhiteSpace($name)) {
+                $name =
+                    [string](
+                        Get-PcManagementProperty `
+                            $object `
+                            'Name'
+                    )
+            }
+
+            $deviceId =
+                [string](
+                    Get-PcManagementProperty `
+                        $object `
+                        'DeviceID'
+                )
+
+            if ([string]::IsNullOrWhiteSpace($name)) {
+                $name = $deviceId
+            }
+
+            $snapshot +=
+                [pscustomobject]@{
+                    SensorType = $sensorType
+                    Name = $name
+                    DeviceID = $deviceId
+                    Reading = $reading
+                    UpperWarning = $upperWarning
+                    UpperCritical = $upperCritical
+                    LowerWarning = $lowerWarning
+                    LowerCritical = $lowerCritical
+                    HealthState =
+                        Get-PcManagementProperty `
+                            $object `
+                            'HealthState'
+                }
+        }
+        finally {
+            try { $object.Dispose() } catch {}
+        }
+    }
+
+    return @($snapshot)
+}
+
+function Format-PcThreshold(
+    $value,
+    [string]$suffix) {
+
+    if ($null -eq $value) {
+        return '--'
+    }
+
+    return (
+        ('{0:0.#}' -f [double]$value) +
+        $suffix
+    )
+}
+
+function Sync-PcListItems(
+    [System.Windows.Forms.ListView]$listView,
+    [hashtable]$itemTable,
+    [string[]]$desiredKeys) {
+
+    $desired =
+        @{}
+
+    foreach ($key in $desiredKeys) {
+        $desired[$key] = $true
+    }
+
+    foreach ($key in @($itemTable.Keys)) {
+        if ($desired.ContainsKey($key)) {
+            continue
+        }
+
+        $item =
+            $itemTable[$key]
+
+        if ($null -ne $item) {
+            [void]$listView.Items.Remove($item)
+        }
+
+        $itemTable.Remove($key)
+    }
+}
+
+function Get-PcCleanSensorName([string]$name) {
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        return ''
+    }
+
+    $clean =
+        $name -replace
+            '^Temperature Sensor:',
+            ''
+
+    $clean =
+        $clean -replace
+            '^Fan Speed Sensor:',
+            ''
+
+    return $clean.Trim()
+}
+
+function Find-PcSensor(
+    [int]$sensorType,
+    [string]$name) {
+
+    return (
+        @(
+            $script:pcSensors |
+                Where-Object {
+                    [int]$_.SensorType -eq $sensorType -and
+                    (Get-PcCleanSensorName (
+                        [string]$_.Name
+                    )) -eq $name
+                }
+        ) |
+            Select-Object -First 1
+    )
+}
+
+function Format-PcTemperatureValue($value) {
+    if ($null -eq $value -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$value)) {
+        return '--'
+    }
+
+    try {
+        return (
+            '{0:0.#} C' -f
+            [double]$value
+        )
+    }
+    catch {
+        return [string]$value
+    }
+}
+
+function Format-PcFanRpmValue($value) {
+    if ($null -eq $value -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$value)) {
+        return '--'
+    }
+
+    try {
+        return (
+            '{0:0} RPM' -f
+            [double]$value
+        )
+    }
+    catch {
+        return [string]$value
+    }
+}
+
+function Format-PcLoadValue($value) {
+    if ($null -eq $value -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$value)) {
+        return '--'
+    }
+
+    try {
+        return (
+            '{0:0.#} %' -f
+            [double]$value
+        )
+    }
+    catch {
+        return [string]$value
+    }
+}
+
+function Format-PcPowerValue($value) {
+    if ($null -eq $value -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$value)) {
+        return '--'
+    }
+
+    try {
+        return (
+            '{0:0.#} W' -f
+            [double]$value
+        )
+    }
+    catch {
+        return [string]$value
+    }
+}
+
+function Get-PcLimitsText($sensor) {
+    if ($null -eq $sensor) {
+        return '--'
+    }
+
+    $warning =
+        if ($null -eq $sensor.UpperWarning) {
+            '--'
+        }
+        else {
+            '{0:0.#}' -f
+            [double]$sensor.UpperWarning
+        }
+
+    $critical =
+        if ($null -eq $sensor.UpperCritical) {
+            '--'
+        }
+        else {
+            '{0:0.#}' -f
+            [double]$sensor.UpperCritical
+        }
+
+    if ($warning -eq '--' -and
+        $critical -eq '--') {
+        return '--'
+    }
+
+    return "$warning / $critical C"
+}
+
+function Get-PcSensorHealthText($sensor) {
+    if ($null -eq $sensor) {
+        return '--'
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace(
+            [string]$sensor.CurrentState)) {
+        return [string]$sensor.CurrentState
+    }
+
+    $severity =
+        Get-PcSensorSeverity $sensor
+
+    if ($severity -ge 2) {
+        return 'Critical'
+    }
+
+    if ($severity -eq 1) {
+        return 'Warning'
+    }
+
+    return 'Normal'
+}
+
+function Set-PcHardwareRow(
+    [string]$key,
+    [string]$component,
+    [string]$temperature,
+    [string]$fan,
+    [string]$load,
+    [string]$power,
+    [string]$limits,
+    [string]$health,
+    [int]$severity = 0) {
+
+    $desiredIndex =
+        $script:pcHardwareDesiredKeys.Count
+
+    $values = @(
+        $component,
+        $temperature,
+        $fan,
+        $load,
+        $power,
+        $limits,
+        $health
+    )
+
+    $displayValues = @(
+        foreach ($value in $values) {
+            $displayValue =
+                if ([string]::IsNullOrWhiteSpace(
+                        [string]$value)) {
+                    '--'
+                }
+                else {
+                    [string]$value
+                }
+
+            $displayValue
+        }
+    )
+
+    $item = $script:pcHardwareItems[$key]
+    $preserveExistingColor = $false
+
+    if ($null -eq $item) {
+        $item =
+            New-Object System.Windows.Forms.ListViewItem(
+                $displayValues[0]
+            )
+
+        for ($index = 1;
+            $index -lt $displayValues.Count;
+            $index++) {
+            [void]$item.SubItems.Add(
+                $displayValues[$index]
+            )
+        }
+
+        $item.Tag = $key
+        $script:pcHardwareItems[$key] = $item
+
+        if ($desiredIndex -lt
+            $pcHardwareList.Items.Count) {
+            [void]$pcHardwareList.Items.Insert(
+                $desiredIndex,
+                $item
+            )
+        }
+        else {
+            [void]$pcHardwareList.Items.Add($item)
+        }
+    }
+    else {
+        for ($index = 0;
+            $index -lt $displayValues.Count;
+            $index++) {
+            $currentValue =
+                [string]$item.SubItems[$index].Text
+
+            $isTransientPlaceholder =
+                ($index -gt 0 -and
+                    $displayValues[$index] -in @(
+                        '--',
+                        'Loading',
+                        'Unknown'
+                    ) -and
+                    $currentValue -notin @(
+                        '--',
+                        'Loading',
+                        'Unknown'
+                    ))
+
+            if ($isTransientPlaceholder) {
+                if ($index -eq 6) {
+                    $preserveExistingColor = $true
+                }
+
+                continue
+            }
+
+            if ($item.SubItems[$index].Text -ne
+                $displayValues[$index]) {
+                $item.SubItems[$index].Text =
+                    $displayValues[$index]
+            }
+        }
+    }
+
+    $targetColor = $pcHardwareList.ForeColor
+
+    if ($severity -ge 2) {
+        $targetColor =
+            [System.Drawing.Color]::DarkRed
+    }
+    elseif ($severity -eq 1) {
+        $targetColor =
+            [System.Drawing.Color]::DarkOrange
+    }
+
+    if (-not $preserveExistingColor -and
+        $item.ForeColor -ne $targetColor) {
+        $item.ForeColor = $targetColor
+    }
+
+    $script:pcHardwareDesiredKeys += $key
+}
+
+function Update-PcSourceStatusUi {
+    $displayNames =
+        @{
+            DellSensors = 'Dell'
+            NVIDIA = 'GPU'
+            Storage = 'Storage'
+            PERC = 'PERC'
+            DellBIOS = 'BIOS'
+        }
+
+    $parts = @()
+
+    foreach ($name in @(
+        'DellSensors',
+        'NVIDIA',
+        'Storage',
+        'PERC',
+        'DellBIOS'
+    )) {
+        $status =
+            @(
+                $script:pcSourceStatus |
+                    Where-Object {
+                        [string]$_.Name -eq $name
+                    }
+            ) |
+                Select-Object -First 1
+
+        $short =
+            if ($null -eq $status) {
+                '--'
+            }
+            elseif ([string]$status.State -eq 'OK') {
+                'Ready'
+            }
+            elseif ([string]$status.State -eq 'Error') {
+                'Error'
+            }
+            elseif ([string]$status.State -eq 'Timeout') {
+                'Timeout'
+            }
+            else {
+                'Loading'
+            }
+
+        $parts +=
+            $displayNames[$name] +
+            ' ' +
+            $short
+    }
+
+    $pcSourceStatusValue.Text =
+        'Sources: ' +
+        ($parts -join ' | ')
+
+    $dell =
+        @(
+            $script:pcSourceStatus |
+                Where-Object {
+                    [string]$_.Name -eq
+                        'DellSensors'
+                }
+        ) |
+            Select-Object -First 1
+
+    if ($null -eq $dell) {
+        return
+    }
+
+    if ([string]$dell.State -eq 'OK') {
+        $pcDcmValue.Text = 'Connected'
+        $pcDcmValue.ForeColor =
+            [System.Drawing.Color]::DarkGreen
+
+        $pcDcmToolTip.SetToolTip(
+            $pcDcmValue,
+            'Dell sensor collector is connected.'
+        )
+    }
+    elseif ([string]$dell.State -eq 'Error') {
+        $pcDcmValue.Text = 'Unavailable'
+        $pcDcmValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+
+        $pcDcmToolTip.SetToolTip(
+            $pcDcmValue,
+            [string]$dell.Error
+        )
+    }
+    elseif ([string]$dell.State -eq 'Timeout') {
+        $pcDcmValue.Text = 'Timeout'
+        $pcDcmValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+
+        $pcDcmToolTip.SetToolTip(
+            $pcDcmValue,
+            [string]$dell.Error
+        )
+    }
+    else {
+        $pcDcmValue.Text = 'Loading...'
+        $pcDcmValue.ForeColor =
+            [System.Drawing.Color]::DarkGoldenrod
+    }
+}
+
+function Update-PcHardwareListUi {
+    if ($null -eq $pcHardwareList) {
+        return
+    }
+
+    $script:pcHardwareDesiredKeys = @()
+
+        $allTemperatures = @()
+        $allFanRpm = @()
+        $overallSeverity = 0
+
+        $cpu0Temp = Find-PcSensor 2 'CPU0 PECI'
+        $cpu1Temp = Find-PcSensor 2 'CPU1 PECI'
+        $memoryTemp = Find-PcSensor 2 'MEM_TOP PECI'
+        $cpuVrTemp = Find-PcSensor 2 'CPU1 VR'
+        $frontTemp = Find-PcSensor 2 'FRONT PANEL'
+        $pcieTemp = Find-PcSensor 2 'PCIE_AMB'
+
+        $cpu0Fan = Find-PcSensor 5 'CPU0 FAN'
+        $cpu1Fan = Find-PcSensor 5 'CPU1 FAN'
+
+        foreach ($pair in @(
+            [pscustomobject]@{
+                Name = 'CPU0'
+                Temp = $cpu0Temp
+                Fan = $cpu0Fan
+            },
+            [pscustomobject]@{
+                Name = 'CPU1'
+                Temp = $cpu1Temp
+                Fan = $cpu1Fan
+            }
+        )) {
+            $tempSeverity =
+                if ($null -ne $pair.Temp) {
+                    Get-PcSensorSeverity $pair.Temp
+                }
+                else {
+                    0
+                }
+
+            $fanSeverity =
+                if ($null -ne $pair.Fan) {
+                    Get-PcSensorSeverity $pair.Fan
+                }
+                else {
+                    0
+                }
+
+            $severity =
+                [Math]::Max(
+                    $tempSeverity,
+                    $fanSeverity
+                )
+
+            $overallSeverity =
+                [Math]::Max(
+                    $overallSeverity,
+                    $severity
+                )
+
+            if ($null -ne $pair.Temp -and
+                $null -ne $pair.Temp.Reading) {
+                $allTemperatures +=
+                    [double]$pair.Temp.Reading
+            }
+
+            if ($null -ne $pair.Fan -and
+                $null -ne $pair.Fan.Reading) {
+                $allFanRpm +=
+                    [double]$pair.Fan.Reading
+            }
+
+            $tempReading =
+                if ($null -ne $pair.Temp) {
+                    $pair.Temp.Reading
+                }
+                else {
+                    $null
+                }
+
+            $fanReading =
+                if ($null -ne $pair.Fan) {
+                    $pair.Fan.Reading
+                }
+                else {
+                    $null
+                }
+
+            Set-PcHardwareRow `
+                ('dell-sensor:' + $pair.Name) `
+                $pair.Name `
+                (Format-PcTemperatureValue $tempReading) `
+                (Format-PcFanRpmValue $fanReading) `
+                '--' `
+                '--' `
+                (Get-PcLimitsText $pair.Temp) `
+                (Get-PcSensorHealthText $pair.Temp) `
+                $severity
+        }
+
+        foreach ($entry in @(
+            [pscustomobject]@{
+                Label = 'Memory'
+                Sensor = $memoryTemp
+            },
+            [pscustomobject]@{
+                Label = 'CPU VR'
+                Sensor = $cpuVrTemp
+            }
+        )) {
+            $severity =
+                if ($null -ne $entry.Sensor) {
+                    Get-PcSensorSeverity $entry.Sensor
+                }
+                else {
+                    0
+                }
+
+            $overallSeverity =
+                [Math]::Max(
+                    $overallSeverity,
+                    $severity
+                )
+
+            if ($null -ne $entry.Sensor -and
+                $null -ne $entry.Sensor.Reading) {
+                $allTemperatures +=
+                    [double]$entry.Sensor.Reading
+            }
+
+            $entryReading =
+                if ($null -ne $entry.Sensor) {
+                    $entry.Sensor.Reading
+                }
+                else {
+                    $null
+                }
+
+            Set-PcHardwareRow `
+                ('dell-sensor:' + $entry.Label) `
+                $entry.Label `
+                (Format-PcTemperatureValue $entryReading) `
+                '--' `
+                '--' `
+                '--' `
+                (Get-PcLimitsText $entry.Sensor) `
+                (Get-PcSensorHealthText $entry.Sensor) `
+                $severity
+        }
+
+        if ($null -ne $script:pcGpu) {
+            if ($null -ne $script:pcGpu.Temperature) {
+                try {
+                    $allTemperatures +=
+                        [double]$script:pcGpu.Temperature
+                }
+                catch {}
+            }
+
+            $gpuFan =
+                if ($null -eq $script:pcGpu.FanPercent) {
+                    '--'
+                }
+                else {
+                    '{0:0.#} %' -f
+                        [double]$script:pcGpu.FanPercent
+                }
+
+            Set-PcHardwareRow `
+                'gpu' `
+                ('GPU - ' + [string]$script:pcGpu.Name) `
+                (Format-PcTemperatureValue (
+                    $script:pcGpu.Temperature
+                )) `
+                $gpuFan `
+                (Format-PcLoadValue (
+                    $script:pcGpu.Utilization
+                )) `
+                (Format-PcPowerValue (
+                    $script:pcGpu.Power
+                )) `
+                '--' `
+                'OK' `
+                0
+        }
+        else {
+            Set-PcHardwareRow `
+                'gpu' `
+                'GPU' '--' '--' '--' '--' '--' 'Loading' 0
+        }
+
+        foreach ($entry in @(
+            [pscustomobject]@{
+                Label = 'Front Ambient'
+                Sensor = $frontTemp
+            },
+            [pscustomobject]@{
+                Label = 'PCIe Ambient'
+                Sensor = $pcieTemp
+            }
+        )) {
+            $severity =
+                if ($null -ne $entry.Sensor) {
+                    Get-PcSensorSeverity $entry.Sensor
+                }
+                else {
+                    0
+                }
+
+            $overallSeverity =
+                [Math]::Max(
+                    $overallSeverity,
+                    $severity
+                )
+
+            if ($null -ne $entry.Sensor -and
+                $null -ne $entry.Sensor.Reading) {
+                $allTemperatures +=
+                    [double]$entry.Sensor.Reading
+            }
+
+            $entryReading =
+                if ($null -ne $entry.Sensor) {
+                    $entry.Sensor.Reading
+                }
+                else {
+                    $null
+                }
+
+            Set-PcHardwareRow `
+                ('dell-sensor:' + $entry.Label) `
+                $entry.Label `
+                (Format-PcTemperatureValue $entryReading) `
+                '--' `
+                '--' `
+                '--' `
+                (Get-PcLimitsText $entry.Sensor) `
+                (Get-PcSensorHealthText $entry.Sensor) `
+                $severity
+        }
+
+        if ($null -ne $script:pcPerc) {
+            $controllerTemp =
+                if ($null -ne
+                    $script:pcPerc.ControllerTemperature) {
+                    $script:pcPerc.ControllerTemperature
+                }
+                else {
+                    $script:pcPerc.RocTemperature
+                }
+
+            if ($null -ne $controllerTemp) {
+                try {
+                    $allTemperatures +=
+                        [double]$controllerTemp
+                }
+                catch {}
+            }
+
+            $percHealth =
+                if ([string]::IsNullOrWhiteSpace(
+                        [string]$script:pcPerc.ControllerStatus)) {
+                    'Unknown'
+                }
+                else {
+                    [string]$script:pcPerc.ControllerStatus
+                }
+
+            $percSeverity =
+                if ($percHealth -match
+                    '^(Optimal|OK|Normal)$') {
+                    0
+                }
+                else {
+                    1
+                }
+
+            $overallSeverity =
+                [Math]::Max(
+                    $overallSeverity,
+                    $percSeverity
+                )
+
+            Set-PcHardwareRow `
+                'perc-controller' `
+                'PERC H330' `
+                (Format-PcTemperatureValue (
+                    $controllerTemp
+                )) `
+                '--' `
+                '--' `
+                '--' `
+                '--' `
+                $percHealth `
+                $percSeverity
+        }
+        else {
+            Set-PcHardwareRow `
+                'perc-controller' `
+                'PERC H330' '--' '--' '--' '--' '--' 'Loading' 0
+        }
+
+        foreach ($disk in @($script:pcStorage)) {
+            if ($null -eq $disk -or
+                ([string]::IsNullOrWhiteSpace(
+                    [string]$disk.FriendlyName) -and
+                [string]::IsNullOrWhiteSpace(
+                    [string]$disk.DeviceId) -and
+                [string]::IsNullOrWhiteSpace(
+                    [string]$disk.SerialNumber))) {
+                continue
+            }
+
+            if ([string]$disk.BusType -eq 'RAID' -or
+                [string]$disk.FriendlyName -match
+                    'PERC') {
+                continue
+            }
+
+            $diskTemperature = $null
+
+            if ($null -ne $disk.Temperature) {
+                try {
+                    if ([double]$disk.Temperature -gt 0) {
+                        $diskTemperature =
+                            [double]$disk.Temperature
+
+                        $allTemperatures +=
+                            $diskTemperature
+                    }
+                }
+                catch {}
+            }
+
+            $diskHealth =
+                if ([string]::IsNullOrWhiteSpace(
+                        [string]$disk.Health)) {
+                    'Unknown'
+                }
+                else {
+                    [string]$disk.Health
+                }
+
+            $diskSeverity =
+                if ($diskHealth -match
+                    '^(Healthy|OK|Normal)$') {
+                    0
+                }
+                else {
+                    1
+                }
+
+            $overallSeverity =
+                [Math]::Max(
+                    $overallSeverity,
+                    $diskSeverity
+                )
+
+            $diskKey =
+                'storage:' +
+                [string]$disk.DeviceId + ':' +
+                [string]$disk.SerialNumber
+
+            Set-PcHardwareRow `
+                $diskKey `
+                ([string]$disk.FriendlyName) `
+                (Format-PcTemperatureValue (
+                    $diskTemperature
+                )) `
+                '--' `
+                '--' `
+                '--' `
+                '--' `
+                $diskHealth `
+                $diskSeverity
+        }
+
+        if ($null -ne $script:pcPerc) {
+            foreach ($drive in @($script:pcPerc.Drives)) {
+                if ($null -ne $drive.Temperature) {
+                    try {
+                        $allTemperatures +=
+                            [double]$drive.Temperature
+                    }
+                    catch {}
+                }
+
+                $driveHealth =
+                    if ([string]::IsNullOrWhiteSpace(
+                            [string]$drive.Health)) {
+                        'Unknown'
+                    }
+                    else {
+                        [string]$drive.Health
+                    }
+
+                $driveSeverity =
+                    if ($driveHealth -match
+                        '^(Online|Onln|OK|Normal|Optimal)$') {
+                        0
+                    }
+                    else {
+                        1
+                    }
+
+                $overallSeverity =
+                    [Math]::Max(
+                        $overallSeverity,
+                        $driveSeverity
+                    )
+
+                $driveLabel =
+                    [string]$drive.Model +
+                    ' - slot ' +
+                    [string]$drive.Slot
+
+                $driveKey =
+                    'perc-drive:' +
+                    [string]$drive.Slot + ':' +
+                    [string]$drive.Model
+
+                Set-PcHardwareRow `
+                    $driveKey `
+                    $driveLabel `
+                    (Format-PcTemperatureValue (
+                        $drive.Temperature
+                    )) `
+                    '--' `
+                    '--' `
+                    '--' `
+                    '--' `
+                    $driveHealth `
+                    $driveSeverity
+            }
+        }
+
+        foreach ($fanName in @(
+            'SYS0 FAN',
+            'SYS1 FAN',
+            'SYS2 FAN',
+            'REAR0 FAN',
+            'REAR1 FAN'
+        )) {
+            $fan =
+                Find-PcSensor 5 $fanName
+
+            if ($null -eq $fan) {
+                continue
+            }
+
+            if ($null -ne $fan.Reading) {
+                $allFanRpm +=
+                    [double]$fan.Reading
+            }
+
+            $severity =
+                Get-PcSensorSeverity $fan
+
+            $overallSeverity =
+                [Math]::Max(
+                    $overallSeverity,
+                    $severity
+                )
+
+            Set-PcHardwareRow `
+                ('dell-fan:' + $fanName) `
+                (Get-PcFriendlyFanName $fanName) `
+                '--' `
+                (Format-PcFanRpmValue (
+                    $fan.Reading
+                )) `
+                '--' `
+                '--' `
+                '--' `
+                (Get-PcSensorHealthText $fan) `
+                $severity
+        }
+}
+
+function Update-PcTelemetryUi($sensors) {
+    $script:pcSensors =
+        @($sensors)
+
+    $script:pcTelemetryLoaded =
+        ($script:pcSensors.Count -gt 0)
+
+    Update-PcCoolingFanBankUi
+}
+
+function Update-PcExtendedHardwareUi($snapshot) {
+    if ($null -ne $snapshot.gpu) {
+        $script:pcGpu =
+            $snapshot.gpu
+    }
+
+    if ($null -ne $snapshot.storage) {
+        $script:pcStorage =
+            @($snapshot.storage)
+    }
+
+    if ($null -ne $snapshot.perc) {
+        $script:pcPerc =
+            $snapshot.perc
+    }
+
+    if ($null -ne $snapshot.sourceStatus) {
+        $script:pcSourceStatus =
+            @($snapshot.sourceStatus)
+    }
+
+    Update-PcSourceStatusUi
+    Update-PcHardwareListUi
+}
+
+function Get-PcAttributeValueText($value) {
+    if ($null -eq $value) {
+        return ''
+    }
+
+    if ($value -is [System.Array]) {
+        return (
+            @($value |
+                ForEach-Object {
+                    [string]$_
+                }) -join ', '
+        )
+    }
+
+    return [string]$value
+}
+
+function Get-PcCoolingFriendlyName(
+    [string]$attributeName) {
+
+    switch ($attributeName) {
+        'Fan Speed Auto Level on CPU Zone' {
+            return 'CPU Zone'
+        }
+        'Fan Speed Auto Level on CPU Memory Zone' {
+            return 'CPU / Memory Zone'
+        }
+        'Fan Speed Auto Level on PCIe Zone' {
+            return 'PCIe Zone'
+        }
+        'Fan Speed Auto Level on Upper PCIe Zone' {
+            return 'Upper PCIe Zone'
+        }
+        'Fan Speed Auto Level on PSU Zone' {
+            return 'PSU Zone'
+        }
+        'Fan Speed Auto Level on Flex Bay Zone' {
+            return 'Flex Bay Zone'
+        }
+        default {
+            return $attributeName
+        }
+    }
+}
+
+function Get-PcAttributeIsReadOnly($object) {
+    $value =
+        Get-PcManagementProperty `
+            $object `
+            'IsReadOnly'
+
+    if ($null -eq $value) {
+        return $true
+    }
+
+    try {
+        return [System.Convert]::ToBoolean(
+            $value
+        )
+    }
+    catch {
+        return $true
+    }
+}
+
+function Get-PcCoolingCapabilitySnapshot {
+    $snapshot = @()
+
+    $biosObjects =
+        Invoke-PcManagementQuery `
+            'SELECT * FROM DCIM_BIOSEnumeration' `
+            $true
+
+    foreach ($object in $biosObjects) {
+        try {
+            $attributeName =
+                [string](
+                    Get-PcManagementProperty `
+                        $object `
+                        'AttributeName'
+                )
+
+            if ([string]::IsNullOrWhiteSpace(
+                    $attributeName)) {
+                continue
+            }
+
+            if ($attributeName -notmatch
+                'Fan|Thermal') {
+                continue
+            }
+
+            $snapshot +=
+                [pscustomobject]@{
+                    Source = 'DCIM_BIOSEnumeration'
+                    AttributeName = $attributeName
+                    CurrentValue =
+                        Get-PcAttributeValueText(
+                            Get-PcManagementProperty `
+                                $object `
+                                'CurrentValue'
+                        )
+                    PossibleValues =
+                        @(
+                            Get-PcManagementProperty `
+                                $object `
+                                'PossibleValues'
+                        )
+                    PossibleValuesDescription =
+                        @(
+                            Get-PcManagementProperty `
+                                $object `
+                                'PossibleValuesDescription'
+                        )
+                    IsReadOnly =
+                        Get-PcAttributeIsReadOnly `
+                            $object
+                }
+        }
+        finally {
+            try { $object.Dispose() } catch {}
+        }
+    }
+
+    # Precision 7820 testing found no useful values here, but continue probing
+    # dynamically so Tower Control remains capability-driven on other Dell PCs.
+    $thermalObjects =
+        Invoke-PcManagementQuery `
+            'SELECT * FROM DCIM_ThermalInformation' `
+            $true
+
+    foreach ($object in $thermalObjects) {
+        try {
+            $attributeName =
+                [string](
+                    Get-PcManagementProperty `
+                        $object `
+                        'AttributeName'
+                )
+
+            $currentValue =
+                Get-PcAttributeValueText(
+                    Get-PcManagementProperty `
+                        $object `
+                        'CurrentValue'
+                )
+
+            if ([string]::IsNullOrWhiteSpace(
+                    $attributeName) -and
+                [string]::IsNullOrWhiteSpace(
+                    $currentValue)) {
+                continue
+            }
+
+            $snapshot +=
+                [pscustomobject]@{
+                    Source = 'DCIM_ThermalInformation'
+                    AttributeName =
+                        if ([string]::IsNullOrWhiteSpace(
+                                $attributeName)) {
+                            'Thermal Information'
+                        }
+                        else {
+                            $attributeName
+                        }
+                    CurrentValue = $currentValue
+                    PossibleValues =
+                        @(
+                            Get-PcManagementProperty `
+                                $object `
+                                'PossibleValues'
+                        )
+                    PossibleValuesDescription =
+                        @(
+                            Get-PcManagementProperty `
+                                $object `
+                                'PossibleValuesDescription'
+                        )
+                    IsReadOnly =
+                        Get-PcAttributeIsReadOnly `
+                            $object
+                }
+        }
+        finally {
+            try { $object.Dispose() } catch {}
+        }
+    }
+
+    $integerObjects =
+        Invoke-PcManagementQuery `
+            'SELECT * FROM DCIM_BIOSInteger' `
+            $true
+
+    foreach ($object in $integerObjects) {
+        try {
+            $attributeName =
+                [string](
+                    Get-PcManagementProperty `
+                        $object `
+                        'AttributeName'
+                )
+
+            if ($attributeName -notmatch
+                'Fan|Thermal') {
+                continue
+            }
+
+            $snapshot +=
+                [pscustomobject]@{
+                    Source = 'DCIM_BIOSInteger'
+                    AttributeName = $attributeName
+                    CurrentValue =
+                        Get-PcAttributeValueText(
+                            Get-PcManagementProperty `
+                                $object `
+                                'CurrentValue'
+                        )
+                    PossibleValues = @()
+                    PossibleValuesDescription = @()
+                    IsReadOnly =
+                        Get-PcAttributeIsReadOnly `
+                            $object
+                }
+        }
+        finally {
+            try { $object.Dispose() } catch {}
+        }
+    }
+
+    return @($snapshot)
+}
+
+function Get-PcCoolingZoneCapabilities(
+    $capabilities) {
+
+    $knownNames = @(
+        'Fan Speed Auto Level on CPU Zone',
+        'Fan Speed Auto Level on CPU Memory Zone',
+        'Fan Speed Auto Level on PCIe Zone',
+        'Fan Speed Auto Level on Upper PCIe Zone',
+        'Fan Speed Auto Level on PSU Zone',
+        'Fan Speed Auto Level on Flex Bay Zone'
+    )
+
+    return @(
+        $capabilities |
+            Where-Object {
+                [string]$_.AttributeName -in
+                    $knownNames
+            } |
+            Sort-Object {
+                [Array]::IndexOf(
+                    $knownNames,
+                    [string]$_.AttributeName
+                )
+            }
+    )
+}
+
+function Get-PcProfileDisplay(
+    $capabilities) {
+
+    $candidate =
+        $capabilities |
+            Where-Object {
+                (
+                    [string]$_.AttributeName -match
+                        '^Thermal ?Management$'
+                ) -or
+                (
+                    [string]$_.AttributeName -match
+                        '^Thermal Mode$'
+                )
+            } |
+            Select-Object -First 1
+
+    if ($null -eq $candidate -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$candidate.CurrentValue)) {
+        return 'Not exposed'
+    }
+
+    return [string]$candidate.CurrentValue
+}
+
+function Get-PcFanModeDisplay(
+    $capabilities) {
+
+    $candidate =
+        $capabilities |
+            Where-Object {
+                (
+                    [string]$_.AttributeName -match
+                        '^Fan ?Speed$'
+                ) -or
+                (
+                    [string]$_.AttributeName -match
+                        '^Fan Control Override$'
+                )
+            } |
+            Select-Object -First 1
+
+    if ($null -eq $candidate -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$candidate.CurrentValue)) {
+        return 'Not exposed'
+    }
+
+    return (
+        [string]$candidate.AttributeName +
+        ': ' +
+        [string]$candidate.CurrentValue
+    )
+}
+
+function Get-PcMainCoolingCapability(
+    $capabilities) {
+
+    return (
+        @(
+            $capabilities |
+                Where-Object {
+                    [string]$_.AttributeName -eq
+                        'Fan Speed Auto Level on CPU Memory Zone'
+                }
+        ) |
+            Select-Object -First 1
+    )
+}
+
+function Get-PcCoolingLevel(
+    $capability) {
+
+    if ($null -eq $capability) {
+        return $null
+    }
+
+    $value = 0
+
+    if (-not [int]::TryParse(
+            [string]$capability.CurrentValue,
+            [ref]$value)) {
+        return $null
+    }
+
+    return [Math]::Max(
+        0,
+        [Math]::Min(
+            100,
+            $value
+        )
+    )
+}
+
+function Update-PcCoolingControlAvailability {
+    $canWrite =
+        [bool]$script:pcCoolingControlAvailable -and
+        [bool]$script:pcCoolingControlWritable -and
+        -not [bool]$script:pcCoolingCommandPending
+
+    $pcCoolingSlider.Enabled = $canWrite
+    $pcCoolingApplyButton.Enabled = $canWrite
+    $pcCoolingAutoButton.Enabled = $canWrite
+}
+
+function Update-PcCoolingFanBankUi {
+    if ($null -eq $pcCoolingFansValue) {
+        return
+    }
+
+    $values = @{}
+
+    foreach ($fanName in @(
+        'CPU0 FAN',
+        'CPU1 FAN',
+        'SYS0 FAN',
+        'SYS1 FAN',
+        'SYS2 FAN',
+        'REAR0 FAN',
+        'REAR1 FAN'
+    )) {
+        $sensor =
+            Find-PcSensor 5 $fanName
+
+        $values[$fanName] =
+            if ($null -eq $sensor -or
+                $null -eq $sensor.Reading) {
+                '--'
+            }
+            else {
+                '{0:0}' -f
+                    [double]$sensor.Reading
+            }
+    }
+
+    $pcCoolingFansValue.Text =
+        'CPU0 ' + $values['CPU0 FAN'] + ' RPM   ' +
+        'CPU1 ' + $values['CPU1 FAN'] + ' RPM   ' +
+        'SYS1 ' + $values['SYS1 FAN'] + ' RPM' +
+        "`r`n" +
+        'SYS2 ' + $values['SYS2 FAN'] + ' RPM   ' +
+        'REAR0 ' + $values['REAR0 FAN'] + ' RPM   ' +
+        'REAR1 ' + $values['REAR1 FAN'] + ' RPM'
+
+    $pcCoolingSys0Value.Text =
+        if ($values['SYS0 FAN'] -eq '--') {
+            '--'
+        }
+        else {
+            $values['SYS0 FAN'] + ' RPM'
+        }
+}
+
+function Update-PcCoolingCapabilities(
+    $capabilities) {
+
+    $zones =
+        Get-PcCoolingZoneCapabilities `
+            $capabilities
+
+    $hdd =
+        $capabilities |
+            Where-Object {
+                [string]$_.AttributeName -eq
+                    'HDD0 Fan Enable'
+            } |
+            Select-Object -First 1
+
+    $main =
+        Get-PcMainCoolingCapability `
+            $capabilities
+
+    $script:pcCoolingControlAvailable =
+        ($null -ne $main)
+
+    $script:pcCoolingControlWritable =
+        ($null -ne $main -and
+         -not [bool]$main.IsReadOnly)
+
+    if ($null -eq $main) {
+        $script:pcCoolingCurrentLevel = $null
+        $pcCoolingCurrentValue.Text = 'Not exposed'
+        $pcCoolingStatusValue.Text =
+            'CPU / Memory cooling control is not exposed by Dell Command | Monitor.'
+        $pcCoolingStatusValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+    }
+    else {
+        $level =
+            Get-PcCoolingLevel $main
+
+        if ($null -ne $level) {
+            $script:pcCoolingCurrentLevel =
+                [int]$level
+
+            $pcCoolingCurrentValue.Text =
+                if ([int]$level -eq 0) {
+                    'Dell Auto baseline (0)'
+                }
+                else {
+                    'Manual floor ' +
+                    [string]$level +
+                    ' / 100'
+                }
+
+            if (-not [bool]$script:pcCoolingSliderDirty -and
+                -not [bool]$script:pcCoolingCommandPending) {
+                $pcCoolingSlider.Value =
+                    [int]$level
+
+                $pcCoolingTargetValue.Text =
+                    'Target: ' +
+                    [string]$level +
+                    ' / 100'
+            }
+        }
+        else {
+            $pcCoolingCurrentValue.Text =
+                [string]$main.CurrentValue
+        }
+
+        if (-not [bool]$main.IsReadOnly -and
+            -not [bool]$script:pcCoolingCommandPending) {
+            if ([string]$pcCoolingStatusValue.Text -match
+                '^(Waiting for Dell BIOS|Reading cooling capability|CPU / Memory cooling control|Dell reports)') {
+                $pcCoolingStatusValue.Text =
+                    'Ready. Move the slider, then press Apply. Dell Auto writes level 0.'
+                $pcCoolingStatusValue.ForeColor =
+                    [System.Drawing.Color]::DarkGreen
+                $pcDcmToolTip.SetToolTip(
+                    $pcCoolingStatusValue,
+                    ''
+                )
+            }
+        }
+        elseif ([bool]$main.IsReadOnly) {
+            $pcCoolingStatusValue.Text =
+                'Dell reports the CPU / Memory cooling level as read-only.'
+            $pcCoolingStatusValue.ForeColor =
+                [System.Drawing.Color]::DarkRed
+        }
+    }
+
+    $script:pcCapabilityCount =
+        @($zones).Count +
+        $(if ($null -ne $hdd) { 1 } else { 0 })
+
+    $script:pcWritableCapabilityCount =
+        @(
+            @($zones) +
+            @($hdd) |
+                Where-Object {
+                    $null -ne $_ -and
+                    -not [bool]$_.IsReadOnly
+                }
+        ).Count
+
+    $script:pcCapabilitiesLoaded =
+        ($null -ne $main)
+
+    $script:pcLastCapabilityRead =
+        [datetime]::Now
+
+    Update-PcCoolingControlAvailability
+}
+
+function Write-PcCoolingCommandFile(
+    [int]$level,
+    [string]$commandId) {
+
+    if (-not (Test-Path $configDirectory)) {
+        New-Item `
+            -ItemType Directory `
+            -Path $configDirectory `
+            -Force |
+            Out-Null
+    }
+
+    $command =
+        [pscustomobject]@{
+            id = $commandId
+            action = 'set-main-cooling'
+            value = $level
+            timestamp =
+                [datetime]::Now.ToString('o')
+        }
+
+    $json =
+        $command |
+            ConvertTo-Json `
+                -Depth 4 `
+                -Compress
+
+    $temporaryPath =
+        $script:pcCoolingCommandPath + '.tmp'
+
+    [System.IO.File]::WriteAllText(
+        $temporaryPath,
+        $json,
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    Move-Item `
+        -LiteralPath $temporaryPath `
+        -Destination $script:pcCoolingCommandPath `
+        -Force
+}
+
+function Submit-PcCoolingLevel(
+    [int]$level) {
+
+    if ($level -lt 0 -or
+        $level -gt 100) {
+        return
+    }
+
+    if (-not [bool]$script:pcCoolingControlAvailable -or
+        -not [bool]$script:pcCoolingControlWritable) {
+        $pcCoolingStatusValue.Text =
+            'Cooling control is unavailable or read-only.'
+        $pcCoolingStatusValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+        return
+    }
+
+    if ([bool]$script:pcCoolingCommandPending) {
+        return
+    }
+
+    if ($null -ne $script:pcCoolingCurrentLevel -and
+        [int]$script:pcCoolingCurrentLevel -eq $level) {
+        $script:pcCoolingSliderDirty = $false
+        $pcCoolingSlider.Value = $level
+        $pcCoolingTargetValue.Text =
+            'Target: ' +
+            [string]$level +
+            ' / 100'
+        $pcCoolingStatusValue.Text =
+            if ($level -eq 0) {
+                'Already at Dell Auto baseline (0).'
+            }
+            else {
+                'Cooling level is already ' +
+                [string]$level +
+                ' / 100.'
+            }
+        $pcCoolingStatusValue.ForeColor =
+            [System.Drawing.Color]::DarkGreen
+        return
+    }
+
+    if (-not (Ensure-PcHelperProcess)) {
+        $pcCoolingStatusValue.Text =
+            'Dell helper is not available.'
+        $pcCoolingStatusValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+        return
+    }
+
+    try {
+        $commandId =
+            [guid]::NewGuid().ToString('N')
+
+        Write-PcCoolingCommandFile `
+            $level `
+            $commandId
+
+        $script:pcCoolingLastCommandId =
+            $commandId
+
+        $script:pcCoolingCommandPending =
+            $true
+
+        $script:pcCoolingSliderDirty =
+            $false
+
+        $pcCoolingStatusValue.Text =
+            'Queued Dell cooling level ' +
+            [string]$level +
+            '. BIOS provider may take 10-15 seconds.'
+
+        $pcCoolingStatusValue.ForeColor =
+            [System.Drawing.Color]::DarkGoldenrod
+
+        Update-PcCoolingControlAvailability
+    }
+    catch {
+        $script:pcCoolingCommandPending =
+            $false
+
+        $pcCoolingStatusValue.Text =
+            'Could not queue cooling command: ' +
+            $_.Exception.Message
+
+        $pcCoolingStatusValue.ForeColor =
+            [System.Drawing.Color]::DarkRed
+
+        Update-PcCoolingControlAvailability
+    }
+}
+
+function Update-PcCoolingControlUi(
+    $control) {
+
+    if ($null -eq $control) {
+        return
+    }
+
+    $commandId =
+        [string]$control.CommandId
+
+    $state =
+        [string]$control.State
+
+    $current = 0
+    $hasCurrent =
+        [int]::TryParse(
+            [string]$control.CurrentValue,
+            [ref]$current
+        )
+
+    if ($hasCurrent) {
+        $current =
+            [Math]::Max(
+                0,
+                [Math]::Min(
+                    100,
+                    $current
+                )
+            )
+
+        $script:pcCoolingCurrentLevel =
+            $current
+
+        $pcCoolingCurrentValue.Text =
+            if ($current -eq 0) {
+                'Dell Auto baseline (0)'
+            }
+            else {
+                'Manual floor ' +
+                [string]$current +
+                ' / 100'
+            }
+
+        if (-not [bool]$script:pcCoolingSliderDirty -and
+            -not [bool]$script:pcCoolingCommandPending) {
+            $pcCoolingSlider.Value = $current
+            $pcCoolingTargetValue.Text =
+                'Target: ' +
+                [string]$current +
+                ' / 100'
+        }
+    }
+
+    $biosDiscoveryState =
+        [string]$control.DiscoveryState
+
+    $biosDiscoveryError =
+        [string]$control.DiscoveryError
+
+    if ([bool]$control.Available) {
+        $script:pcCoolingControlAvailable = $true
+        $script:pcCoolingControlWritable =
+            -not [bool]$control.IsReadOnly
+    }
+    else {
+        $script:pcCoolingControlAvailable = $false
+        $script:pcCoolingControlWritable = $false
+
+        if ($biosDiscoveryState -in @('', 'Loading', 'Running')) {
+            if (-not [bool]$script:pcCoolingCommandPending) {
+                $pcCoolingCurrentValue.Text = 'Waiting for Dell BIOS...'
+                $pcCoolingStatusValue.Text =
+                    'Reading cooling capability...'
+                $pcCoolingStatusValue.ForeColor =
+                    [System.Drawing.Color]::DarkGoldenrod
+                $pcDcmToolTip.SetToolTip(
+                    $pcCoolingStatusValue,
+                    ''
+                )
+            }
+        }
+        elseif ($biosDiscoveryState -eq 'Timeout') {
+            $pcCoolingCurrentValue.Text = 'Unavailable'
+            $pcCoolingStatusValue.Text =
+                'Dell BIOS query timed out. Waiting for the current call to finish.'
+            $pcCoolingStatusValue.ForeColor =
+                [System.Drawing.Color]::DarkRed
+            $pcDcmToolTip.SetToolTip(
+                $pcCoolingStatusValue,
+                $biosDiscoveryError
+            )
+        }
+        elseif ($biosDiscoveryState -eq 'Error') {
+            $pcCoolingCurrentValue.Text = 'Unavailable'
+            $pcCoolingStatusValue.Text =
+                'Dell BIOS query failed.'
+            $pcCoolingStatusValue.ForeColor =
+                [System.Drawing.Color]::DarkRed
+            $pcDcmToolTip.SetToolTip(
+                $pcCoolingStatusValue,
+                $biosDiscoveryError
+            )
+        }
+        else {
+            # Only a successfully completed discovery may conclude that the
+            # control is genuinely absent.
+            $pcCoolingCurrentValue.Text = 'Not exposed'
+            $pcCoolingStatusValue.Text =
+                'CPU / Memory cooling control is not exposed.'
+            $pcCoolingStatusValue.ForeColor =
+                [System.Drawing.Color]::DarkRed
+            $pcDcmToolTip.SetToolTip(
+                $pcCoolingStatusValue,
+                ''
+            )
+        }
+    }
+
+    $isOurCommand =
+        -not [string]::IsNullOrWhiteSpace(
+            [string]$script:pcCoolingLastCommandId
+        ) -and
+        $commandId -eq
+            [string]$script:pcCoolingLastCommandId
+
+    if ($isOurCommand) {
+        switch ($state) {
+            'Queued' {
+                $script:pcCoolingCommandPending = $true
+                $pcCoolingStatusValue.Text =
+                    'Cooling command queued...'
+                $pcCoolingStatusValue.ForeColor =
+                    [System.Drawing.Color]::DarkGoldenrod
+            }
+            'Applying' {
+                $script:pcCoolingCommandPending = $true
+                $pcCoolingStatusValue.Text =
+                    'Applying Dell cooling level ' +
+                    [string]$control.RequestedValue +
+                    '...'
+                $pcCoolingStatusValue.ForeColor =
+                    [System.Drawing.Color]::DarkGoldenrod
+            }
+            'Applied' {
+                $script:pcCoolingCommandPending = $false
+                $script:pcCoolingSliderDirty = $false
+
+                if ($hasCurrent) {
+                    $pcCoolingSlider.Value = $current
+                    $pcCoolingTargetValue.Text =
+                        'Target: ' +
+                        [string]$current +
+                        ' / 100'
+                }
+
+                $pcCoolingStatusValue.Text =
+                    'Applied successfully. Dell readback: ' +
+                    [string]$control.CurrentValue +
+                    ' / 100.'
+                $pcCoolingStatusValue.ForeColor =
+                    [System.Drawing.Color]::DarkGreen
+
+                $script:pcCoolingLastCommandId = ''
+            }
+            'Error' {
+                $script:pcCoolingCommandPending = $false
+                $pcCoolingStatusValue.Text =
+                    'Cooling write failed: ' +
+                    [string]$control.Error
+                $pcCoolingStatusValue.ForeColor =
+                    [System.Drawing.Color]::DarkRed
+
+                $script:pcCoolingLastCommandId = ''
+            }
+        }
+    }
+
+    Update-PcCoolingControlAvailability
+}
+
+function Set-PcHelperError([string]$message) {
+    if ([string]::IsNullOrWhiteSpace($message)) {
+        $message = 'Unknown Dell monitor error.'
+    }
+
+    $script:pcManagementError = $message
+    $pcDcmValue.Text = 'Unavailable'
+    $pcDcmValue.ForeColor = [System.Drawing.Color]::DarkRed
+    $pcDcmToolTip.SetToolTip($pcDcmValue, $message)
+}
+
+function Set-PcHelperConnected {
+    $script:pcManagementError = ''
+    $pcDcmValue.Text = 'Connected'
+    $pcDcmValue.ForeColor = [System.Drawing.Color]::DarkGreen
+    $pcDcmToolTip.SetToolTip(
+        $pcDcmValue,
+        'Connected through the isolated Dell CIM helper.'
+    )
+}
+
+function Ensure-PcHelperProcess {
+    if (-not (Test-Path $script:pcHelperPath)) {
+        Set-PcHelperError (
+            'Missing helper: ' + $script:pcHelperPath
+        )
+        return $false
+    }
+
+    if ($null -ne $script:pcHelperProcess) {
+        try {
+            if (-not $script:pcHelperProcess.HasExited) {
+                return $true
+            }
+        }
+        catch {}
+
+        if ([bool]$script:pcCoolingCommandPending) {
+            $script:pcCoolingCommandPending = $false
+            $script:pcCoolingLastCommandId = ''
+            $script:pcCoolingSliderDirty = $false
+            $pcCoolingStatusValue.Text =
+                'Dell helper restarted before the command completed.'
+            $pcCoolingStatusValue.ForeColor =
+                [System.Drawing.Color]::DarkRed
+            Update-PcCoolingControlAvailability
+        }
+
+        try { $script:pcHelperProcess.Dispose() } catch {}
+        $script:pcHelperProcess = $null
+    }
+
+    if ([datetime]::Now -lt $script:pcHelperNextStart) {
+        return $false
+    }
+
+    try {
+        if (-not (Test-Path $configDirectory)) {
+            New-Item -ItemType Directory -Path $configDirectory -Force |
+                Out-Null
+        }
+
+        Remove-Item -LiteralPath $script:pcHelperStopPath -Force `
+            -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $script:pcHelperSnapshotPath -Force `
+            -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $script:pcCoolingCommandPath -Force `
+            -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath ($script:pcCoolingCommandPath + '.tmp') -Force `
+            -ErrorAction SilentlyContinue
+
+        $exe = Join-Path $env:SystemRoot `
+            'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+        if (-not [Environment]::Is64BitProcess -and
+            [Environment]::Is64BitOperatingSystem) {
+            $sysnative = Join-Path $env:SystemRoot `
+                'Sysnative\WindowsPowerShell\v1.0\powershell.exe'
+            if (Test-Path $sysnative) {
+                $exe = $sysnative
+            }
+        }
+
+        $arguments =
+            '-NoProfile -NonInteractive -ExecutionPolicy Bypass ' +
+            '-File "' + $script:pcHelperPath + '" ' +
+            '-SnapshotPath "' + $script:pcHelperSnapshotPath + '" ' +
+            '-StopPath "' + $script:pcHelperStopPath + '" ' +
+            '-CommandPath "' + $script:pcCoolingCommandPath + '" ' +
+            '-ParentProcessId ' + [string]$PID
+
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $exe
+        $startInfo.Arguments = $arguments
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.WindowStyle =
+            [System.Diagnostics.ProcessWindowStyle]::Hidden
+
+        $script:pcHelperProcess =
+            [System.Diagnostics.Process]::Start($startInfo)
+
+        if ($null -eq $script:pcHelperProcess) {
+            throw 'Windows did not return a helper process.'
+        }
+
+        $script:pcHelperLastSnapshotWrite = [datetime]::MinValue
+        $pcDcmValue.Text = 'Starting...'
+        $pcDcmValue.ForeColor = [System.Drawing.Color]::DarkGoldenrod
+        $pcDcmToolTip.SetToolTip(
+            $pcDcmValue,
+            'Starting isolated PC hardware monitor helper.'
+        )
+        return $true
+    }
+    catch {
+        $script:pcHelperProcess = $null
+        $script:pcHelperNextStart = [datetime]::Now.AddSeconds(10)
+        Set-PcHelperError (
+            'Could not start Dell monitor helper: ' +
+            $_.Exception.Message
+        )
+        return $false
+    }
+}
+
+function Stop-PcHelperProcess {
+    try {
+        if (-not (Test-Path $configDirectory)) {
+            New-Item -ItemType Directory -Path $configDirectory -Force |
+                Out-Null
+        }
+
+        # Do not kill the helper. It may need several seconds to return a
+        # Tower-owned non-zero cooling floor to Dell Auto (0) before exiting.
+        Set-Content -LiteralPath $script:pcHelperStopPath `
+            -Value 'stop' -Encoding ASCII -Force
+    }
+    catch {}
+
+    if ($null -ne $script:pcHelperProcess) {
+        try { $script:pcHelperProcess.Dispose() } catch {}
+        $script:pcHelperProcess = $null
+    }
+}
+
+function Read-PcHelperSnapshot {
+    try {
+        if (-not (Ensure-PcHelperProcess)) {
+            return
+        }
+
+        if (-not (Test-Path -LiteralPath $script:pcHelperSnapshotPath)) {
+            return
+        }
+
+        $file = Get-Item -LiteralPath $script:pcHelperSnapshotPath `
+            -ErrorAction Stop
+
+        if ($file.LastWriteTime -eq $script:pcHelperLastSnapshotWrite) {
+            return
+        }
+
+        $raw = Get-Content -LiteralPath $script:pcHelperSnapshotPath `
+            -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            return
+        }
+
+        $snapshot = $raw | ConvertFrom-Json -ErrorAction Stop
+        $script:pcHelperLastSnapshotWrite = $file.LastWriteTime
+
+        if (-not [bool]$snapshot.ok) {
+            Set-PcHelperError ([string]$snapshot.error)
+            return
+        }
+
+        if ($null -ne $snapshot.sensors) {
+            Update-PcTelemetryUi @($snapshot.sensors)
+        }
+
+        if ($null -ne $snapshot.capabilities -and
+            @($snapshot.capabilities).Count -gt 0) {
+            Update-PcCoolingCapabilities @($snapshot.capabilities)
+        }
+
+        if ($null -ne $snapshot.coolingControl) {
+            Update-PcCoolingControlUi $snapshot.coolingControl
+        }
+
+        Update-PcExtendedHardwareUi $snapshot
+    }
+    catch {
+        Set-PcHelperError (
+            'Could not read Dell helper snapshot: ' +
+            $_.Exception.Message
+        )
+    }
+}
+
+function Refresh-PcCapabilities {
+    Read-PcHelperSnapshot
+}
+
+function Refresh-PcTelemetry {
+    Read-PcHelperSnapshot
+}
+
+function Refresh-PcDashboard(
+    [bool]$includeCapabilities = $false) {
+
+    Read-PcHelperSnapshot
 }
 
 
@@ -10757,32 +12035,9 @@ function Ensure-IrDeviceRendered($device) {
 }
 
 function Show-IrDevice($device) {
-    if ($script:irLayoutEditMode) {
-        $incomingId = if ($null -eq $device) {
-            ''
-        }
-        else {
-            [string]$device.id
-        }
-
-        if ($incomingId -ne [string]$script:irLayoutDeviceId) {
-            Set-TowerStatus 'Save or cancel Edit Layout before changing remote.'
-            return
-        }
-    }
-
     $renderTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
     $script:currentIrDevice = $device
-    $script:irLayoutGroupCounts = @{}
-    $script:irLayoutScopeKey = if ($null -ne $device -and
-        [string]$device.name -eq 'AVR X2800H') {
-        'Denon-' + [string]$script:denonZoneMode
-    }
-    else {
-        'Default'
-    }
-    Update-IrLayoutToolbarState
     $irCommandPanel.SuspendLayout()
     $irCommandPanel.Controls.Clear()
 
@@ -10852,7 +12107,6 @@ function Show-IrDevice($device) {
         Render-IrGenericGroups $device $commands
     }
 
-    Apply-IrSavedGroupAssignmentsAndStyles
     Refresh-IrCommandGroupWidths
     $irCommandPanel.ResumeLayout()
 
@@ -11219,24 +12473,11 @@ function Move-SelectedIrDevice([int]$direction) {
     Refresh-IrDeviceListFromMemory $selectedId
 }
 
-function Show-IrCommandLearnDialog(
-    $device,
-    $command = $null,
-    [bool]$replaceExisting = $false,
-    $owner = $form) {
-
-    if ($null -eq $device) { return $null }
-
-    $deviceId = [string]$device.id
-    $deviceName = [string]$device.name
+function Show-IrRenameDialog(
+    [string]$currentName) {
 
     $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = if ($replaceExisting) {
-        'Re-record IR Command'
-    }
-    else {
-        'Add IR Command'
-    }
+    $dialog.Text = 'Rename IR remote'
     $dialog.StartPosition = 'CenterParent'
     $dialog.FormBorderStyle =
         [System.Windows.Forms.FormBorderStyle]::FixedDialog
@@ -11244,653 +12485,189 @@ function Show-IrCommandLearnDialog(
     $dialog.MinimizeBox = $false
     $dialog.ShowInTaskbar = $false
     $dialog.ClientSize =
-        New-Object System.Drawing.Size(650, 665)
+        New-Object System.Drawing.Size(430, 158)
     $dialog.Font =
-        New-Object System.Drawing.Font('Segoe UI', 10)
+        New-Object System.Drawing.Font(
+            'Segoe UI',
+            10
+        )
 
-    $state = [pscustomobject]@{
-        LastCapture = $null
-        Saved = $false
-    }
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = 'Remote name'
+    $label.Location =
+        New-Object System.Drawing.Point(22, 22)
+    $label.Size =
+        New-Object System.Drawing.Size(110, 24)
+    $dialog.Controls.Add($label)
 
-    $title = New-Object System.Windows.Forms.Label
-    $title.Text = if ($replaceExisting) {
-        'Re-record IR Command'
-    }
-    else {
-        'Add IR Command'
-    }
-    $title.Font =
-        New-Object System.Drawing.Font('Segoe UI Semibold', 15)
-    $title.Location =
-        New-Object System.Drawing.Point(28, 22)
-    $title.Size =
-        New-Object System.Drawing.Size(570, 34)
-    $dialog.Controls.Add($title)
+    $nameBox = New-Object System.Windows.Forms.TextBox
+    $nameBox.Text = $currentName
+    $nameBox.Location =
+        New-Object System.Drawing.Point(136, 19)
+    $nameBox.Size =
+        New-Object System.Drawing.Size(270, 27)
+    $nameBox.MaxLength = 120
+    $dialog.Controls.Add($nameBox)
 
-    $deviceLabel = New-Object System.Windows.Forms.Label
-    $deviceLabel.Text = $deviceName
-    $deviceLabel.Location =
-        New-Object System.Drawing.Point(30, 60)
-    $deviceLabel.Size =
-        New-Object System.Drawing.Size(570, 24)
-    $deviceLabel.ForeColor = [System.Drawing.Color]::DimGray
-    $dialog.Controls.Add($deviceLabel)
+    $note = New-Object System.Windows.Forms.Label
+    $note.Text =
+        'Only the displayed name changes. The internal Tower device ID stays unchanged.'
+    $note.Location =
+        New-Object System.Drawing.Point(24, 59)
+    $note.Size =
+        New-Object System.Drawing.Size(382, 38)
+    $note.ForeColor =
+        [System.Drawing.Color]::DimGray
+    $dialog.Controls.Add($note)
 
-    $commandLabel = New-Object System.Windows.Forms.Label
-    $commandLabel.Text = 'Command name'
-    $commandLabel.Location =
-        New-Object System.Drawing.Point(30, 108)
-    $commandLabel.Size =
-        New-Object System.Drawing.Size(150, 24)
-    $dialog.Controls.Add($commandLabel)
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = 'Cancel'
+    $cancel.Size =
+        New-Object System.Drawing.Size(92, 34)
+    $cancel.Location =
+        New-Object System.Drawing.Point(22, 108)
+    $cancel.DialogResult =
+        [System.Windows.Forms.DialogResult]::Cancel
+    Set-IrButtonVisualStyle $cancel
+    $dialog.Controls.Add($cancel)
 
-    $commandBox = New-Object System.Windows.Forms.TextBox
-    $commandBox.Location =
-        New-Object System.Drawing.Point(190, 105)
-    $commandBox.Size =
-        New-Object System.Drawing.Size(405, 28)
-    $commandBox.MaxLength = 120
-    $dialog.Controls.Add($commandBox)
+    $rename = New-Object System.Windows.Forms.Button
+    $rename.Text = 'Rename'
+    $rename.Size =
+        New-Object System.Drawing.Size(100, 34)
+    $rename.Location =
+        New-Object System.Drawing.Point(306, 108)
+    Set-IrButtonVisualStyle $rename
+    $dialog.Controls.Add($rename)
 
-    $descriptionLabel = New-Object System.Windows.Forms.Label
-    $descriptionLabel.Text = 'Description'
-    $descriptionLabel.Location =
-        New-Object System.Drawing.Point(30, 150)
-    $descriptionLabel.Size =
-        New-Object System.Drawing.Size(150, 24)
-    $dialog.Controls.Add($descriptionLabel)
+    $dialog.CancelButton = $cancel
+    $dialog.Tag = $null
 
-    $descriptionBox = New-Object System.Windows.Forms.TextBox
-    $descriptionBox.Location =
-        New-Object System.Drawing.Point(190, 147)
-    $descriptionBox.Size =
-        New-Object System.Drawing.Size(405, 28)
-    $descriptionBox.MaxLength = 240
-    $dialog.Controls.Add($descriptionBox)
+    $rename.Add_Click({
+        $candidate =
+            $nameBox.Text.Trim()
 
-    if ($replaceExisting -and $null -ne $command) {
-        $commandBox.Text = [string]$command.id
-        $commandBox.ReadOnly = $true
-        $descriptionBox.Text = [string]$command.description
-    }
+        if ([string]::IsNullOrWhiteSpace(
+                $candidate)) {
 
-    $instruction = New-Object System.Windows.Forms.Label
-    $instruction.Text =
-        "Aim the remote at the receiver array. When you press READY, " +
-        "Tower records all six receivers for 8 seconds. Press the same " +
-        "remote button several times during that recording."
-    $instruction.Location =
-        New-Object System.Drawing.Point(30, 194)
-    $instruction.Size =
-        New-Object System.Drawing.Size(565, 58)
-    $instruction.ForeColor = [System.Drawing.Color]::DimGray
-    $dialog.Controls.Add($instruction)
-
-    $resultGroup = New-Object System.Windows.Forms.GroupBox
-    $resultGroup.Text = 'Capture result'
-    $resultGroup.Location =
-        New-Object System.Drawing.Point(30, 267)
-    $resultGroup.Size =
-        New-Object System.Drawing.Size(565, 286)
-    $dialog.Controls.Add($resultGroup)
-
-    $resultText = New-Object System.Windows.Forms.Label
-    $resultText.Text = 'No capture yet.'
-    $resultText.Location =
-        New-Object System.Drawing.Point(16, 26)
-    $resultText.Size =
-        New-Object System.Drawing.Size(532, 92)
-    $resultText.Font =
-        New-Object System.Drawing.Font('Consolas', 9)
-    $resultGroup.Controls.Add($resultText)
-
-    $receiverList = New-Object System.Windows.Forms.ListView
-    $receiverList.Location =
-        New-Object System.Drawing.Point(16, 124)
-    $receiverList.Size =
-        New-Object System.Drawing.Size(532, 146)
-    $receiverList.View =
-        [System.Windows.Forms.View]::Details
-    $receiverList.FullRowSelect = $true
-    $receiverList.GridLines = $true
-    $receiverList.HeaderStyle =
-        [System.Windows.Forms.ColumnHeaderStyle]::Nonclickable
-    $receiverList.Font =
-        New-Object System.Drawing.Font('Consolas', 8.5)
-
-    [void]$receiverList.Columns.Add('GPIO', 46)
-    [void]$receiverList.Columns.Add('Receiver', 92)
-    [void]$receiverList.Columns.Add('kHz', 44)
-    [void]$receiverList.Columns.Add('Timings', 60)
-    [void]$receiverList.Columns.Add('Pulses', 55)
-    [void]$receiverList.Columns.Add('Frames', 54)
-    [void]$receiverList.Columns.Add('Valid', 48)
-    [void]$receiverList.Columns.Add('Result', 76)
-    $resultGroup.Controls.Add($receiverList)
-
-    $cancelButton = New-RfSmoothButton `
-        'Cancel' `
-        100 `
-        38 `
-        ([System.Drawing.Color]::White) `
-        ([System.Drawing.Color]::FromArgb(35, 35, 35)) `
-        ([System.Drawing.Color]::FromArgb(150, 145, 185))
-    $cancelButton.Location =
-        New-Object System.Drawing.Point(30, 580)
-    $dialog.Controls.Add($cancelButton)
-
-    $retryButton = New-RfSmoothButton `
-        'Retry' `
-        95 `
-        38 `
-        ([System.Drawing.Color]::White) `
-        ([System.Drawing.Color]::FromArgb(35, 35, 35)) `
-        ([System.Drawing.Color]::FromArgb(150, 145, 185))
-    $retryButton.Location =
-        New-Object System.Drawing.Point(345, 580)
-    $retryButton.Visible = $false
-    $dialog.Controls.Add($retryButton)
-
-    $saveButton = New-RfSmoothButton `
-        'Save Command' `
-        125 `
-        38 `
-        ([System.Drawing.Color]::FromArgb(224, 244, 228)) `
-        ([System.Drawing.Color]::FromArgb(30, 80, 40)) `
-        ([System.Drawing.Color]::FromArgb(130, 175, 135))
-    $saveButton.Location =
-        New-Object System.Drawing.Point(470, 580)
-    $saveButton.Visible = $false
-    $dialog.Controls.Add($saveButton)
-
-    $readyButton = New-RfSmoothButton `
-        'READY - RECORD' `
-        145 `
-        38 `
-        ([System.Drawing.Color]::FromArgb(224, 236, 250)) `
-        ([System.Drawing.Color]::FromArgb(30, 70, 115)) `
-        ([System.Drawing.Color]::FromArgb(115, 155, 195))
-    $readyButton.Location =
-        New-Object System.Drawing.Point(450, 580)
-    $dialog.Controls.Add($readyButton)
-
-    $cancelButton.Add_Click({
-        $dialog.Close()
-    })
-
-    $retryButton.Add_Click({
-        $state.LastCapture = $null
-        $resultText.Text = 'No capture yet.'
-        $receiverList.Items.Clear()
-        $retryButton.Visible = $false
-        $saveButton.Visible = $false
-        $readyButton.Visible = $true
-
-        if (-not $replaceExisting) {
-            $commandBox.Focus()
-        }
-    })
-
-    $readyButton.Add_Click({
-        $commandName = $commandBox.Text.Trim()
-
-        if ([string]::IsNullOrWhiteSpace($commandName)) {
             [System.Windows.Forms.MessageBox]::Show(
-                'Enter a command name first.',
-                'Learn IR Command',
+                'Enter a name for the IR remote.',
+                'Rename IR remote',
                 'OK',
-                'Warning'
+                'Information'
             ) | Out-Null
-            $commandBox.Focus()
+
+            $nameBox.Focus()
             return
         }
 
-        try {
-            $readyButton.Enabled = $false
-            $resultText.Text =
-                "RECORDING NOW...`r`n`r`n" +
-                "Press '$commandName' several times during the 8-second capture."
-            $dialog.Refresh()
+        # WinForms event handlers execute in their own PowerShell scope.
+        # Store the value on the dialog itself so the caller receives it
+        # reliably after ShowDialog returns.
+        $dialog.Tag = $candidate
 
-            $response = Invoke-TowerPost '/api/v1/ir/learn/capture' @{
-                device = $deviceId
-                command = $commandName
-                description = $descriptionBox.Text.Trim()
-                seconds = 8.0
-                force = $replaceExisting
-            }
+        $dialog.DialogResult =
+            [System.Windows.Forms.DialogResult]::OK
 
-            $state.LastCapture = $response
-            $receiverList.BeginUpdate()
-            $receiverList.Items.Clear()
-
-            foreach ($receiver in @($response.receivers)) {
-                $item = New-Object System.Windows.Forms.ListViewItem(
-                    [string]$receiver.gpio
-                )
-                [void]$item.SubItems.Add([string]$receiver.receiver)
-                [void]$item.SubItems.Add([string]$receiver.carrierKhz)
-                [void]$item.SubItems.Add([string]$receiver.timings)
-                [void]$item.SubItems.Add([string]$receiver.pulses)
-                [void]$item.SubItems.Add([string]$receiver.frames)
-                [void]$item.SubItems.Add([string]$receiver.valid)
-                [void]$item.SubItems.Add([string]$receiver.result)
-                [void]$receiverList.Items.Add($item)
-            }
-            $receiverList.EndUpdate()
-
-            $protocol = [string]$response.protocol
-            if ([string]::IsNullOrWhiteSpace($protocol)) {
-                $protocol = 'RAW'
-            }
-
-            $addressText = if ($protocol -eq 'RAW') {
-                '-'
-            }
-            else {
-                ('0x{0:X}' -f [uint32]$response.address)
-            }
-
-            $commandCodeText = if ($protocol -eq 'RAW') {
-                '-'
-            }
-            else {
-                ('0x{0:X2}' -f [uint32]$response.decodedCommand)
-            }
-
-            $duplicateText = ''
-            $duplicates = @($response.duplicates)
-            if ($duplicates.Count -gt 0) {
-                $duplicateText =
-                    "`r`nDUPLICATE: " +
-                    ($duplicates -join ', ')
-            }
-
-            $noteText = ''
-            if (-not [string]::IsNullOrWhiteSpace([string]$response.note)) {
-                $noteText = "`r`n" + [string]$response.note
-            }
-
-            $resultText.Text =
-                "Protocol : $protocol`r`n" +
-                "Address  : $addressText    Command: $commandCodeText`r`n" +
-                "Carrier  : $([string]$response.carrierKhz) kHz`r`n" +
-                "Receiver : GPIO$([string]$response.receiverGpio) " +
-                "$([string]$response.receiverModel)`r`n" +
-                "Frames   : $([string]$response.initialFrames) initial / " +
-                "$([string]$response.repeatFrames) repeat" +
-                $duplicateText +
-                $noteText
-
-            $readyButton.Visible = $false
-            $retryButton.Visible = $true
-            $saveButton.Visible = $true
-        }
-        catch {
-            $state.LastCapture = $null
-            $details = Get-TowerHttpErrorDetails `
-                $_ `
-                'POST' `
-                '/api/v1/ir/learn/capture' `
-                @{
-                    device = $deviceId
-                    command = $commandName
-                    description = $descriptionBox.Text.Trim()
-                    seconds = 8.0
-                    force = $replaceExisting
-                }
-
-            $resultText.Text =
-                "Recording was not saved.`r`n`r`n" +
-                $details.Text
-            $retryButton.Visible = $true
-            $saveButton.Visible = $false
-            $readyButton.Visible = $false
-        }
-        finally {
-            $readyButton.Enabled = $true
-        }
-    })
-
-    $saveButton.Add_Click({
-        if ($null -eq $state.LastCapture) { return }
-
-        $duplicates = @($state.LastCapture.duplicates)
-        $acceptDuplicate = $false
-
-        if ($duplicates.Count -gt 0) {
-            $answer = [System.Windows.Forms.MessageBox]::Show(
-                "This IR signal is already stored as:`r`n`r`n" +
-                ($duplicates -join "`r`n") +
-                "`r`n`r`nKeep this duplicate command anyway?",
-                'Duplicate IR signal',
-                [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Warning,
-                [System.Windows.Forms.MessageBoxDefaultButton]::Button2
-            )
-
-            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
-                return
-            }
-
-            $acceptDuplicate = $true
-        }
-
-        try {
-            $saveButton.Enabled = $false
-            $commandName = $commandBox.Text.Trim()
-            $description = $descriptionBox.Text.Trim()
-
-            Invoke-TowerPost '/api/v1/ir/learn/save' @{
-                captureId = [string]$state.LastCapture.captureId
-                device = $deviceId
-                command = $commandName
-                description = $description
-                force = $replaceExisting
-                acceptDuplicate = $acceptDuplicate
-            } | Out-Null
-
-            $state.Saved = $true
-            $dialog.Tag = [pscustomobject]@{
-                id = $commandName
-                name = $commandName
-                description = $description
-                transport = 'IR'
-                enabled = $true
-            }
-
-            $statusText = if ($replaceExisting) {
-                "Re-recorded IR command $commandName"
-            }
-            else {
-                "Added IR command $commandName"
-            }
-
-            Set-TowerStatus $statusText
-
-            $dialog.DialogResult =
-                [System.Windows.Forms.DialogResult]::OK
-            $dialog.Close()
-        }
-        catch {
-            $details = Get-TowerHttpErrorDetails `
-                $_ `
-                'POST' `
-                '/api/v1/ir/learn/save' `
-                @{
-                    captureId = [string]$state.LastCapture.captureId
-                    device = $deviceId
-                    command = $commandBox.Text.Trim()
-                    description = $descriptionBox.Text.Trim()
-                    force = $replaceExisting
-                    acceptDuplicate = $acceptDuplicate
-                }
-
-            [System.Windows.Forms.MessageBox]::Show(
-                $details.Text,
-                'Save IR Command',
-                'OK',
-                'Error'
-            ) | Out-Null
-        }
-        finally {
-            $saveButton.Enabled = $true
-        }
+        $dialog.Close()
     })
 
     $dialog.Add_Shown({
-        if ($replaceExisting) {
-            $descriptionBox.Focus()
-        }
-        else {
-            $commandBox.Focus()
-        }
+        $nameBox.SelectAll()
+        $nameBox.Focus()
     })
 
-    [void]$dialog.ShowDialog($owner)
-    $savedCommand = $dialog.Tag
+    $dialogResult =
+        $dialog.ShowDialog($form)
+
+    $renamedValue =
+        [string]$dialog.Tag
+
     $dialog.Dispose()
 
-    if ([bool]$state.Saved) {
-        return $savedCommand
+    if ($dialogResult -eq
+            [System.Windows.Forms.DialogResult]::OK -and
+        -not [string]::IsNullOrWhiteSpace(
+            $renamedValue)) {
+
+        return $renamedValue
     }
 
     return $null
 }
 
-function Show-EditIrDeviceDialog($device) {
-    if ($null -eq $device) { return }
-
-    $deviceId = [string]$device.id
-
-    $dialog = New-Object System.Windows.Forms.Form
-    $dialog.Text = 'Edit IR Remote'
-    $dialog.StartPosition = 'CenterParent'
-    $dialog.FormBorderStyle =
-        [System.Windows.Forms.FormBorderStyle]::FixedDialog
-    $dialog.MaximizeBox = $false
-    $dialog.MinimizeBox = $false
-    $dialog.ShowInTaskbar = $false
-    $dialog.ClientSize =
-        New-Object System.Drawing.Size(720, 555)
-    $dialog.Font =
-        New-Object System.Drawing.Font('Segoe UI', 10)
-
-    $title = New-Object System.Windows.Forms.Label
-    $title.Text = 'Edit IR Remote'
-    $title.Font =
-        New-Object System.Drawing.Font('Segoe UI Semibold', 15)
-    $title.Location =
-        New-Object System.Drawing.Point(24, 20)
-    $title.Size =
-        New-Object System.Drawing.Size(650, 34)
-    $dialog.Controls.Add($title)
-
-    $nameLabel = New-Object System.Windows.Forms.Label
-    $nameLabel.Text = 'Remote name'
-    $nameLabel.Location =
-        New-Object System.Drawing.Point(26, 70)
-    $nameLabel.Size =
-        New-Object System.Drawing.Size(115, 24)
-    $dialog.Controls.Add($nameLabel)
-
-    $nameBox = New-Object System.Windows.Forms.TextBox
-    $nameBox.Text = [string]$device.name
-    $nameBox.Location =
-        New-Object System.Drawing.Point(146, 67)
-    $nameBox.Size =
-        New-Object System.Drawing.Size(420, 28)
-    $nameBox.MaxLength = 120
-    $dialog.Controls.Add($nameBox)
-
-    $saveNameButton = New-RfSmoothButton `
-        'Save Name' `
-        105 `
-        30 `
-        ([System.Drawing.Color]::FromArgb(224, 236, 250)) `
-        ([System.Drawing.Color]::FromArgb(30, 70, 115)) `
-        ([System.Drawing.Color]::FromArgb(115, 155, 195))
-    $saveNameButton.Location =
-        New-Object System.Drawing.Point(580, 66)
-    $dialog.Controls.Add($saveNameButton)
-
-    $nameHint = New-Object System.Windows.Forms.Label
-    $nameHint.Text =
-        'The internal Tower device ID stays unchanged.'
-    $nameHint.Location =
-        New-Object System.Drawing.Point(147, 100)
-    $nameHint.Size =
-        New-Object System.Drawing.Size(420, 22)
-    $nameHint.ForeColor = [System.Drawing.Color]::DimGray
-    $dialog.Controls.Add($nameHint)
-
-    $commandsLabel = New-Object System.Windows.Forms.Label
-    $commandsLabel.Text = 'Commands'
-    $commandsLabel.Font =
-        New-Object System.Drawing.Font('Segoe UI Semibold', 11)
-    $commandsLabel.Location =
-        New-Object System.Drawing.Point(26, 137)
-    $commandsLabel.Size =
-        New-Object System.Drawing.Size(200, 26)
-    $dialog.Controls.Add($commandsLabel)
-
-    $grid = New-Object System.Windows.Forms.DataGridView
-    $grid.Location =
-        New-Object System.Drawing.Point(26, 166)
-    $grid.Size =
-        New-Object System.Drawing.Size(660, 300)
-    $grid.AllowUserToAddRows = $false
-    $grid.AllowUserToDeleteRows = $false
-    $grid.AllowUserToResizeRows = $false
-    $grid.RowHeadersVisible = $false
-    $grid.MultiSelect = $false
-    $grid.SelectionMode =
-        [System.Windows.Forms.DataGridViewSelectionMode]::FullRowSelect
-    $grid.AutoGenerateColumns = $false
-    $grid.ReadOnly = $true
-    $grid.BackgroundColor = [System.Drawing.Color]::White
-    $grid.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-    $grid.AutoSizeRowsMode =
-        [System.Windows.Forms.DataGridViewAutoSizeRowsMode]::AllCells
-    $grid.DefaultCellStyle.WrapMode =
-        [System.Windows.Forms.DataGridViewTriState]::False
-
-    $commandColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-    $commandColumn.Name = 'Command'
-    $commandColumn.HeaderText = 'Command'
-    $commandColumn.Width = 180
-    [void]$grid.Columns.Add($commandColumn)
-
-    $descriptionColumn = New-Object System.Windows.Forms.DataGridViewTextBoxColumn
-    $descriptionColumn.Name = 'Description'
-    $descriptionColumn.HeaderText = 'Description'
-    $descriptionColumn.Width = 260
-    [void]$grid.Columns.Add($descriptionColumn)
-
-    $rerecordColumn = New-Object System.Windows.Forms.DataGridViewButtonColumn
-    $rerecordColumn.Name = 'Rerecord'
-    $rerecordColumn.HeaderText = ''
-    $rerecordColumn.Text = 'Re-record'
-    $rerecordColumn.UseColumnTextForButtonValue = $true
-    $rerecordColumn.Width = 88
-    [void]$grid.Columns.Add($rerecordColumn)
-
-    $removeColumn = New-Object System.Windows.Forms.DataGridViewButtonColumn
-    $removeColumn.Name = 'Remove'
-    $removeColumn.HeaderText = ''
-    $removeColumn.Text = 'Remove'
-    $removeColumn.UseColumnTextForButtonValue = $true
-    $removeColumn.Width = 76
-    [void]$grid.Columns.Add($removeColumn)
-
-    $dialog.Controls.Add($grid)
-
-    $commandMap = @{}
-
-    $refreshGrid = {
-        param([string]$selectCommandId = '')
-
-        $grid.Rows.Clear()
-        $commandMap.Clear()
-        $rowToSelect = -1
-
-        foreach ($item in @($device.commands | Where-Object {
-            $_.transport -eq 'IR'
-        })) {
-            $row = $grid.Rows.Add(
-                [string]$item.id,
-                [string]$item.description,
-                'Re-record',
-                'Remove'
-            )
-            $commandMap[[int]$row] = $item
-
-            if (-not [string]::IsNullOrWhiteSpace($selectCommandId) -and
-                [string]$item.id -eq $selectCommandId) {
-                $rowToSelect = [int]$row
-            }
-        }
-
-        if ($rowToSelect -ge 0 -and $rowToSelect -lt $grid.Rows.Count) {
-            $grid.ClearSelection()
-            $grid.Rows[$rowToSelect].Selected = $true
-            $grid.CurrentCell = $grid.Rows[$rowToSelect].Cells[0]
-            try {
-                $grid.FirstDisplayedScrollingRowIndex = $rowToSelect
-            }
-            catch {}
-        }
+function Rename-SelectedIrDevice {
+    if ($null -eq $irDeviceList.SelectedItem) {
+        return
     }
 
-    & $refreshGrid
+    $device =
+        $irDeviceList.SelectedItem
 
-    $addButton = New-RfSmoothButton `
-        '+ Add Command' `
-        135 `
-        38 `
-        ([System.Drawing.Color]::FromArgb(224, 244, 228)) `
-        ([System.Drawing.Color]::FromArgb(30, 80, 40)) `
-        ([System.Drawing.Color]::FromArgb(130, 175, 135))
-    $addButton.Location =
-        New-Object System.Drawing.Point(26, 484)
-    $dialog.Controls.Add($addButton)
+    $deviceId =
+        [string]$device.id
 
-    $closeButton = New-RfSmoothButton `
-        'Close' `
-        100 `
-        38 `
-        ([System.Drawing.Color]::White) `
-        ([System.Drawing.Color]::FromArgb(35, 35, 35)) `
-        ([System.Drawing.Color]::FromArgb(150, 145, 185))
-    $closeButton.Location =
-        New-Object System.Drawing.Point(586, 484)
-    $dialog.Controls.Add($closeButton)
+    $oldName =
+        [string]$device.name
 
-    $saveNameButton.Add_Click({
-        $newName = $nameBox.Text.Trim()
-        $oldName = [string]$device.name
+    $newName =
+        Show-IrRenameDialog $oldName
 
-        if ([string]::IsNullOrWhiteSpace($newName)) {
-            [System.Windows.Forms.MessageBox]::Show(
-                'Enter a name for the IR remote.',
-                'Edit IR Remote',
-                'OK',
-                'Information'
-            ) | Out-Null
-            $nameBox.Focus()
-            return
-        }
+    if ([string]::IsNullOrWhiteSpace(
+            $newName)) {
+        return
+    }
 
-        if ($newName -eq $oldName) {
-            Set-TowerStatus 'IR remote name is unchanged'
-            return
-        }
+    if ($newName -eq $oldName) {
+        return
+    }
 
-        try {
-            $saveNameButton.Enabled = $false
-            $response = Invoke-TowerPost '/api/v1/devices/rename' @{
-                device = $deviceId
-                name = $newName
-            }
+    try {
+        Set-TowerStatus (
+            "Renaming $oldName..."
+        )
 
-            $device.name = [string]$response.name
-
-            foreach ($candidate in @($script:irDevices)) {
-                if ([string]$candidate.id -eq $deviceId) {
-                    $candidate.name = [string]$response.name
+        $response =
+            Invoke-TowerPost `
+                '/api/v1/devices/rename' `
+                @{
+                    device = $deviceId
+                    name = $newName
                 }
-            }
 
-            Save-CurrentIrDeviceCache
-            $script:irInventorySignature =
-                Get-IrInventorySignature $script:irDevices
-            Refresh-IrDeviceListFromMemory $deviceId
-            Refresh-HomeDevices
-            Set-TowerStatus ([string]$response.message)
+        foreach ($candidate in
+            @($script:irDevices)) {
+
+            if ([string]$candidate.id -eq
+                $deviceId) {
+
+                $candidate.name =
+                    [string]$response.name
+            }
         }
-        catch {
-            $details = Get-TowerHttpErrorDetails `
+
+        Save-CurrentIrDeviceCache
+        $script:irInventorySignature =
+            Get-IrInventorySignature $script:irDevices
+
+        Refresh-IrDeviceListFromMemory `
+            $deviceId
+        Refresh-HomeDevices
+
+        if ($tabs.SelectedTab -eq $irTab -and
+            $null -ne $irDeviceList.SelectedItem) {
+
+            Ensure-IrDeviceRendered `
+                $irDeviceList.SelectedItem
+        }
+
+        Set-TowerStatus (
+            [string]$response.message
+        )
+    }
+    catch {
+        $details =
+            Get-TowerHttpErrorDetails `
                 $_ `
                 'POST' `
                 '/api/v1/devices/rename' `
@@ -11899,152 +12676,13 @@ function Show-EditIrDeviceDialog($device) {
                     name = $newName
                 }
 
-            [System.Windows.Forms.MessageBox]::Show(
-                $details.Text,
-                'Rename IR remote failed',
-                'OK',
-                'Error'
-            ) | Out-Null
-        }
-        finally {
-            $saveNameButton.Enabled = $true
-        }
-    })
-
-    $addButton.Add_Click({
-        $created = Show-IrCommandLearnDialog `
-            $device `
-            $null `
-            $false `
-            $dialog
-
-        if ($null -eq $created) { return }
-
-        $device.commands = @($device.commands) + @($created)
-        & $refreshGrid ([string]$created.id)
-        Refresh-IrInventoryAfterWizard
-    })
-
-    $grid.Add_CellContentClick({
-        param($sender, $eventArgs)
-
-        if ($eventArgs.RowIndex -lt 0 -or
-            $eventArgs.ColumnIndex -lt 0) {
-            return
-        }
-
-        $selectedCommand = $commandMap[[int]$eventArgs.RowIndex]
-        if ($null -eq $selectedCommand) { return }
-
-        $columnName =
-            [string]$grid.Columns[$eventArgs.ColumnIndex].Name
-
-        if ($columnName -eq 'Rerecord') {
-            $updated = Show-IrCommandLearnDialog `
-                $device `
-                $selectedCommand `
-                $true `
-                $dialog
-
-            if ($null -eq $updated) { return }
-
-            foreach ($candidate in @($device.commands)) {
-                if ([string]$candidate.id -eq [string]$updated.id) {
-                    $candidate.name = [string]$updated.name
-                    $candidate.description = [string]$updated.description
-                    $candidate.enabled = $true
-                    break
-                }
-            }
-
-            & $refreshGrid ([string]$updated.id)
-            Refresh-IrInventoryAfterWizard
-            return
-        }
-
-        if ($columnName -eq 'Remove') {
-            $irCommands = @($device.commands | Where-Object {
-                $_.transport -eq 'IR'
-            })
-
-            if ($irCommands.Count -le 1) {
-                [System.Windows.Forms.MessageBox]::Show(
-                    'The last command cannot be removed. Delete the remote instead.',
-                    'Remove IR Command',
-                    'OK',
-                    'Information'
-                ) | Out-Null
-                return
-            }
-
-            $commandId = [string]$selectedCommand.id
-            $answer = [System.Windows.Forms.MessageBox]::Show(
-                "Remove '$commandId' from this remote?`r`n`r`n" +
-                'Its dedicated IR recording will also be removed when it is not shared.',
-                'Remove IR Command',
-                [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                [System.Windows.Forms.MessageBoxIcon]::Warning,
-                [System.Windows.Forms.MessageBoxDefaultButton]::Button2
-            )
-
-            if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) {
-                return
-            }
-
-            try {
-                Invoke-TowerPost '/api/v1/ir/commands/delete' @{
-                    device = $deviceId
-                    command = $commandId
-                } | Out-Null
-
-                $device.commands = @($device.commands | Where-Object {
-                    [string]$_.id -ne $commandId
-                })
-
-                & $refreshGrid
-                Refresh-IrInventoryAfterWizard
-                Set-TowerStatus "Removed IR command $commandId"
-            }
-            catch {
-                $details = Get-TowerHttpErrorDetails `
-                    $_ `
-                    'POST' `
-                    '/api/v1/ir/commands/delete' `
-                    @{
-                        device = $deviceId
-                        command = $commandId
-                    }
-
-                [System.Windows.Forms.MessageBox]::Show(
-                    $details.Text,
-                    'Remove IR Command failed',
-                    'OK',
-                    'Error'
-                ) | Out-Null
-            }
-        }
-    })
-
-    $closeButton.Add_Click({
-        $dialog.Close()
-    })
-
-    $dialog.Add_FormClosed({
-        $script:renderedIrDeviceId = ''
-        $script:renderedIrDeviceSignature = ''
-        Refresh-IrInventoryAfterWizard
-    })
-
-    [void]$dialog.ShowDialog($form)
-    $dialog.Dispose()
-}
-
-function Edit-SelectedIrDevice {
-    if ($null -eq $irDeviceList.SelectedItem) {
-        return
+        [System.Windows.Forms.MessageBox]::Show(
+            $details.Text,
+            'Rename IR remote failed',
+            'OK',
+            'Error'
+        ) | Out-Null
     }
-
-    Show-EditIrDeviceDialog $irDeviceList.SelectedItem
 }
 
 function Delete-SelectedIrDevice {
@@ -12125,6 +12763,11 @@ function Delete-SelectedIrDevice {
 }
 
 function Refresh-CurrentTab {
+    if ($tabs.SelectedTab -eq $pcTab) {
+        Refresh-PcDashboard $true
+        return
+    }
+
     if ($tabs.SelectedTab -eq $sensorsTab) {
         Start-SensorRead
         return
@@ -12149,6 +12792,14 @@ function Refresh-CurrentTab {
 }
 
 function Load-SelectedTabIfNeeded {
+    if ($tabs.SelectedTab -eq $pcTab) {
+        if (-not $script:pcTelemetryLoaded -or
+            -not $script:pcCapabilitiesLoaded) {
+            Refresh-PcDashboard $true
+        }
+        return
+    }
+
     if ($tabs.SelectedTab -eq $sensorsTab) {
         if (-not $script:sensorsHaveLoaded) {
             Start-SensorRead
@@ -12237,7 +12888,7 @@ $irDeviceList.Add_SelectedIndexChanged({
 $tabs.Add_SelectedIndexChanged({ Load-SelectedTabIfNeeded })
 $irDeviceUpButton.Add_Click({ Move-SelectedIrDevice -1 })
 $irDeviceDownButton.Add_Click({ Move-SelectedIrDevice 1 })
-$irDeviceRenameButton.Add_Click({ Edit-SelectedIrDevice })
+$irDeviceRenameButton.Add_Click({ Rename-SelectedIrDevice })
 $irDeviceDeleteButton.Add_Click({ Delete-SelectedIrDevice })
 $irDeviceAddButton.Add_Click({ Show-AddIrDeviceWizard })
 $remotePreviewAddImageButton.Add_Click({ Select-CustomRemoteImage })
@@ -12250,40 +12901,46 @@ Update-IrDeviceManagementButtons
 
 [void]$tabs.TabPages.Add($settingsTab)
 
+$pcTimer = New-Object System.Windows.Forms.Timer
+$pcTimer.Interval = 500
+Add-TowerSafeTimerTick $pcTimer 'PC snapshot' {
+    Read-PcHelperSnapshot
+}
+
 $sensorTimer = New-Object System.Windows.Forms.Timer
 $sensorTimer.Interval = 10000
-$sensorTimer.Add_Tick({
+Add-TowerSafeTimerTick $sensorTimer 'Sensor refresh' {
     if ($tabs.SelectedTab -eq $sensorsTab) {
         Start-SensorRead
     }
-})
+}
 
 # Poll only the state of isolated PowerShell jobs. No network I/O or Wait-Job
 # occurs on this timer, so it cannot block tray menus or sidebar animation.
 $readJobTimer = New-Object System.Windows.Forms.Timer
 $readJobTimer.Interval = 250
-$readJobTimer.Add_Tick({
+Add-TowerSafeTimerTick $readJobTimer 'Background reads' {
     Complete-SensorRead
     Complete-IrDeviceRead
     Complete-RfDeviceRead
-})
+}
 
 # Start the first sensor read shortly after Form.Shown has returned. This only
 # launches the background job; the HTTP request itself remains outside the UI
 # thread.
 $initialSensorTimer = New-Object System.Windows.Forms.Timer
 $initialSensorTimer.Interval = 500
-$initialSensorTimer.Add_Tick({
+Add-TowerSafeTimerTick $initialSensorTimer 'Initial sensor read' {
     $initialSensorTimer.Stop()
     Start-SensorRead
-})
+}
 
 
 # Home is the startup page. Load its cached IR inventory immediately and then
 # refresh the authoritative Pi inventory in a background job.
 $initialIrTimer = New-Object System.Windows.Forms.Timer
 $initialIrTimer.Interval = 1200
-$initialIrTimer.Add_Tick({
+Add-TowerSafeTimerTick $initialIrTimer 'Initial IR read' {
     $initialIrTimer.Stop()
 
     if ($null -eq $script:irReadJob) {
@@ -12292,19 +12949,19 @@ $initialIrTimer.Add_Tick({
 
         Start-IrDeviceRead $quiet
     }
-})
+}
 
 # One quiet retry for a transient startup IR inventory failure.
 $irStartupRetryTimer =
     New-Object System.Windows.Forms.Timer
 $irStartupRetryTimer.Interval = 3000
-$irStartupRetryTimer.Add_Tick({
+Add-TowerSafeTimerTick $irStartupRetryTimer 'IR startup retry' {
     $irStartupRetryTimer.Stop()
 
     if ($null -eq $script:irReadJob) {
         Start-IrDeviceRead $true
     }
-})
+}
 
 
 # Pre-warm the tiny RF inventory after startup. If a cache exists, the RF tab
@@ -12312,7 +12969,7 @@ $irStartupRetryTimer.Add_Tick({
 # more likely to be ready before the user opens it.
 $initialRfTimer = New-Object System.Windows.Forms.Timer
 $initialRfTimer.Interval = 2500
-$initialRfTimer.Add_Tick({
+Add-TowerSafeTimerTick $initialRfTimer 'Initial RF read' {
     $initialRfTimer.Stop()
 
     if (-not $script:rfDevicesHaveLoaded) {
@@ -12322,25 +12979,25 @@ $initialRfTimer.Add_Tick({
     if ($null -eq $script:rfReadJob) {
         Start-RfDeviceRead $true
     }
-})
+}
 
 # One quiet retry handles transient startup races without painting the global
 # status red. A later user-requested Refresh still reports a real failure.
 $rfStartupRetryTimer = New-Object System.Windows.Forms.Timer
 $rfStartupRetryTimer.Interval = 3000
-$rfStartupRetryTimer.Add_Tick({
+Add-TowerSafeTimerTick $rfStartupRetryTimer 'RF startup retry' {
     $rfStartupRetryTimer.Stop()
 
     if ($null -eq $script:rfReadJob) {
         Start-RfDeviceRead $true
     }
-})
+}
 
 # Header clock is synchronized from PI3A. Between syncs the display advances
 # from the Pi-provided time anchor; Windows' timezone is never used.
 $piClockTimer = New-Object System.Windows.Forms.Timer
 $piClockTimer.Interval = 250
-$piClockTimer.Add_Tick({
+Add-TowerSafeTimerTick $piClockTimer 'Pi clock' {
     Complete-PiClockSync
 
     if ($script:piClockHasSync) {
@@ -12373,12 +13030,12 @@ $piClockTimer.Add_Tick({
             "Raspberry Pi system clock ($zone)"
         )
     }
-})
+}
 
 # Edge watcher remains active while the sidebar itself is completely invisible.
 $edgeTimer = New-Object System.Windows.Forms.Timer
 $edgeTimer.Interval = 100
-$edgeTimer.Add_Tick({
+Add-TowerSafeTimerTick $edgeTimer 'Sidebar edge watcher' {
     if (Handle-DisplayTopologyChange) { return }
     if ($script:sidebarAnimating) { return }
 
@@ -12424,7 +13081,7 @@ $edgeTimer.Add_Tick({
     if ($elapsed -ge [int]$config.hideDelayMs) {
         Animate-Sidebar $false
     }
-})
+}
 
 $form.KeyPreview = $true
 $form.Add_KeyDown({
@@ -12480,6 +13137,7 @@ $form.Add_Shown({
         [void](Try-LoadRfDeviceCache)
     }
 
+    $pcTimer.Start()
     $sensorTimer.Start()
     $readJobTimer.Start()
     $edgeTimer.Start()
@@ -12500,6 +13158,7 @@ $form.Add_FormClosed({
     $script:sidebarAnimationClock.Stop()
     Disable-TowerUiSchedulingBoost
 
+    $pcTimer.Stop()
     $sensorTimer.Stop()
     $initialSensorTimer.Stop()
     $initialIrTimer.Stop()
@@ -12520,6 +13179,8 @@ $form.Add_FormClosed({
         try { Stop-Job -Job $job -ErrorAction SilentlyContinue } catch {}
         Remove-TowerReadJob $job
     }
+    Stop-PcHelperProcess
+
     if ($null -ne $script:trayIcon) {
         $script:trayIcon.Visible = $false
         $script:trayIcon.Dispose()

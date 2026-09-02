@@ -1,58 +1,105 @@
 # Tower Changelog
 
-## v0.11.02 - IR remote command editor (2026-08-23)
+## Unreleased - post-v0.11.01
 
 ### Added
 
-- Replaced the IR remote pencil action with one **Edit IR Remote** window.
-- Added per-command **Re-record** and **Remove** actions plus **+ Add Command**.
-- Added a focused command-learning dialog that reuses the existing six-receiver
-  capture/analyze/save pipeline for both new commands and deliberate replacements.
-- Added authenticated single-command deletion with safe preservation of shared IR
-  recordings and protection against removing the final command from a remote.
-- Added per-remote **Edit Layout** mode for IR command buttons with drag/drop,
-  explicit **Save Layout** / **Cancel**, persistent grid coordinates, empty-cell
-  placement, and swap-on-drop behavior.
-- Saved IR command layouts preserve deliberate empty columns when Tower Control is
-  widened; when the sidebar is temporarily narrower than the saved grid, the UI
-  compacts only the display and restores the saved positions when width returns.
-- Edit Layout now supports dragging commands between category blocks and stores the
-  chosen target group together with the command coordinates.
-- Added a small edit-mode color palette with Auto plus six Tower UI colors; button
-  color overrides are saved per command and remain independent of group placement.
-- Added per-command button-size editing with **Default**, **1x1**, **2x1**,
-  **1x2**, and **2x2** grid-span presets; size is persisted with position/group/color.
-- Button-size persistence uses independent row/column spans so larger presets can be
-  added later without changing the saved-layout format or grid engine.
+- Added a `PC` tab to Tower Control for local Dell Precision thermal/fan
+  monitoring.
+- Added persistent isolated access to Dell Command | Monitor at
+  `root\DCIM\SYSMAN`; no per-second child PowerShell process is used.
+- Added live `DCIM_NumericSensor` temperature and fan-RPM telemetry.
+- Added dynamic Dell thermal/fan capability discovery and read-only display of
+  the six verified Precision 7820 Dell Auto Level zones plus HDD0 Fan Enable.
+- Added validated manual **Main Cooling Bank** control for the Precision 7820
+  using `Fan Speed Auto Level on CPU Memory Zone`, with explicit Apply and
+  Dell Auto (0) actions, asynchronous helper execution, readback verification,
+  and live mapped fan RPM display.
+- Added helper parent-process monitoring and fail-safe return to Dell Auto (0)
+  when Tower owns a non-zero cooling floor and the UI exits/disappears.
+- Added `docs/PC-Thermal-Control.md` documenting the verified Precision 7820
+  capabilities, safety rules, and staged path toward manual/profile control.
 
 ### Fixed
 
-- Fixed IR command buttons retaining a previous 2-cell row/column span after
-  being resized smaller; 2x1/1x2/2x2 buttons can now return to 1x1 or any
-  other smaller preset correctly.
+- Removed the ListView-wide `BeginUpdate`/`EndUpdate` cycle that still caused a
+  full native repaint in v85. PC telemetry now changes only the affected cell.
+- Temporary `--`, `Loading` or `Unknown` values no longer replace an
+  established valid reading, and identityless storage entries are ignored.
+- PC collection now starts immediately after Tower's window message loop is
+  ready instead of waiting for the PC tab to be selected.
+- Corrected the remaining PC table flash seen in v84. Short-lived partial
+  collector updates no longer remove or reorder established rows. Once a
+  hardware row has appeared, Tower retains its last good value and position
+  until the application restarts. Each complete snapshot is merged before one
+  table update instead of repainting once before and once after the merge.
+- Stopped the PC hardware temperature/RPM table from clearing and recreating
+  every row on each collector update. Rows now keep stable identities, cell
+  text is updated in place, and the list is double-buffered. A structural
+  rebuild occurs only when the set or order of detected hardware changes.
+- Isolated Dell Command | Monitor in one persistent hidden helper process after
+  in-process access could freeze or terminate Tower Control. The UI now reads
+  atomic JSON snapshots only.
+- Serialized Dell sensor, BIOS-discovery and cooling-write operations so Dell
+  Command | Monitor is never queried concurrently by Tower.
+- Added Dell-collector wall-clock limits. A blocked provider now reports
+  `Timeout` without blocking Tower Control.
+- Removed short CIM `OperationTimeoutSec` values after live Precision 7820
+  testing proved that Dell Command | Monitor returns `Timed out` for otherwise
+  valid sensor and BIOS queries. The external helper watchdog remains active.
+- Reduced Dell provider pressure after live testing proved that a healthy
+  sensor enumeration takes about eight seconds and near-continuous polling can
+  eventually wedge the provider. Sensor reads now leave 15 seconds idle after
+  completion; BIOS capability refreshes every 10 minutes.
+- A timed-out Dell read no longer triggers an immediate helper restart that can
+  stack a new request behind work still executing inside WMI Provider Host.
+  The timeout is published once and Tower waits for the existing call to end.
+- Treats an empty Dell sensor enumeration as an error instead of replacing the
+  hardware table with a successful but empty update.
+- Corrected the Main Cooling Bank status transition so a successfully loaded,
+  writable Dell capability displays `Ready` instead of remaining on `Reading`.
+- Settings monitor buttons now use and order by Windows `DISPLAY1`, `DISPLAY2`,
+  and `DISPLAY3` numbering rather than a changing spatial array position. The
+  selected target remains persisted by its Windows `Screen.DeviceName`.
+- Protected all persistent WinForms timer callbacks so an `Access is denied`
+  exception is logged instead of opening a modal .NET exception dialog and
+  blocking the Tower controls.
+- Gave each Tower Control process unique helper snapshot, stop and command
+  paths so a newly started UI cannot interfere with an older helper shutdown.
+- Added a persistent cooling-ownership marker so a restarted helper restores
+  Dell Auto (0) before resuming monitoring after a timeout.
+- Removed the unrequested highest-temperature, highest-fan, overall-health,
+  thermal-profile and Dell-fan-mode summary clutter from the PC tab. The page
+  now shows only real source state, the hardware table and Main Cooling Bank.
 
-### Changed
+### Added
 
-- Updated the project and runtime version to `0.11.02`.
-- Moved **Edit Layout** / **Save Layout** / **Cancel** onto the Active IR
-  transmitters row, aligned at the far-right edge beside the Calibrate controls.
-- IR remote display-name rename now lives in the Edit IR Remote window instead of
-  a separate rename-only dialog.
-- Re-recording uses the existing forced replacement path, which keeps the learner's
-  `.tower-learn-backup` safety copy before overwriting an existing IR recording.
-- Returning from **+ Add Command** or **Re-record** now reselects and scrolls to
-  the command that was just created or updated in the Edit IR Remote list.
-- Edit-mode grid guides now draw only internal row/column separators instead of
-  boxing every cell, and the IR header has extra height to avoid clipping the
-  Edit/Save Layout controls.
-- Managed IR command grids now keep every column at the exact configured cell
-  width; unused sidebar width no longer stretches the right-most command column.
-- Fixed-width managed IR grids are centred within their group box so single-row
-  command sets no longer sit visibly left-biased when spare width remains.
-- IR command group borders now use equal left/right outer margins and align their
-  right edge with the Edit/Save Layout toolbar across sidebar width changes.
-- Rounded/pill/chamfer control outlines are painted one pixel inside their clipped
-  region so anti-aliased borders remain crisp instead of losing half the stroke.
+- Added a raw `PC -> Discovery` hardware table for Dell DCM, NVIDIA,
+  Windows storage reliability, PERC CLI, NIC and audio inventory.
+- Added `perccli64.exe` discovery from
+  `C:\Program Files\Dell\Command Monitor` with controller and
+  physical-drive JSON flattened into inspectable rows.
+- Added NVIDIA temperature/fan/utilization/power/VRAM telemetry.
+- Added Windows physical-disk temperature, wear, power-on hours and error
+  counters where the storage stack exposes them.
+
+### Fixed
+
+- Corrected Dell Command | Monitor temperature scaling: `CurrentReading` is
+  already the useful Celsius value on the Precision 7820.
+- Fan health no longer compares real RPM readings against Dell's unrelated
+  245/255 numeric threshold fields.
+
+### Safety
+
+- Dell Auto Level values are explicitly not described as PWM percentages.
+- Automatic climate curves remain disabled. Manual writes are enabled only for
+  the empirically validated CPU/Memory Main Cooling Bank actuator.
+- Precision 7820 fan-level control requires BIOS Thermal/Climate mode **Auto**;
+  Performance mode stores the values but did not apply them to fan RPM.
+- `CPU Memory Zone` and `PSU Zone` both influence the same six-fan bank; Tower
+  uses CPU/Memory only and leaves overlapping PSU control at 0. SYS0 remains
+  Dell-automatic-only.
 
 ## v0.11.01 - Tower Control management and UI integration (2026-08-23)
 

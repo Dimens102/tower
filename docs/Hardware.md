@@ -2,7 +2,7 @@
 
 This document records the physical hardware required by the current Tower
 installation, what is installed now, and the known connections used by Tower
-v0.11.02.
+v0.11.01.
 
 `Installed` means the component is part of the present build. A software check
 can confirm an I2C address, GPIO interface, or network endpoint, but it cannot
@@ -20,6 +20,25 @@ The Pico and its IR transmitter board use a separate regulated 5 V supply.
 Connect +5 V to Pico `VSYS` (physical pin 39), connect the supply ground to a
 Pico ground, and share that ground with the transmitter circuit. Do not connect
 the external adapter's +5 V rail to the Raspberry Pi 5 V rail.
+
+
+## Windows control workstation thermal integration
+
+Tower Control can optionally monitor the Windows workstation running the client.
+
+The validated target is a Dell Precision 7820 running Windows 11 with Dell
+Command | Monitor installed.
+
+| Status | Component | Interface | Purpose |
+|---|---|---|---|
+| Installed / validated | Dell Precision 7820 | `root\DCIM\SYSMAN` through `System.Management` | Local CPU/chassis temperature, fan RPM, and Dell cooling capability discovery |
+| Installed / validated | Dell Command \| Monitor | WMI/DCIM provider | Supplies `DCIM_NumericSensor` and Dell BIOS enumeration data |
+
+The workstation integration does not route telemetry through PI3A. It is a local
+Windows-client feature. Current fan-zone settings are displayed read-only until
+their live behavior is experimentally mapped and verified.
+
+See [`PC-Thermal-Control.md`](PC-Thermal-Control.md).
 
 ## Local I2C hardware
 
@@ -49,7 +68,7 @@ unstable Linux `rcX` numbering.
 During service startup, the LCD displays:
 
 ```text
-Tower v0.11.02 BOOT
+Tower v0.11.01 BOOT
 30 33 36 38 40 56
 OK OK OK OK OK OK
 >> Init.     IR-Rec.
@@ -118,7 +137,7 @@ transmitter. The actual peak LED current has not yet been instrumented, so
 | Installed / working | FS1000A 433 MHz transmitter | BCM GPIO24 | Sends commands to the paired 433 MHz power devices |
 | Installed / reception still under development | Aurel RX-4MM5-F 433 MHz receiver | DATA on provisional BCM GPIO4; RSSI on ADS1115 AIN0 | RF capture and diagnostics |
 
-The Aurel DATA and RSSI assignments are still provisional in v0.11.02. Its
+The Aurel DATA and RSSI assignments are still provisional in v0.11.01. Its
 final ENABLE connection is not yet documented, so these values must not be
 treated as the finished RF receiver wiring specification.
 

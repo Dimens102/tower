@@ -288,9 +288,9 @@ RF, scheduling, or device-storage logic locally.
 
 ### Later voice integration
 
-[ ] A separate voice-processing Raspberry Pi may perform speech recognition and intent detection.
-[ ] Voice processing must invoke the same logical Tower command API as the Windows client.
-[ ] Do not duplicate IR/RF protocol knowledge inside the voice-processing node.
+[x] Voice recognition prototype runs as a separate Vosk input process on PI3A; the same process can later move to a dedicated Raspberry Pi.
+[x] Voice processing invokes the same authenticated logical `/api/v1/execute` API used by network clients.
+[x] Voice mappings contain logical device/command IDs only; IR/RF protocol knowledge remains in Tower.
 
 
 # Future Transports

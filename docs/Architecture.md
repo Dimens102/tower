@@ -1212,6 +1212,13 @@ and submit that through the same Tower API used by the Windows application.
 The voice-processing node must not contain its own IR/RF implementation or
 schedule database.
 
+Current prototype status (2026-08-23): the voice-input process runs locally on
+PI3A as `voice/tower_voice.py` using unrestricted Vosk recognition for an exact
+two-word wake phrase (`radio tower`), followed by a constrained command grammar. It submits logical device/command actions to the
+existing authenticated `/api/v1/execute` endpoint. This process is deliberately
+separate from `TowerService` so it can later move unchanged to a dedicated voice
+Raspberry Pi.
+
 ## Device deletion
 
 The Windows client may expose a Delete Remote/Profile control.
