@@ -1,9 +1,12 @@
 #include "core/network/TowerApiServer.h"
+#include "core/network/RFPresetApi.h"
+#include "core/network/VoiceApi.h"
 
 #include "core/service/CommandExecutor.h"
 #include "core/service/IRLearningService.h"
 #include "core/service/IRCalibrationService.h"
 #include "core/service/RFCommandService.h"
+#include "core/service/RFPresetService.h"
 #include "core/service/RFProvisioningService.h"
 #include "devices/device.h"
 #include "devices/device_database.h"
@@ -22,6 +25,7 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <sstream>
+#include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <utility>
@@ -31,6 +35,16 @@
 namespace
 {
 std::mutex commandMutex;
+
+nlohmann::json rfPresetsJson(const RFPresetSnapshot& snapshot)
+{
+    nlohmann::json presets = nlohmann::json::object();
+    for (std::size_t index = 0; index < snapshot.presets.size(); ++index)
+    {
+        presets[std::to_string(index + 1)] = snapshot.presets[index];
+    }
+    return presets;
+}
 
 std::string transportName(TransportType transport)
 {
@@ -98,6 +112,12 @@ void TowerApiServer::setSensorProvider(
     std::function<std::vector<TowerApiSensorSnapshot>()> provider)
 {
     sensorProvider_ = std::move(provider);
+}
+
+void TowerApiServer::setVoiceDisplayNotificationHandler(
+    VoiceDisplayNotificationHandler handler)
+{
+    voiceDisplayNotificationHandler_ = std::move(handler);
 }
 
 bool TowerApiServer::start(std::uint16_t port, const std::string& token)
@@ -229,6 +249,26 @@ void TowerApiServer::handleClient(int clientFd)
         return;
     }
 
+    if (isVoiceApiPath(path))
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+        const VoiceApiResponse response = handleVoiceApiRequest(
+            method,
+            path,
+            body,
+            voiceDisplayNotificationHandler_);
+        sendResponse(
+            clientFd,
+            response.status,
+            response.statusText,
+            nlohmann::json::parse(response.jsonBody));
+        return;
+    }
+
     if (path == "/api/v1/rf/modern/next" && method == "GET")
     {
         RFProvisioningService provisioning;
@@ -265,28 +305,55 @@ void TowerApiServer::handleClient(int clientFd)
 
     if (path == "/api/v1/rf/devices" && method == "GET")
     {
-        nlohmann::json result = nlohmann::json::array();
-        RFDatabase database;
-        for (const RFDevice& device : database.listPowerDevices())
+        try
         {
-            result.push_back({
-                {"id", device.name},
-                {"name", device.deviceName.empty() ? device.name : device.deviceName},
-                {"status", device.status},
-                {"actions", {"on", "off"}},
-                {"protocol", device.protocol},
-                {"description", device.description},
-                {"house", device.house},
-                {"unit", device.unit},
-                {"gpio", device.gpio},
-                {"pulseUs", device.pulse},
-                {"repeat", device.repeat},
-                {"onCode", device.onCode},
-                {"offCode", device.offCode},
-                {"transmitterId", device.transmitterId}
-            });
+            nlohmann::json result = nlohmann::json::array();
+            RFDatabase database;
+            for (const RFDevice& device : database.listPowerDevices())
+            {
+                result.push_back({
+                    {"id", device.name},
+                    {"name", device.deviceName.empty() ? device.name : device.deviceName},
+                    {"status", device.status},
+                    {"actions", {"on", "off"}},
+                    {"protocol", device.protocol},
+                    {"description", device.description},
+                    {"house", device.house},
+                    {"unit", device.unit},
+                    {"gpio", device.gpio},
+                    {"pulseUs", device.pulse},
+                    {"repeat", device.repeat},
+                    {"onCode", device.onCode},
+                    {"offCode", device.offCode},
+                    {"transmitterId", device.transmitterId}
+                });
+            }
+
+            RFPresetService presetService;
+            RFPresetSnapshot presetSnapshot;
+            std::string presetError;
+            if (!presetService.load(presetSnapshot, presetError))
+            {
+                throw std::runtime_error(presetError);
+            }
+            sendResponse(
+                clientFd,
+                200,
+                "OK",
+                {
+                    {"devices", result},
+                    {"presets", rfPresetsJson(presetSnapshot)},
+                    {"presetsConfigured", presetSnapshot.configured}
+                });
         }
-        sendResponse(clientFd, 200, "OK", {{"devices", result}});
+        catch (const std::exception& exception)
+        {
+            sendResponse(
+                clientFd,
+                500,
+                "Internal Server Error",
+                {{"ok", false}, {"error", exception.what()}});
+        }
         return;
     }
 
@@ -2069,6 +2136,38 @@ void TowerApiServer::handleClient(int clientFd)
                 });
         }
 
+        return;
+    }
+
+    if (path == "/api/v1/rf/presets" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+        const RFPresetApiResponse response = saveRFPresetsFromJson(body);
+        sendResponse(
+            clientFd,
+            response.status,
+            response.statusText,
+            nlohmann::json::parse(response.jsonBody));
+        return;
+    }
+
+    if (path == "/api/v1/rf/preset" && method == "POST")
+    {
+        const auto headerEnd = request.find("\r\n\r\n");
+        const std::string body =
+            headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+        const RFPresetApiResponse response = executeRFPresetFromJson(body);
+        sendResponse(
+            clientFd,
+            response.status,
+            response.statusText,
+            nlohmann::json::parse(response.jsonBody));
         return;
     }
 

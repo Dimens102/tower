@@ -128,6 +128,12 @@ std::string readCpuTemperature()
     return output.str();
 }
 
+std::string fitDisplayLine(const std::string& value)
+{
+    constexpr std::size_t width = 20;
+    return value.size() <= width ? value : value.substr(0, width);
+}
+
 } // namespace
 
 TowerService::TowerService()
@@ -159,6 +165,25 @@ TowerService::TowerService()
         {
             return sensorSnapshots();
         });
+
+    apiServer_.setVoiceDisplayNotificationHandler(
+        [this](const VoiceDisplayNotification& notification)
+        {
+            showVoiceNotification(notification);
+        });
+}
+
+void TowerService::showVoiceNotification(
+    const VoiceDisplayNotification& notification)
+{
+    std::lock_guard<std::mutex> lock(voiceNotificationMutex_);
+    voiceNotification_ = notification;
+    voiceNotificationActive_ = true;
+    voiceNotificationPainted_ = false;
+    voiceNotificationStartedAt_ = std::chrono::steady_clock::now();
+    voiceNotificationEndsAt_ =
+        voiceNotificationStartedAt_ +
+        std::chrono::seconds(notification.durationSeconds);
 }
 
 bool TowerService::start()
@@ -469,6 +494,68 @@ void TowerService::updateDisplay()
     if (!lcd_.available())
     {
         return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(voiceNotificationMutex_);
+        if (voiceNotificationActive_)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            if (now < voiceNotificationEndsAt_)
+            {
+                std::string pathLine;
+                for (const std::string& segment : voiceNotification_.path)
+                {
+                    if (!pathLine.empty())
+                    {
+                        pathLine += " > ";
+                    }
+                    pathLine += segment;
+                }
+
+                std::string targetLine = pathLine;
+                std::string commandLine;
+                std::string resultLine =
+                    voiceNotification_.ok ? "OK - command sent" : "FAILED";
+                if (!voiceNotification_.actions.empty())
+                {
+                    const auto elapsed =
+                        std::chrono::duration_cast<std::chrono::seconds>(
+                            now - voiceNotificationStartedAt_).count();
+                    const std::size_t actionIndex =
+                        static_cast<std::size_t>(elapsed) %
+                        voiceNotification_.actions.size();
+                    const VoiceDisplayAction& action =
+                        voiceNotification_.actions[actionIndex];
+                    targetLine = action.target;
+                    commandLine = action.command;
+                    resultLine =
+                        (voiceNotification_.ok ? "OK " : "FAILED ") +
+                        std::to_string(actionIndex + 1) + "/" +
+                        std::to_string(voiceNotification_.actions.size());
+                }
+
+                lcd_.show(
+                    fitDisplayLine(pathLine.empty() ? "Voice command" : pathLine),
+                    fitDisplayLine(targetLine),
+                    fitDisplayLine(commandLine),
+                    fitDisplayLine(resultLine));
+
+                if (!voiceNotificationPainted_)
+                {
+                    lcd_.setBacklight(true);
+                    backlightOn_ = true;
+                    if (!permanentBacklight_)
+                    {
+                        backlightOffAt_ = voiceNotificationEndsAt_;
+                    }
+                    voiceNotificationPainted_ = true;
+                }
+                return;
+            }
+            voiceNotificationActive_ = false;
+            voiceNotificationPainted_ = false;
+        }
     }
 
     std::optional<double> roomTemperature;

@@ -229,6 +229,9 @@ $script:irStartupRetryCount = 0
 $script:rfReadJob = $null
 $script:rfReadQuiet = $false
 $script:rfStartupRetryCount = 0
+$script:rfPresetsTowerReady = $false
+$script:voiceTab = $null
+$script:voiceEditorLoaded = $false
 $script:piClockSyncJob = $null
 $script:piClockHasSync = $false
 $script:piClockAnchorText = ''
@@ -1265,7 +1268,7 @@ function Start-TowerPostJob(
 }
 
 function Invoke-TowerPost([string]$path, [hashtable]$content) {
-    $body = $content | ConvertTo-Json -Compress
+    $body = $content | ConvertTo-Json -Depth 50 -Compress
     Write-TowerLog 'INFO' "POST $path request=$body"
     $response = Invoke-RestMethod -Method Post `
         -Uri "$($config.server)$path" `
@@ -9804,13 +9807,41 @@ function Get-RfPresetDeviceIds([int]$preset) {
     return @()
 }
 
-function Set-RfPresetDeviceIds([int]$preset, $ids) {
+function Set-RfPresetDeviceIds(
+    [int]$preset,
+    $ids,
+    [bool]$syncTower = $true) {
+
     $normalized = @(
         @($ids) |
             ForEach-Object { [string]$_ } |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             Select-Object -Unique
     )
+
+    $current = @(Get-RfPresetDeviceIds $preset)
+    $currentSignature = $current | ConvertTo-Json -Compress
+    $newSignature = $normalized | ConvertTo-Json -Compress
+    if ($currentSignature -eq $newSignature) {
+        return $true
+    }
+
+    if ($syncTower -and $script:rfPresetsTowerReady) {
+        try {
+            Invoke-TowerPost '/api/v1/rf/presets' @{
+                preset = $preset
+                devices = @($normalized)
+            } | Out-Null
+        }
+        catch {
+            Set-TowerStatus "Could not save RF Preset $preset on Tower" $true
+            Write-TowerLog 'ERROR' (
+                "RF Preset $preset save failed: " +
+                "$($_.Exception.Message)"
+            )
+            return $false
+        }
+    }
 
     switch ($preset) {
         1 { $config.rfPreset1Devices = $normalized }
@@ -9820,6 +9851,52 @@ function Set-RfPresetDeviceIds([int]$preset, $ids) {
     }
 
     Save-TowerConfig
+    return $true
+}
+
+function Apply-RfPresetsResponse($response) {
+    if ($null -eq $response.PSObject.Properties['presetsConfigured'] -or
+        $null -eq $response.PSObject.Properties['presets']) {
+        # Compatibility with a Tower service from before central presets.
+        return
+    }
+
+    if ([bool]$response.presetsConfigured) {
+        for ($preset = 1; $preset -le 3; $preset++) {
+            $key = [string]$preset
+            $presetDevices =
+                $response.presets.PSObject.Properties[$key].Value
+            [void](Set-RfPresetDeviceIds `
+                $preset `
+                @($presetDevices) `
+                $false)
+        }
+        $script:rfPresetsTowerReady = $true
+        return
+    }
+
+    # First run after upgrading: migrate the existing Windows selections to
+    # the Pi. The Pi becomes authoritative immediately after all three save.
+    try {
+        $presets = @{}
+        for ($preset = 1; $preset -le 3; $preset++) {
+            $presets[[string]$preset] =
+                @(Get-RfPresetDeviceIds $preset)
+        }
+        Invoke-TowerPost '/api/v1/rf/presets' @{
+            presets = $presets
+        } | Out-Null
+        $script:rfPresetsTowerReady = $true
+        Write-TowerLog 'INFO' (
+            'Migrated RF Presets 1-3 from client.json to Tower'
+        )
+    }
+    catch {
+        Write-TowerLog 'ERROR' (
+            'RF preset migration to Tower failed; local selections remain ' +
+            "unchanged: $($_.Exception.Message)"
+        )
+    }
 }
 
 function Get-RfProtocolDisplayName([string]$protocol) {
@@ -9897,7 +9974,7 @@ function Remove-RfDeviceFromPresets([string]$deviceId) {
                 Where-Object { [string]$_ -ne $deviceId }
         )
 
-        Set-RfPresetDeviceIds $preset $remaining
+        [void](Set-RfPresetDeviceIds $preset $remaining)
     }
 }
 
@@ -10709,7 +10786,7 @@ function Toggle-RfPresetDevice(
         $ids += $deviceId
     }
 
-    Set-RfPresetDeviceIds $preset $ids
+    [void](Set-RfPresetDeviceIds $preset $ids)
     Refresh-RfPresetControls
 }
 
@@ -10728,7 +10805,7 @@ function Refresh-RfPresetControls {
             Get-RfPresetDeviceIds $preset |
                 Where-Object { $validIds -contains [string]$_ }
         )
-        Set-RfPresetDeviceIds $preset $selected
+        [void](Set-RfPresetDeviceIds $preset $selected)
 
         $flow.SuspendLayout()
         $flow.Controls.Clear()
@@ -10874,9 +10951,9 @@ function Send-RfPresetAction([int]$preset, [string]$action) {
         )
         $form.Refresh()
 
-        $response = Invoke-TowerPost '/api/v1/rf/group' @{
+        $response = Invoke-TowerPost '/api/v1/rf/preset' @{
+            preset = $preset
             action = $action
-            devices = @($deviceIds)
         }
 
         $succeeded = @($response.results | Where-Object { $_.ok }).Count
@@ -10888,9 +10965,9 @@ function Send-RfPresetAction([int]$preset, [string]$action) {
     }
     catch {
         Set-TowerStatus "Preset $preset RF action failed" $true
-        $details = Get-TowerHttpErrorDetails $_ 'POST' '/api/v1/rf/group' @{
+        $details = Get-TowerHttpErrorDetails $_ 'POST' '/api/v1/rf/preset' @{
+            preset = $preset
             action = $action
-            devices = @($deviceIds)
         }
         [System.Windows.Forms.MessageBox]::Show(
             $details.Text,
@@ -11765,6 +11842,8 @@ function Render-RfDevices {
 }
 
 function Apply-RfDevicesResponse($response) {
+    Apply-RfPresetsResponse $response
+
     $incoming =
         @($response.devices)
 
@@ -11813,7 +11892,11 @@ function Save-RfDeviceCache($response) {
         New-Item -ItemType Directory -Path $configDirectory -Force |
             Out-Null
 
-        $response |
+        # Presets are authoritative on the Pi and must never be restored from
+        # the local inventory cache. Cache only the RF device inventory.
+        [pscustomobject]@{
+            devices = @($response.devices)
+        } |
             ConvertTo-Json -Depth 12 |
             Set-Content -Path $rfDeviceCachePath -Encoding UTF8
     }
@@ -12763,6 +12846,12 @@ function Delete-SelectedIrDevice {
 }
 
 function Refresh-CurrentTab {
+    if ($null -ne $script:voiceTab -and
+        $tabs.SelectedTab -eq $script:voiceTab) {
+        Refresh-VoiceEditor
+        return
+    }
+
     if ($tabs.SelectedTab -eq $pcTab) {
         Refresh-PcDashboard $true
         return
@@ -12792,6 +12881,17 @@ function Refresh-CurrentTab {
 }
 
 function Load-SelectedTabIfNeeded {
+    if ($null -ne $script:voiceTab -and
+        $tabs.SelectedTab -eq $script:voiceTab) {
+        if (-not $script:voiceEditorLoaded) {
+            Refresh-VoiceEditor
+        }
+        else {
+            Refresh-VoiceStatus
+        }
+        return
+    }
+
     if ($tabs.SelectedTab -eq $pcTab) {
         if (-not $script:pcTelemetryLoaded -or
             -not $script:pcCapabilitiesLoaded) {
@@ -12898,6 +12998,14 @@ $remotePreviewPicture.Add_Click({
     }
 })
 Update-IrDeviceManagementButtons
+
+$voiceTabModule = Join-Path $PSScriptRoot 'Tower-Voice-Tab.ps1'
+if (Test-Path $voiceTabModule) {
+    . $voiceTabModule
+}
+else {
+    Write-TowerLog 'WARN' "Voice tab module missing: $voiceTabModule"
+}
 
 [void]$tabs.TabPages.Add($settingsTab)
 

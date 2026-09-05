@@ -1,0 +1,17 @@
+{
+  "presets": {
+    "1": [
+      "Tower-RF-Power-M2-001",
+      "Tower-RF-Power-M2-002",
+      "Tower-RF-Power-M2-003"
+    ],
+    "2": [
+      "Tower-RF-Power-M1-002",
+      "Tower-RF-Power-M1-001"
+    ],
+    "3": [
+      "Tower-RF-Power-M2-004"
+    ]
+  },
+  "version": 1
+}

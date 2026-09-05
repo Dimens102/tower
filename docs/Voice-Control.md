@@ -1,132 +1,158 @@
 # Tower Voice Control
 
-Tower voice recognition is intentionally a separate input process. It does not
-contain IR or RF protocol logic. Recognized phrases are mapped to logical Tower
-device/command IDs and submitted through the authenticated `/api/v1/execute`
-endpoint, the same command-execution path used by network clients.
+Tower voice recognition runs as a separate optional systemd service. It owns
+microphone capture and offline Vosk recognition, but it does not implement RF
+or IR protocols. Recognized leaves call the authenticated Tower HTTP API.
 
-## Current laboratory hardware
+## Runtime layout
 
-The current PI3A test setup uses:
+- `voice/tower_voice.py` - constrained wake and recursive command recognition.
+- `voice/run-voice.sh` - starts the project-local Python environment and reuses
+  the API token from the running `rf-tower.service` process.
+- `voice/setup-vosk.sh` - creates the venv and installs/copies the Vosk model.
+- `data/voice/voice_commands.json` - audio, API and command-tree configuration.
+- `systemd/rf-tower-voice.service` - independent, restartable voice service.
+- `runtime/voice/` - generated venv/model storage; not committed to Git.
 
-- Logitech C930e USB microphone (`C930e` ALSA/PyAudio device).
-- C930e `Mic Capture Volume` set to `50/60`; the test recording peaked near
-  `-15.5 dBFS` and was clear at roughly one metre.
-- Raspberry Pi analogue headphone output for the short wake acknowledgement
-  tone.
-- Vosk small English model `vosk-model-small-en-us-0.15`.
+The tested PI3A hardware is a Logitech C930e USB microphone with ALSA capture
+gain 50 and `vosk-model-small-en-us-0.15`. The short acknowledgement tone uses
+the Raspberry Pi analogue output.
 
-A Kinect v1 microphone array was tested first. Linux exposed its four raw
-16 kHz channels after loading the Kinect UAC firmware, but all four channels
-were approximately `-34 dBFS` peak / `-56 to -58 dBFS` RMS at the same desk
-position and did not provide the processed Xbox/Windows voice experience. The
-C930e is therefore the current voice input.
+## Recognition flow
 
-## Files
+The idle recognizer is restricted to the wake phrase `tower`. After a match,
+each command level gets a fresh Vosk grammar containing only the valid next
+phrases. This makes the tree extensible without asking the small Pi to
+transcribe unrestricted speech.
 
-- `voice/tower_voice.py` - unrestricted wake-phrase listening, constrained command
-  recognition, beep, and Tower API submission.
-- `voice/setup-vosk.sh` - creates the project-local Python venv and copies the
-  tested Vosk model from the IR lab into Tower runtime storage.
-- `voice/run-voice.sh` - launcher for the project-local venv.
-- `data/voice/voice_commands.json` - microphone, wake phrase, confidence,
-  audio gain, API, and phrase/action mappings.
-- `runtime/voice/models/` and `runtime/voice/venv/` - local generated runtime
-  data; intentionally ignored by Git.
-
-## Install the project-local runtime
-
-The earlier lab test is expected at:
+The wake phrase stays silent, so harmless false wakes caused by television or
+music are unobtrusive. Every accepted command level beeps before continuing or
+executing:
 
 ```text
-~/Development/ir-lab/vosk/SpeechRecognition
+Tower        -> silent wake
+Power        -> beep
+Preset three -> beep -> execute Preset 3 ON
 ```
 
-From the Tower project root:
+Each level has its own timeout. `cancel` or `never mind`, an invalid phrase, or
+a timeout executes nothing and returns safely to wake listening. Only final
+Vosk results execute actions; partial results never do.
+
+The JSON tree may be extended to deeper paths later, for example:
+
+```text
+Tower -> Remote -> Television -> Volume -> Up
+Tower -> Climate -> Office -> Temperature -> 22
+```
+
+Tree nodes contain `children`, while leaves contain `actions`. Optional
+`aliases` allow English-model alternatives for Dutch device names.
+
+## RF presets are Tower-owned
+
+RF Presets 1-3 are stored centrally by the main Tower service in:
+
+```text
+data/rf/presets.json
+```
+
+The voice configuration contains only the preset number and requested state.
+It never contains a copied device list. A voice leaf calls:
+
+```text
+POST /api/v1/rf/preset
+{"preset": 1, "action": "on"}
+```
+
+The main service resolves the current membership and transmits it. Therefore a
+preset edited in Tower Control is immediately used by voice, even when the
+Windows PC is later switched off. The voice service does not need restarting
+after a preset edit.
+
+Individual named RF targets still use `/api/v1/rf/group` with one device. This
+keeps the current API behavior while the future Programs/Automation subsystem
+is still being designed.
+
+## Install and test
+
+From the project root:
 
 ```bash
 bash voice/setup-vosk.sh
-```
-
-The setup script creates `runtime/voice/venv`, installs Vosk into it, and copies
-`vosk-model-small-en-us-0.15` from the lab into `runtime/voice/models`.
-
-## Dry-run test
-
-The default configuration has `"dry_run": true`. No IR/RF commands are sent.
-
-```bash
 bash voice/run-voice.sh --dry-run
 ```
 
-Expected flow:
+Dry-run performs recognition and prints actions without transmitting. Live
+mode is configured in `voice_commands.json`; the systemd launcher obtains the
+same `TOWER_API_TOKEN` already used by `rf-tower.service`.
 
-```text
-Listening for wake phrase: 'radio tower'
-        |
-        +-- normal room speech is transcribed with the full Vosk language model
-        |   and ignored unless the final result is exactly "radio tower"
-        |
-        +-- user says "Radio Tower"
-        |
-        +-- short acknowledgement beep
-        |
-        +-- listener accepts one phrase from the configured command grammar
-        |
-        +-- DRY RUN prints the mapped logical Tower action(s)
-        |
-        +-- returns to unrestricted wake-phrase listening
-```
-
-While idle, Vosk uses the full English model and accepts only an exact final
-transcription of the two-word wake phrase `radio tower`. This avoids forcing
-unrelated TV or room speech into a wake-only grammar. After the wake phrase is
-accepted, the listener switches to the small constrained command grammar.
-
-Only final Vosk results are eligible for execution. Partial results never
-execute a Tower command. `[unk]`, unconfigured phrases, and command timeouts
-execute nothing. The listener prints Vosk confidence for each accepted final
-phrase; the initial configuration leaves the confidence floor at `0.0` until
-the microphone is installed in the Tower's final location and real command
-samples can be measured.
-
-## Live execution
-
-Live mode uses the authenticated local Tower API. Export the same token used by
-`rf-tower.service`, then override dry-run mode:
+Install or update the persistent listener:
 
 ```bash
-export TOWER_API_TOKEN='your-existing-private-token'
-bash voice/run-voice.sh --live
+sudo install -m 0644 systemd/rf-tower-voice.service /etc/systemd/system/rf-tower-voice.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now rf-tower-voice.service
 ```
 
-The listener POSTs logical `device` and `command` values to:
+Useful diagnostics:
 
-```text
-http://127.0.0.1:8080/api/v1/execute
+```bash
+sudo systemctl --no-pager --full status rf-tower-voice.service
+sudo journalctl --no-pager -u rf-tower-voice.service -n 100
 ```
 
-A voice phrase may contain multiple ordered actions. Each action may optionally
-specify `repeat` and `delay_ms`, so the voice layer can represent simple chains
-without duplicating any IR/RF implementation. Longer-term Tower-owned Programs
-should replace voice-local chains when the Programs/Automation subsystem is
-implemented.
+The voice service is intentionally separate from `rf-tower.service`: audio or
+Vosk can restart independently without interrupting RF, IR, sensors, or the
+main API.
 
-## Initial mappings
+## Windows Voice editor and Tower API
 
-The default file contains working logical mappings for AVR volume up/down and a
-receiver power toggle. `watch television` is deliberately present with an empty
-action list until its exact desired sequence is defined; Tower must not guess a
-home-automation sequence.
+Tower Control includes a `Voice` tab backed by the authenticated endpoints:
 
-The current AVR profile exposes a single `Power` toggle rather than distinct
-Power On and Power Off commands, so voice phrases should not pretend that toggle
-is deterministic on/off control.
+- `GET/POST /api/v1/voice/config` loads and atomically saves the authoritative
+  `data/voice/voice_commands.json` file. The previous file is retained as
+  `voice_commands.json.bak`.
+- `GET /api/v1/voice/catalog` returns the current RF devices, RF Presets 1-3,
+  IR devices and only the commands belonging to each selected IR device.
+- `GET /api/v1/voice/status` reads the listener's small runtime status file.
+- `POST /api/v1/voice/notification` queues a five-second LCD confirmation.
 
-## Audio startup logging
+The editor presents the recursive command tree from the wake phrase downward.
+Every level can be a branch, RF preset leaf, individual RF-device leaf, or IR
+command leaf. Phrase aliases are edited independently from the action target.
+Each leaf contains an ordered action list and may combine RF presets,
+individual RF devices, and IR commands. The `Test action` button executes the
+complete list without requiring speech. Every action can have a `Delay before`
+value from 0 to 300 seconds. The sequence pauses before that specific action;
+zero means immediate execution. Existing actions without this value remain
+instant. These Pi-owned action lists are also
+intended as the reusable command sets for the future scheduler/control tab.
+IR command leaves also store one or more Tower IR outputs. The editor initially
+uses the active output selection from the IR Remotes tab, then saves that
+selection with the Pi-owned voice action so spoken execution uses the same
+physical transmitter path when the Windows application is offline.
 
-PyAudio/PortAudio probes optional ALSA PCM and JACK backends when it starts. On
-the Pi this can otherwise print harmless `Unknown PCM` and `jack server is not
-running` messages even when the configured C930e microphone works normally.
-Tower suppresses stderr only during that initial backend probe; later audio
-device/open errors remain visible.
+Saving validates the entire tree on the Pi and replaces the JSON atomically.
+The voice process watches the file modification time while listening and
+reloads valid command-tree and wake-phrase changes without a systemd restart.
+Changes to microphone, sample rate, or Vosk model still require a service
+restart because they change open audio/model resources.
+
+After a spoken leaf executes, the voice process reports the canonical command
+path, resolved targets, commands, and success state to Tower. The LCD backlight
+activates for five seconds. It shows the voice path plus the actual remote or
+RF target and command; multi-action leaves rotate through their actions once
+per second. The normal environmental display then resumes.
+
+## Current command branches
+
+- `Tower -> Power -> Preset one/two/three`
+- `Tower -> Shutdown -> Preset one/two/three`
+- `Tower -> Power/Shutdown -> zoutlamp, cat, links, rechts, logitech, buro`
+- Existing one-stage AVR commands remain compatible (`volume up`,
+  `volume down`, and `receiver power`).
+
+The English Vosk model may recognize `salt lamp`, `left`, `right`, or `desk`
+more reliably than their Dutch aliases. Both forms are configured so field
+testing can determine which phrases should remain.

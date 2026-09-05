@@ -7,6 +7,8 @@
 #include <thread>
 #include <vector>
 
+#include "core/network/VoiceApi.h"
+
 struct TowerApiSensorMeasurement
 {
     std::string name;
@@ -36,6 +38,9 @@ public:
     void setSensorProvider(
         std::function<std::vector<TowerApiSensorSnapshot>()> provider);
 
+    void setVoiceDisplayNotificationHandler(
+        VoiceDisplayNotificationHandler handler);
+
 private:
     void run();
     void handleClient(int clientFd);
@@ -45,4 +50,5 @@ private:
     std::string token_;
     std::thread thread_;
     std::function<std::vector<TowerApiSensorSnapshot>()> sensorProvider_;
+    VoiceDisplayNotificationHandler voiceDisplayNotificationHandler_;
 };

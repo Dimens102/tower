@@ -1,54 +1,311 @@
 {
-  "wake_phrase": "radio tower",
-  "microphone_name_contains": "C930e",
-  "speaker_name_contains": "bcm2835 Headphones",
-  "sample_rate": 16000,
-  "chunk_size": 4000,
-  "command_timeout_seconds": 5.0,
-  "minimum_command_confidence": 0.0,
-  "vosk_log_level": -1,
-  "model_path": "runtime/voice/models/vosk-model-small-en-us-0.15",
-  "dry_run": true,
-  "cancel_phrases": [
-    "never mind",
-    "cancel"
-  ],
+  "api": {
+    "execute_url": "http://127.0.0.1:8080/api/v1/execute",
+    "rf_group_url": "http://127.0.0.1:8080/api/v1/rf/group",
+    "rf_preset_url": "http://127.0.0.1:8080/api/v1/rf/preset",
+    "timeout_seconds": 15.0,
+    "token_env": "TOWER_API_TOKEN",
+    "voice_notification_url": "http://127.0.0.1:8080/api/v1/voice/notification"
+  },
   "audio": {
     "alsa_card": "C930e",
     "capture_control": "Mic",
     "capture_gain": 50
   },
   "beep": {
+    "duration_ms": 90,
     "enabled": true,
     "frequency_hz": 880,
-    "duration_ms": 90,
-    "volume": 0.18,
-    "sample_rate": 16000
+    "sample_rate": 16000,
+    "volume": 0.18
   },
-  "api": {
-    "execute_url": "http://127.0.0.1:8080/api/v1/execute",
-    "token_env": "TOWER_API_TOKEN",
-    "timeout_seconds": 4.0
+  "cancel_phrases": [
+    "never mind",
+    "cancel"
+  ],
+  "chunk_size": 4000,
+  "command_timeout_seconds": 5.0,
+  "command_tree": {
+    "power": {
+      "children": {
+        "buro": {
+          "actions": [
+            {
+              "action": "on",
+              "devices": [
+                "Tower-RF-Power-M2-004"
+              ],
+              "name": "Buro",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "desk",
+            "bureau"
+          ]
+        },
+        "cat": {
+          "actions": [
+            {
+              "action": "on",
+              "devices": [
+                "Tower-RF-Power-M1-002"
+              ],
+              "name": "Cat",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "kat"
+          ]
+        },
+        "links": {
+          "actions": [
+            {
+              "action": "on",
+              "devices": [
+                "Tower-RF-Power-M2-001"
+              ],
+              "name": "Links",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "left"
+          ]
+        },
+        "logitech": {
+          "actions": [
+            {
+              "action": "on",
+              "devices": [
+                "Tower-RF-Power-M2-003"
+              ],
+              "name": "Logitech",
+              "type": "rf_group"
+            }
+          ]
+        },
+        "preset one": {
+          "actions": [
+            {
+              "action": "on",
+              "preset": 1,
+              "type": "rf_preset"
+            }
+          ]
+        },
+        "preset three": {
+          "actions": [
+            {
+              "action": "on",
+              "preset": 3,
+              "type": "rf_preset"
+            }
+          ]
+        },
+        "preset two": {
+          "actions": [
+            {
+              "action": "on",
+              "preset": 2,
+              "type": "rf_preset"
+            }
+          ]
+        },
+        "rechts": {
+          "actions": [
+            {
+              "action": "on",
+              "devices": [
+                "Tower-RF-Power-M2-002"
+              ],
+              "name": "Rechts",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "right"
+          ]
+        },
+        "zoutlamp": {
+          "actions": [
+            {
+              "action": "on",
+              "devices": [
+                "Tower-RF-Power-M1-001"
+              ],
+              "name": "Zoutlamp",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "salt lamp"
+          ]
+        }
+      }
+    },
+    "shutdown": {
+      "children": {
+        "buro": {
+          "actions": [
+            {
+              "action": "off",
+              "devices": [
+                "Tower-RF-Power-M2-004"
+              ],
+              "name": "Buro",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "desk",
+            "bureau"
+          ]
+        },
+        "cat": {
+          "actions": [
+            {
+              "action": "off",
+              "devices": [
+                "Tower-RF-Power-M1-002"
+              ],
+              "name": "Cat",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "kat"
+          ]
+        },
+        "links": {
+          "actions": [
+            {
+              "action": "off",
+              "devices": [
+                "Tower-RF-Power-M2-001"
+              ],
+              "name": "Links",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "left"
+          ]
+        },
+        "logitech": {
+          "actions": [
+            {
+              "action": "off",
+              "devices": [
+                "Tower-RF-Power-M2-003"
+              ],
+              "name": "Logitech",
+              "type": "rf_group"
+            }
+          ]
+        },
+        "preset one": {
+          "actions": [
+            {
+              "action": "off",
+              "preset": 1,
+              "type": "rf_preset"
+            }
+          ]
+        },
+        "preset three": {
+          "actions": [
+            {
+              "action": "off",
+              "preset": 3,
+              "type": "rf_preset"
+            }
+          ]
+        },
+        "preset two": {
+          "actions": [
+            {
+              "action": "off",
+              "preset": 2,
+              "type": "rf_preset"
+            }
+          ]
+        },
+        "rechts": {
+          "actions": [
+            {
+              "action": "off",
+              "devices": [
+                "Tower-RF-Power-M2-002"
+              ],
+              "name": "Rechts",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "right"
+          ]
+        },
+        "zoutlamp": {
+          "actions": [
+            {
+              "action": "off",
+              "devices": [
+                "Tower-RF-Power-M1-001"
+              ],
+              "name": "Zoutlamp",
+              "type": "rf_group"
+            }
+          ],
+          "aliases": [
+            "salt lamp"
+          ]
+        }
+      }
+    },
+    "zone": {
+      "children": {
+        "set one": {
+          "actions": [
+            {
+              "command": "Power",
+              "device": "PAC 7.2",
+              "type": "command"
+            }
+          ]
+        },
+        "set two": {
+          "actions": [
+            {
+              "command": "Power",
+              "device": "KPN Media Box",
+              "transmitters": [
+                "Tower-IR-TX-001"
+              ],
+              "type": "command"
+            },
+            {
+              "command": "Power",
+              "device": "PAC 7.2",
+              "transmitters": [
+                "Tower-IR-TX-001"
+              ],
+              "type": "command"
+            }
+          ]
+        }
+      }
+    }
   },
-  "commands": {
-    "volume up": [
-      {
-        "device": "AVR X2800H",
-        "command": "Volume Up"
-      }
-    ],
-    "volume down": [
-      {
-        "device": "AVR X2800H",
-        "command": "Volume Down"
-      }
-    ],
-    "receiver power": [
-      {
-        "device": "AVR X2800H",
-        "command": "Power"
-      }
-    ],
-    "watch television": []
-  }
+  "commands": {},
+  "dry_run": false,
+  "microphone_name_contains": "C930e",
+  "minimum_command_confidence": 0.0,
+  "model_path": "runtime/voice/models/vosk-model-small-en-us-0.15",
+  "sample_rate": 16000,
+  "speaker_name_contains": "bcm2835 Headphones",
+  "status_path": "runtime/voice/status.json",
+  "vosk_log_level": -1,
+  "wake_phrase": "tower"
 }

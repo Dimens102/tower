@@ -4,6 +4,13 @@
 
 ### Added
 
+- Added Pi-owned RF Presets 1-3 in `data/rf/presets.json`, authenticated API
+  endpoints for saving/executing them, and automatic migration from the
+  Windows client's existing preset selections.
+- Added recursive constrained voice-command trees with an acknowledgement beep
+  after every accepted level.
+- Added voice branches for Power/Shutdown, Tower-managed Presets 1-3, and the
+  initial individually named RF test devices.
 - Added a `PC` tab to Tower Control for local Dell Precision thermal/fan
   monitoring.
 - Added persistent isolated access to Dell Command | Monitor at
@@ -22,6 +29,11 @@
 
 ### Fixed
 
+- Split RF preset persistence and request handling out of the already large
+  `TowerApiServer.cpp`. The first implementation pushed that single compiler
+  process beyond the Raspberry Pi 3 A+'s available memory; the API translation
+  unit is now back to its previous compilation-memory size and the new pieces
+  compile independently.
 - Removed the ListView-wide `BeginUpdate`/`EndUpdate` cycle that still caused a
   full native repaint in v85. PC telemetry now changes only the affected cell.
 - Temporary `--`, `Loading` or `Unknown` values no longer replace an

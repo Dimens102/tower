@@ -26,6 +26,9 @@ private:
     void updateDisplay();
     void updateBacklightButton();
 
+    void showVoiceNotification(
+        const VoiceDisplayNotification& notification);
+
     void showBootStatus(
         const std::string& status,
         const std::string& detail = "");
@@ -40,6 +43,13 @@ private:
     std::mutex sensorMutex_;
 
     std::chrono::steady_clock::time_point nextDisplayUpdate_{};
+
+    std::mutex voiceNotificationMutex_;
+    VoiceDisplayNotification voiceNotification_;
+    bool voiceNotificationActive_ = false;
+    bool voiceNotificationPainted_ = false;
+    std::chrono::steady_clock::time_point voiceNotificationStartedAt_{};
+    std::chrono::steady_clock::time_point voiceNotificationEndsAt_{};
 
     bool bootScreenActive_ = false;
     std::chrono::steady_clock::time_point bootScreenEndsAt_{};
