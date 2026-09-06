@@ -54,6 +54,15 @@ public static class TowerNativeWindow
 "@
 
 $ErrorActionPreference = 'Stop'
+$instanceWasCreated = $false
+$script:towerInstanceMutex = New-Object System.Threading.Mutex(
+    $true,
+    'Local\RF-Tower-Control',
+    [ref]$instanceWasCreated
+)
+if (-not $instanceWasCreated) {
+    exit
+}
 $configDirectory = Join-Path $env:APPDATA 'Tower'
 $configPath = Join-Path $configDirectory 'client.json'
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -232,6 +241,8 @@ $script:rfStartupRetryCount = 0
 $script:rfPresetsTowerReady = $false
 $script:voiceTab = $null
 $script:voiceEditorLoaded = $false
+$script:controlTab = $null
+$script:controlEditorLoaded = $false
 $script:piClockSyncJob = $null
 $script:piClockHasSync = $false
 $script:piClockAnchorText = ''
@@ -2188,6 +2199,15 @@ $settingsNote.ForeColor = [System.Drawing.Color]::DimGray
 $settingsNote.Location = New-Object System.Drawing.Point(22, 515)
 $settingsTab.Controls.Add($settingsNote)
 
+$startupIntegrationModule = Join-Path $scriptDirectory 'Tower-Startup-Integration.ps1'
+if (Test-Path -LiteralPath $startupIntegrationModule) {
+    try {
+        . $startupIntegrationModule
+    }
+    catch {
+        Write-TowerLog 'ERROR' "Startup integration UI failed: $($_.Exception.Message)"
+    }
+}
 
 $tabs.BringToFront()
 
@@ -12846,6 +12866,12 @@ function Delete-SelectedIrDevice {
 }
 
 function Refresh-CurrentTab {
+    if ($null -ne $script:controlTab -and
+        $tabs.SelectedTab -eq $script:controlTab) {
+        Refresh-ControlEditor
+        return
+    }
+
     if ($null -ne $script:voiceTab -and
         $tabs.SelectedTab -eq $script:voiceTab) {
         Refresh-VoiceEditor
@@ -12881,6 +12907,14 @@ function Refresh-CurrentTab {
 }
 
 function Load-SelectedTabIfNeeded {
+    if ($null -ne $script:controlTab -and
+        $tabs.SelectedTab -eq $script:controlTab) {
+        if (-not $script:controlEditorLoaded) {
+            Refresh-ControlEditor
+        }
+        return
+    }
+
     if ($null -ne $script:voiceTab -and
         $tabs.SelectedTab -eq $script:voiceTab) {
         if (-not $script:voiceEditorLoaded) {
@@ -13005,6 +13039,14 @@ if (Test-Path $voiceTabModule) {
 }
 else {
     Write-TowerLog 'WARN' "Voice tab module missing: $voiceTabModule"
+}
+
+$controlTabModule = Join-Path $PSScriptRoot 'Tower-Control-Tab.ps1'
+if (Test-Path $controlTabModule) {
+    . $controlTabModule
+}
+else {
+    Write-TowerLog 'WARN' "Control tab module missing: $controlTabModule"
 }
 
 [void]$tabs.TabPages.Add($settingsTab)
@@ -13301,6 +13343,11 @@ $form.Add_FormClosed({
     if ($null -ne $script:towerIconBitmap) {
         $script:towerIconBitmap.Dispose()
         $script:towerIconBitmap = $null
+    }
+    if ($null -ne $script:towerInstanceMutex) {
+        try { $script:towerInstanceMutex.ReleaseMutex() } catch {}
+        $script:towerInstanceMutex.Dispose()
+        $script:towerInstanceMutex = $null
     }
 })
 

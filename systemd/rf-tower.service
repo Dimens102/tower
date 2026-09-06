@@ -1,0 +1,15 @@
+[Unit]
+Description=RF Tower Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=beheerder
+WorkingDirectory=/home/beheerder/Development/rf-tower
+ExecStart=/home/beheerder/Development/rf-tower/build/tower service
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

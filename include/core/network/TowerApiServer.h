@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/network/VoiceApi.h"
+class Scheduler;
 
 struct TowerApiSensorMeasurement
 {
@@ -41,6 +42,8 @@ public:
     void setVoiceDisplayNotificationHandler(
         VoiceDisplayNotificationHandler handler);
 
+    void setScheduler(Scheduler* scheduler);
+
 private:
     void run();
     void handleClient(int clientFd);
@@ -51,4 +54,5 @@ private:
     std::thread thread_;
     std::function<std::vector<TowerApiSensorSnapshot>()> sensorProvider_;
     VoiceDisplayNotificationHandler voiceDisplayNotificationHandler_;
+    Scheduler* scheduler_ = nullptr;
 };

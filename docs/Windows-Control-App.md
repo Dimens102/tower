@@ -47,6 +47,40 @@ the scheduler/control tab rather than maintaining a second command format.
 The desktop application should provide a fast visual control interface that can
 stay available without occupying normal desktop space.
 
+## Installed Windows runtime
+
+Tower Control now has a per-machine x64 MSI. The reproducible installer source
+and build script live in `installer/windows`; the editable application remains
+in `windows`. The MSI requests elevation once and places the stable application
+files in `C:\Program Files\Tower Control`. Personal UI
+and Tower connection settings remain in `%APPDATA%\Tower`, while the protected
+background-agent connection and runtime state live in `C:\ProgramData\Tower`.
+A newer MSI performs a major upgrade without discarding personal settings.
+During development the MSI is needed only once: updated application or agent
+files can still be copied directly into Program Files, followed by restarting
+the affected task or application. The older `Install-Tower-Control.cmd` flow is
+retained as a development/recovery option.
+
+When a valid `%APPDATA%\Tower\client.json` already exists, MSI installation also
+configures the background agent and scheduled tasks. On a new machine without a
+connection profile, the application is installed first; after configuring the
+connection, Settings > Install / Repair completes startup integration.
+
+Windows Task Scheduler starts `Tower Background Agent` as `SYSTEM` at machine
+startup, without waiting for a user logon. The agent retries Tower connectivity,
+writes a readable heartbeat, and processes authenticated API jobs from its
+ProgramData queue. Future Windows-only schedule triggers call
+`Tower-Agent-Command.ps1` to enqueue a validated `/api/v1/...` GET or POST job;
+the agent can therefore deliver it while the GUI is closed or has not started.
+`Tower Control - User Logon` launches the visible application 15 seconds after
+interactive logon. Windows services are intentionally not used for the GUI
+because services cannot display an interactive desktop application.
+
+The Settings tab reports both task states and the latest agent connection. Its
+Install/Repair and Remove controls require UAC. Windows Apps/Installed apps also
+contains a Tower Control uninstall entry; uninstall removes the agent and tasks
+but preserves `%APPDATA%\Tower`.
+
 Primary goals:
 
 - Reliable command execution without manual Tower service restarts.

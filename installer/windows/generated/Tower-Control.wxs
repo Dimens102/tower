@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="80D2A97D-4C0A-42F9-9058-E1C5ED1B9C04" Name="Tower Control" Language="1033" Version="0.11.4" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="RF Tower Windows control application and background agent" />
+    <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Tower Control is already installed." />
+    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.04" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Dimens102/tower" />
+    <Icon Id="TowerIcon.ico" SourceFile="$(var.WindowsSource)/assets/tower-icon-tray.ico" />
+    <Property Id="ARPPRODUCTICON" Value="TowerIcon.ico" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Tower Control">
+        <Component Id="Cmp_b2270542d41297db1ee0" Guid="627AD383-588E-57CB-96E8-0F3E4BE0B119" Win64="yes">
+          <File Id="File_b2270542d41297db1ee0" Name="INSTALL.md" Source="$(var.WindowsSource)/INSTALL.md" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_079b1af048189b076c46" Guid="FF750D80-28EE-5F4F-A2BB-A59B9F98A97D" Win64="yes">
+          <File Id="File_079b1af048189b076c46" Name="Install-Tower-Control.cmd" Source="$(var.WindowsSource)/Install-Tower-Control.cmd" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_170db301c52d2152e2af" Guid="1A05DB9F-03A6-5226-A34D-B874AC552F90" Win64="yes">
+          <File Id="File_170db301c52d2152e2af" Name="Install-Tower-Control.ps1" Source="$(var.WindowsSource)/Install-Tower-Control.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_55b3d491933214a1dade" Guid="E4C6CB2A-1950-5757-9E50-2DC7D0E2A9AE" Win64="yes">
+          <File Id="File_55b3d491933214a1dade" Name="Msi-Configure-Tower.ps1" Source="$(var.WindowsSource)/Msi-Configure-Tower.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_b021a2a88e16d1ba4bf6" Guid="904644E2-5EE0-5F24-8F89-2DA6B31EE4D3" Win64="yes">
+          <File Id="File_b021a2a88e16d1ba4bf6" Name="Start-Tower-Control.cmd" Source="$(var.WindowsSource)/Start-Tower-Control.cmd" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_da4a796c15c648fc2013" Guid="0F9D0D7C-1170-5190-859F-B42E036AF345" Win64="yes">
+          <File Id="File_da4a796c15c648fc2013" Name="Start-Tower-Control.vbs" Source="$(var.WindowsSource)/Start-Tower-Control.vbs" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_40ce10d7e7cef5967b77" Guid="9713AFB3-3D3F-520E-BC10-2DD28CAECEE9" Win64="yes">
+          <File Id="File_40ce10d7e7cef5967b77" Name="Start-Tower-RF-Remote.cmd" Source="$(var.WindowsSource)/Start-Tower-RF-Remote.cmd" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_e694b9a0bd4dbcea4eb8" Guid="A9FDBC47-EF82-5B8E-8617-FF58C2E936EE" Win64="yes">
+          <File Id="File_e694b9a0bd4dbcea4eb8" Name="Tower-Agent-Command.ps1" Source="$(var.WindowsSource)/Tower-Agent-Command.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_4d219d2cd82e17b552f3" Guid="E7131FFB-EDF2-5EA2-BC86-8849B28EF201" Win64="yes">
+          <File Id="File_4d219d2cd82e17b552f3" Name="Tower-Control.ps1" Source="$(var.WindowsSource)/Tower-Control.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_615efd69dc3e7924e279" Guid="AEED06CC-C4B3-5818-A68D-AD24F1876C0E" Win64="yes">
+          <File Id="File_615efd69dc3e7924e279" Name="Tower-PC-Monitor.ps1" Source="$(var.WindowsSource)/Tower-PC-Monitor.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_f7e3a3a73e805f16ace7" Guid="326624C8-EA54-515E-A46B-982F80392FAF" Win64="yes">
+          <File Id="File_f7e3a3a73e805f16ace7" Name="Tower-RF-Remote.ps1" Source="$(var.WindowsSource)/Tower-RF-Remote.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_7efb9675dad2a5571100" Guid="CADF1679-EF3F-5C8F-818B-13B527032E82" Win64="yes">
+          <File Id="File_7efb9675dad2a5571100" Name="Tower-Startup-Integration.ps1" Source="$(var.WindowsSource)/Tower-Startup-Integration.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_ccc991bb1f490d7be5e9" Guid="F98287B5-1116-52FD-9481-AD8F55EB29B6" Win64="yes">
+          <File Id="File_ccc991bb1f490d7be5e9" Name="Tower-Voice-Tab.ps1" Source="$(var.WindowsSource)/Tower-Voice-Tab.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_93626760440023d45f2c" Guid="3472A0F9-68E9-50B5-9C96-C6C1B2452870" Win64="yes">
+          <File Id="File_93626760440023d45f2c" Name="Tower-Windows-Agent.ps1" Source="$(var.WindowsSource)/Tower-Windows-Agent.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_23e90024be28d6e41b51" Guid="ACEEA25A-7DA5-52CA-B8B7-3BA7729A4BBB" Win64="yes">
+          <File Id="File_23e90024be28d6e41b51" Name="Uninstall-Tower-Control.cmd" Source="$(var.WindowsSource)/Uninstall-Tower-Control.cmd" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_978581dcd9bd357a8a5c" Guid="E50DD48D-1CF0-5973-B0C2-45EFE76C9534" Win64="yes">
+          <File Id="File_978581dcd9bd357a8a5c" Name="Uninstall-Tower-Control.ps1" Source="$(var.WindowsSource)/Uninstall-Tower-Control.ps1" KeyPath="yes" />
+        </Component>
+        <Directory Id="Dir_3685e330ec5277a9dd56" Name="assets">
+          <Component Id="Cmp_12392aa5ebac6c48a246" Guid="46D7E2A7-2FA3-579A-AF8E-B38302B1B39B" Win64="yes">
+            <File Id="File_12392aa5ebac6c48a246" Name="tower-icon-header.png" Source="$(var.WindowsSource)/assets/tower-icon-header.png" KeyPath="yes" />
+          </Component>
+          <Component Id="Cmp_0452346a8ed5a2c5d6a9" Guid="B6D568BB-2826-5A47-8F47-6B9E7F1773BB" Win64="yes">
+            <File Id="File_0452346a8ed5a2c5d6a9" Name="tower-icon-tray.ico" Source="$(var.WindowsSource)/assets/tower-icon-tray.ico" KeyPath="yes" />
+          </Component>
+          <Component Id="Cmp_fb484b97ad0c3861c6dd" Guid="3E789235-1C2C-5266-AF72-44024F21F86B" Win64="yes">
+            <File Id="File_fb484b97ad0c3861c6dd" Name="tower-icon.png" Source="$(var.WindowsSource)/assets/tower-icon.png" KeyPath="yes" />
+          </Component>
+          <Directory Id="Dir_5ab8501f1e7d3f47f603" Name="devices">
+            <Component Id="Cmp_e11ea16e5ffd6e3a8d26" Guid="F3B41A59-A98A-5EA8-BCCF-C997430B4333" Win64="yes">
+              <File Id="File_e11ea16e5ffd6e3a8d26" Name="README.txt" Source="$(var.WindowsSource)/assets/devices/README.txt" KeyPath="yes" />
+            </Component>
+          </Directory>
+          <Directory Id="Dir_067046cd4a79488741a5" Name="remotes">
+            <Component Id="Cmp_a7ad93cc4c3a0968125b" Guid="C6A37F75-0E41-51CB-AF35-F50DC6FA5B7A" Win64="yes">
+              <File Id="File_a7ad93cc4c3a0968125b" Name="README.txt" Source="$(var.WindowsSource)/assets/remotes/README.txt" KeyPath="yes" />
+            </Component>
+            <Component Id="Cmp_179ad64e880b0c8481bf" Guid="1CC33CC6-DC70-5983-9076-538EF9D962D4" Win64="yes">
+              <File Id="File_179ad64e880b0c8481bf" Name="Remotes.rar" Source="$(var.WindowsSource)/assets/remotes/Remotes.rar" KeyPath="yes" />
+            </Component>
+          </Directory>
+          <Directory Id="Dir_fb04bf2555e2a2e23624" Name="sensors">
+            <Component Id="Cmp_9660762714bcc8b89cfd" Guid="A65FC7F0-9C1E-5E0C-88D8-6B12D9E4FBFC" Win64="yes">
+              <File Id="File_9660762714bcc8b89cfd" Name="aquarium.png" Source="$(var.WindowsSource)/assets/sensors/aquarium.png" KeyPath="yes" />
+            </Component>
+          </Directory>
+        </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ProgramMenuTowerFolder" Name="Tower Control" />
+      </Directory>
+      <Directory Id="DesktopFolder" />
+    </Directory>
+    <DirectoryRef Id="ProgramMenuTowerFolder">
+      <Component Id="Cmp_StartMenuShortcut" Guid="4992B766-91BC-57D2-B352-7D7156CC0A97" Win64="yes">
+        <Shortcut Id="StartMenuShortcut" Name="Tower Control" Target="[SystemFolder]wscript.exe" Arguments="&quot;[#File_da4a796c15c648fc2013]&quot;" WorkingDirectory="INSTALLFOLDER" Icon="TowerIcon.ico" />
+        <RemoveFolder Id="RemoveProgramMenuTowerFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\RF Tower Project\Tower Control" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="Cmp_DesktopShortcut" Guid="D8D1A20C-4EC3-5E80-B2B9-3BA96262D0DF" Win64="yes">
+        <Shortcut Id="DesktopShortcut" Name="Tower Control" Target="[SystemFolder]wscript.exe" Arguments="&quot;[#File_da4a796c15c648fc2013]&quot;" WorkingDirectory="INSTALLFOLDER" Icon="TowerIcon.ico" />
+        <RegistryValue Root="HKLM" Key="Software\RF Tower Project\Tower Control" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <CustomAction Id="SetPowerShellPath" Property="POWERSHELLEXE" Value="[SystemFolder]WindowsPowerShell\v1.0\powershell.exe" />
+    <CustomAction Id="ConfigureTower" Property="POWERSHELLEXE" Execute="deferred" Impersonate="yes" Return="check" ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Msi-Configure-Tower.ps1&quot; -Mode Install" />
+    <CustomAction Id="RemoveTowerIntegration" Property="POWERSHELLEXE" Execute="deferred" Impersonate="no" Return="ignore" ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Msi-Configure-Tower.ps1&quot; -Mode Remove" />
+    <InstallExecuteSequence>
+      <Custom Action="SetPowerShellPath" After="CostFinalize">1</Custom>
+      <Custom Action="ConfigureTower" After="InstallFiles">NOT Installed</Custom>
+      <Custom Action="RemoveTowerIntegration" After="RemoveShortcuts">REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE</Custom>
+    </InstallExecuteSequence>
+    <Feature Id="Complete" Title="Tower Control" Level="1" Absent="disallow">
+      <ComponentRef Id="Cmp_b2270542d41297db1ee0" />
+      <ComponentRef Id="Cmp_079b1af048189b076c46" />
+      <ComponentRef Id="Cmp_170db301c52d2152e2af" />
+      <ComponentRef Id="Cmp_55b3d491933214a1dade" />
+      <ComponentRef Id="Cmp_b021a2a88e16d1ba4bf6" />
+      <ComponentRef Id="Cmp_da4a796c15c648fc2013" />
+      <ComponentRef Id="Cmp_40ce10d7e7cef5967b77" />
+      <ComponentRef Id="Cmp_e694b9a0bd4dbcea4eb8" />
+      <ComponentRef Id="Cmp_4d219d2cd82e17b552f3" />
+      <ComponentRef Id="Cmp_615efd69dc3e7924e279" />
+      <ComponentRef Id="Cmp_f7e3a3a73e805f16ace7" />
+      <ComponentRef Id="Cmp_7efb9675dad2a5571100" />
+      <ComponentRef Id="Cmp_ccc991bb1f490d7be5e9" />
+      <ComponentRef Id="Cmp_93626760440023d45f2c" />
+      <ComponentRef Id="Cmp_23e90024be28d6e41b51" />
+      <ComponentRef Id="Cmp_978581dcd9bd357a8a5c" />
+      <ComponentRef Id="Cmp_12392aa5ebac6c48a246" />
+      <ComponentRef Id="Cmp_0452346a8ed5a2c5d6a9" />
+      <ComponentRef Id="Cmp_fb484b97ad0c3861c6dd" />
+      <ComponentRef Id="Cmp_e11ea16e5ffd6e3a8d26" />
+      <ComponentRef Id="Cmp_a7ad93cc4c3a0968125b" />
+      <ComponentRef Id="Cmp_179ad64e880b0c8481bf" />
+      <ComponentRef Id="Cmp_9660762714bcc8b89cfd" />
+      <ComponentRef Id="Cmp_StartMenuShortcut" />
+      <ComponentRef Id="Cmp_DesktopShortcut" />
+    </Feature>
+  </Product>
+</Wix>

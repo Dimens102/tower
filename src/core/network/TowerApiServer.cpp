@@ -8,6 +8,7 @@
 #include "core/service/RFCommandService.h"
 #include "core/service/RFPresetService.h"
 #include "core/service/RFProvisioningService.h"
+#include "core/service/Scheduler.h"
 #include "devices/device.h"
 #include "devices/device_database.h"
 #include "devices/rf/rf_database.h"
@@ -118,6 +119,11 @@ void TowerApiServer::setVoiceDisplayNotificationHandler(
     VoiceDisplayNotificationHandler handler)
 {
     voiceDisplayNotificationHandler_ = std::move(handler);
+}
+
+void TowerApiServer::setScheduler(Scheduler* scheduler)
+{
+    scheduler_ = scheduler;
 }
 
 bool TowerApiServer::start(std::uint16_t port, const std::string& token)
@@ -267,6 +273,33 @@ void TowerApiServer::handleClient(int clientFd)
             response.statusText,
             nlohmann::json::parse(response.jsonBody));
         return;
+    }
+
+    if (scheduler_ && path == "/api/v1/schedules" && method == "GET")
+    {
+        sendResponse(clientFd, 200, "OK", {{"ok", true}, {"schedules", scheduler_->schedules().list()}});
+        return;
+    }
+    if (scheduler_ && path == "/api/v1/schedules" && method == "POST")
+    {
+        try {
+            const auto requestJson = nlohmann::json::parse(request.substr(headersEnd + 4));
+            std::string error;
+            const auto schedules = requestJson.contains("schedules") ? requestJson.at("schedules") : requestJson;
+            if (!scheduler_->schedules().replace(schedules, error)) { sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", error}}); return; }
+            sendResponse(clientFd, 200, "OK", {{"ok", true}, {"schedules", scheduler_->schedules().list()}});
+        } catch (const std::exception& e) { sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", e.what()}}); }
+        return;
+    }
+    if (scheduler_ && path.rfind("/api/v1/schedules/", 0) == 0 && method == "POST")
+    {
+        const std::string tail = path.substr(std::string("/api/v1/schedules/").size());
+        try {
+            const auto requestJson = nlohmann::json::parse(request.substr(headersEnd + 4));
+            nlohmann::json result; std::string error;
+            if (tail == "run") { if (!scheduler_->schedules().runNow(requestJson.at("id").get<std::string>(), result, error)) { sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", error}}); return; } sendResponse(clientFd, 200, "OK", result); return; }
+            if (tail == "delete") { if (!scheduler_->schedules().remove(requestJson.at("id").get<std::string>(), error)) { sendResponse(clientFd, 404, "Not Found", {{"ok", false}, {"error", error}}); return; } sendResponse(clientFd, 200, "OK", {{"ok", true}}); return; }
+        } catch (const std::exception& e) { sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", e.what()}}); return; }
     }
 
     if (path == "/api/v1/rf/modern/next" && method == "GET")

@@ -138,6 +138,7 @@ std::string fitDisplayLine(const std::string& value)
 
 TowerService::TowerService()
 {
+    apiServer_.setScheduler(&scheduler_);
     auto aquariumSensor =
         std::make_unique<TemperatureSensor>(
             "ID1",

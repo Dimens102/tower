@@ -1,0 +1,17 @@
+[Unit]
+Description=RF Tower Voice Control
+Requires=rf-tower.service
+After=rf-tower.service sound.target
+
+[Service]
+Type=simple
+User=beheerder
+SupplementaryGroups=audio
+WorkingDirectory=/home/beheerder/Development/rf-tower
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/bash /home/beheerder/Development/rf-tower/voice/run-voice.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

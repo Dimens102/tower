@@ -4,7 +4,9 @@
 
 bool Scheduler::initialize()
 {
-    return deviceManager_.initialize();
+    std::string error;
+    const bool schedulesReady = scheduleService_.initialize();
+    return deviceManager_.initialize() && schedulesReady;
 }
 
 void Scheduler::after(
@@ -39,4 +41,8 @@ void Scheduler::update()
     timerManager_.update();
     deviceManager_.update();
     automationEngine_.update();
+    scheduleService_.update();
 }
+
+ScheduleService& Scheduler::schedules() { return scheduleService_; }
+const ScheduleService& Scheduler::schedules() const { return scheduleService_; }
