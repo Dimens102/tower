@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="80D2A97D-4C0A-42F9-9058-E1C5ED1B9C04" Name="Tower Control" Language="1033" Version="0.11.4" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
+  <Product Id="B3E29CAE-8F02-49ED-8C83-AC03DA7926E1" Name="Tower Control" Language="1033" Version="0.11.5" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="RF Tower Windows control application and background agent" />
     <MediaTemplate EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Tower Control is already installed." />
-    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.04" />
+    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.05" />
     <Property Id="ARPNOREPAIR" Value="1" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Dimens102/tower" />
     <Icon Id="TowerIcon.ico" SourceFile="$(var.WindowsSource)/assets/tower-icon-tray.ico" />
@@ -36,8 +36,14 @@
         <Component Id="Cmp_e694b9a0bd4dbcea4eb8" Guid="A9FDBC47-EF82-5B8E-8617-FF58C2E936EE" Win64="yes">
           <File Id="File_e694b9a0bd4dbcea4eb8" Name="Tower-Agent-Command.ps1" Source="$(var.WindowsSource)/Tower-Agent-Command.ps1" KeyPath="yes" />
         </Component>
+        <Component Id="Cmp_543fcf4d22bad3d12ba9" Guid="2630E174-84D5-513D-ABA3-A6826AE16FB1" Win64="yes">
+          <File Id="File_543fcf4d22bad3d12ba9" Name="Tower-Control-Tab.ps1" Source="$(var.WindowsSource)/Tower-Control-Tab.ps1" KeyPath="yes" />
+        </Component>
         <Component Id="Cmp_4d219d2cd82e17b552f3" Guid="E7131FFB-EDF2-5EA2-BC86-8849B28EF201" Win64="yes">
           <File Id="File_4d219d2cd82e17b552f3" Name="Tower-Control.ps1" Source="$(var.WindowsSource)/Tower-Control.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_77767228e99da1796768" Guid="A8ECF784-9DCF-59B8-9B69-4E4BFD855943" Win64="yes">
+          <File Id="File_77767228e99da1796768" Name="Tower-Ir-Layout-Editor.ps1" Source="$(var.WindowsSource)/Tower-Ir-Layout-Editor.ps1" KeyPath="yes" />
         </Component>
         <Component Id="Cmp_615efd69dc3e7924e279" Guid="AEED06CC-C4B3-5818-A68D-AD24F1876C0E" Win64="yes">
           <File Id="File_615efd69dc3e7924e279" Name="Tower-PC-Monitor.ps1" Source="$(var.WindowsSource)/Tower-PC-Monitor.ps1" KeyPath="yes" />
@@ -53,6 +59,9 @@
         </Component>
         <Component Id="Cmp_93626760440023d45f2c" Guid="3472A0F9-68E9-50B5-9C96-C6C1B2452870" Win64="yes">
           <File Id="File_93626760440023d45f2c" Name="Tower-Windows-Agent.ps1" Source="$(var.WindowsSource)/Tower-Windows-Agent.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_cf5162efbae437f81c48" Guid="B48A7C67-7B78-5030-88C9-D5A2BDF1E409" Win64="yes">
+          <File Id="File_cf5162efbae437f81c48" Name="Tower-Windows-Schedule-Manager.ps1" Source="$(var.WindowsSource)/Tower-Windows-Schedule-Manager.ps1" KeyPath="yes" />
         </Component>
         <Component Id="Cmp_23e90024be28d6e41b51" Guid="ACEEA25A-7DA5-52CA-B8B7-3BA7729A4BBB" Win64="yes">
           <File Id="File_23e90024be28d6e41b51" Name="Uninstall-Tower-Control.cmd" Source="$(var.WindowsSource)/Uninstall-Tower-Control.cmd" KeyPath="yes" />
@@ -110,7 +119,7 @@
       </Component>
     </DirectoryRef>
     <CustomAction Id="SetPowerShellPath" Property="POWERSHELLEXE" Value="[SystemFolder]WindowsPowerShell\v1.0\powershell.exe" />
-    <CustomAction Id="ConfigureTower" Property="POWERSHELLEXE" Execute="deferred" Impersonate="yes" Return="check" ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Msi-Configure-Tower.ps1&quot; -Mode Install" />
+    <CustomAction Id="ConfigureTower" Property="POWERSHELLEXE" Execute="deferred" Impersonate="no" Return="ignore" ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Msi-Configure-Tower.ps1&quot; -Mode Install" />
     <CustomAction Id="RemoveTowerIntegration" Property="POWERSHELLEXE" Execute="deferred" Impersonate="no" Return="ignore" ExeCommand="-NoProfile -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Msi-Configure-Tower.ps1&quot; -Mode Remove" />
     <InstallExecuteSequence>
       <Custom Action="SetPowerShellPath" After="CostFinalize">1</Custom>
@@ -126,12 +135,15 @@
       <ComponentRef Id="Cmp_da4a796c15c648fc2013" />
       <ComponentRef Id="Cmp_40ce10d7e7cef5967b77" />
       <ComponentRef Id="Cmp_e694b9a0bd4dbcea4eb8" />
+      <ComponentRef Id="Cmp_543fcf4d22bad3d12ba9" />
       <ComponentRef Id="Cmp_4d219d2cd82e17b552f3" />
+      <ComponentRef Id="Cmp_77767228e99da1796768" />
       <ComponentRef Id="Cmp_615efd69dc3e7924e279" />
       <ComponentRef Id="Cmp_f7e3a3a73e805f16ace7" />
       <ComponentRef Id="Cmp_7efb9675dad2a5571100" />
       <ComponentRef Id="Cmp_ccc991bb1f490d7be5e9" />
       <ComponentRef Id="Cmp_93626760440023d45f2c" />
+      <ComponentRef Id="Cmp_cf5162efbae437f81c48" />
       <ComponentRef Id="Cmp_23e90024be28d6e41b51" />
       <ComponentRef Id="Cmp_978581dcd9bd357a8a5c" />
       <ComponentRef Id="Cmp_12392aa5ebac6c48a246" />

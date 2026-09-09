@@ -20,10 +20,19 @@ the Raspberry Pi analogue output.
 
 ## Recognition flow
 
-The idle recognizer is restricted to the wake phrase `tower`. After a match,
-each command level gets a fresh Vosk grammar containing only the valid next
-phrases. This makes the tree extensible without asking the small Pi to
-transcribe unrestricted speech.
+The idle recognizer is restricted to the wake phrase and valid first-level
+branches. It accepts `Tower` or `Tower Zone` as one utterance, but never accepts
+a complete action path such as `Tower Zone Set One`. The final level must be
+recognized separately after the branch confirmation beep. This preserves
+natural wake-and-branch speech while preventing television dialogue from being
+forced directly into a complete executable path.
+
+Wake recognition has its own confidence threshold, independent from command
+levels. Tower Control displays it as a percentage beside the wake phrase; the
+default is 85%. The wake grammar also contains common competing words such as
+`lower`, `power`, `our`, `hour`, and `towel`, plus standalone first-level
+branches. Those results are rejected instead of Vosk being forced to classify
+every similar sound as `tower`.
 
 The wake phrase stays silent, so harmless false wakes caused by television or
 music are unobtrusive. Every accepted command level beeps before continuing or
@@ -34,6 +43,11 @@ Tower        -> silent wake
 Power        -> beep
 Preset three -> beep -> execute Preset 3 ON
 ```
+
+For a final action, microphone capture remains stopped from the confirmation
+beep until Tower completes the action. Capture restarts afterward. Branch
+levels restart capture immediately because they still need to hear the next
+phrase.
 
 Each level has its own timeout. `cancel` or `never mind`, an invalid phrase, or
 a timeout executes nothing and returns safely to wake listening. Only final
@@ -106,6 +120,10 @@ The voice service is intentionally separate from `rf-tower.service`: audio or
 Vosk can restart independently without interrupting RF, IR, sensors, or the
 main API.
 
+The unit disables systemd's start-rate limit. If the C930e is unplugged,
+PyAudio exits cleanly and systemd keeps retrying discovery until the webcam is
+connected again. No manual service restart is required.
+
 ## Windows Voice editor and Tower API
 
 Tower Control includes a `Voice` tab backed by the authenticated endpoints:
@@ -116,7 +134,9 @@ Tower Control includes a `Voice` tab backed by the authenticated endpoints:
 - `GET /api/v1/voice/catalog` returns the current RF devices, RF Presets 1-3,
   IR devices and only the commands belonging to each selected IR device.
 - `GET /api/v1/voice/status` reads the listener's small runtime status file.
-- `POST /api/v1/voice/notification` queues a five-second LCD confirmation.
+- `POST /api/v1/voice/listening` persistently enables or disables microphone
+  listening without changing unsaved command-tree edits.
+- `POST /api/v1/voice/notification` queues the LCD confirmation.
 
 The editor presents the recursive command tree from the wake phrase downward.
 Every level can be a branch, RF preset leaf, individual RF-device leaf, or IR
@@ -136,14 +156,18 @@ physical transmitter path when the Windows application is offline.
 Saving validates the entire tree on the Pi and replaces the JSON atomically.
 The voice process watches the file modification time while listening and
 reloads valid command-tree and wake-phrase changes without a systemd restart.
-Changes to microphone, sample rate, or Vosk model still require a service
-restart because they change open audio/model resources.
+The Voice-tab listening button releases the microphone while disabled. Turning
+it back on restarts audio discovery, so a webcam removed while disabled is
+found after it is reconnected. Changes to microphone name, sample rate, or Vosk
+model still require a service restart because they change open audio/model
+resources.
 
 After a spoken leaf executes, the voice process reports the canonical command
-path, resolved targets, commands, and success state to Tower. The LCD backlight
-activates for five seconds. It shows the voice path plus the actual remote or
-RF target and command; multi-action leaves rotate through their actions once
-per second. The normal environmental display then resumes.
+path, resolved targets, commands, and success state to Tower. It shows the
+voice path plus the actual remote or RF target and command. Each action appears
+exactly once for two seconds; it never cycles back to an earlier action. After
+the last action, the backlight switches off and the normal environmental
+display remains available for the next button press.
 
 ## Current command branches
 

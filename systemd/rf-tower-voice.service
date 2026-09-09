@@ -2,6 +2,7 @@
 Description=RF Tower Voice Control
 Requires=rf-tower.service
 After=rf-tower.service sound.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

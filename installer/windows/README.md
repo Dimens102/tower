@@ -13,7 +13,7 @@ cd ~/Development/rf-tower
 bash installer/windows/build-msi.sh
 ```
 
-Output: `installer/windows/output/Tower-Control-0.11.04-x64.msi`
+Output: `installer/windows/output/Tower-Control-0.11.05-x64.msi`
 
 ## Installation behavior
 
@@ -26,6 +26,9 @@ Output: `installer/windows/output/Tower-Control-0.11.04-x64.msi`
 - If no valid connection exists yet, Tower Control is still installed. Start
   it, configure the Tower connection, then use **Settings > Install / Repair**
   to activate the background agent.
+- Windows-triggered Control schedules are installed under
+  `\RF Tower\Schedules` in Task Scheduler. Removing Tower Control also removes
+  those managed tasks.
 
 The MSI is currently unsigned, so Windows may show an Unknown Publisher
 warning. Code-sign the finished release build before public distribution.

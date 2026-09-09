@@ -230,6 +230,43 @@ void validateConfig(const json& config)
     {
         throw std::runtime_error("Wake phrase must contain 1-80 characters");
     }
+    if (config.contains("listening_enabled") &&
+        !config.at("listening_enabled").is_boolean())
+    {
+        throw std::runtime_error("Voice listening_enabled must be true or false");
+    }
+    if (config.contains("minimum_wake_confidence"))
+    {
+        if (!config.at("minimum_wake_confidence").is_number())
+        {
+            throw std::runtime_error(
+                "Voice minimum_wake_confidence must be a number");
+        }
+        const double confidence =
+            config.at("minimum_wake_confidence").get<double>();
+        if (confidence < 0.0 || confidence > 1.0)
+        {
+            throw std::runtime_error(
+                "Voice minimum_wake_confidence must be between 0 and 1");
+        }
+    }
+    if (config.contains("wake_reject_phrases"))
+    {
+        if (!config.at("wake_reject_phrases").is_array())
+        {
+            throw std::runtime_error(
+                "Voice wake_reject_phrases must be an array");
+        }
+        for (const json& phrase : config.at("wake_reject_phrases"))
+        {
+            if (!phrase.is_string() ||
+                normalizedPhrase(phrase.get<std::string>()).empty())
+            {
+                throw std::runtime_error(
+                    "Voice wake_reject_phrases must contain non-empty text");
+            }
+        }
+    }
     if (!config.contains("command_tree") ||
         !config.at("command_tree").is_object() ||
         config.at("command_tree").empty())
@@ -409,6 +446,35 @@ VoiceApiResponse handleVoiceApiRequest(
                 });
         }
 
+        if (path == "/api/v1/voice/listening" && method == "POST")
+        {
+            const json request = json::parse(body);
+            if (!request.contains("enabled") ||
+                !request.at("enabled").is_boolean())
+            {
+                return errorResponse(
+                    400,
+                    "Bad Request",
+                    "Voice listening request requires boolean enabled");
+            }
+
+            json config = readJsonFile(voiceConfigPath);
+            const bool enabled = request.at("enabled").get<bool>();
+            config["listening_enabled"] = enabled;
+            validateConfig(config);
+            writeConfig(config);
+            return response(
+                200,
+                "OK",
+                {
+                    {"ok", true},
+                    {"enabled", enabled},
+                    {"message", enabled
+                        ? "Voice listening enabled; microphone discovery is restarting"
+                        : "Voice listening disabled; microphone will be released"}
+                });
+        }
+
         if (path == "/api/v1/voice/catalog" && method == "GET")
         {
             return response(
@@ -468,7 +534,7 @@ VoiceApiResponse handleVoiceApiRequest(
             }
             notification.ok = request.value("ok", false);
             notification.durationSeconds =
-                std::clamp(request.value("durationSeconds", 5), 1, 30);
+                std::clamp(request.value("durationSeconds", 2), 1, 300);
             if (notification.path.empty())
             {
                 return errorResponse(400, "Bad Request", "Notification path cannot be empty");

@@ -19,7 +19,7 @@ mkdir -p "$output_dir"
 wixl \
     -a x64 \
     -D "WindowsSource=$project_root/windows" \
-    -o "$output_dir/Tower-Control-0.11.04-x64.msi" \
+    -o "$output_dir/Tower-Control-0.11.05-x64.msi" \
     "$installer_dir/generated/Tower-Control.wxs"
 
-echo "Built: $output_dir/Tower-Control-0.11.04-x64.msi"
+echo "Built: $output_dir/Tower-Control-0.11.05-x64.msi"

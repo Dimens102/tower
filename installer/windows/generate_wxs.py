@@ -13,10 +13,10 @@ ROOT = Path(__file__).resolve().parents[2]
 WINDOWS = ROOT / "windows"
 OUTPUT = Path(__file__).resolve().parent / "generated" / "Tower-Control.wxs"
 WIX_NS = "http://schemas.microsoft.com/wix/2006/wi"
-VERSION_DISPLAY = "0.11.04"
-VERSION_MSI = "0.11.4"
+VERSION_DISPLAY = "0.11.05"
+VERSION_MSI = "0.11.5"
 UPGRADE_CODE = "6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B"
-PRODUCT_CODE = "80D2A97D-4C0A-42F9-9058-E1C5ED1B9C04"
+PRODUCT_CODE = "B3E29CAE-8F02-49ED-8C83-AC03DA7926E1"
 
 
 def wix_id(prefix: str, value: str) -> str:
@@ -125,7 +125,7 @@ def main() -> None:
         '    <CustomAction Id="SetPowerShellPath" Property="POWERSHELLEXE" '
         'Value="[SystemFolder]WindowsPowerShell\\v1.0\\powershell.exe" />',
         '    <CustomAction Id="ConfigureTower" Property="POWERSHELLEXE" Execute="deferred" '
-        'Impersonate="yes" Return="check" ExeCommand="-NoProfile -ExecutionPolicy Bypass '
+        'Impersonate="no" Return="ignore" ExeCommand="-NoProfile -ExecutionPolicy Bypass '
         '-File &quot;[INSTALLFOLDER]Msi-Configure-Tower.ps1&quot; -Mode Install" />',
         '    <CustomAction Id="RemoveTowerIntegration" Property="POWERSHELLEXE" Execute="deferred" '
         'Impersonate="no" Return="ignore" ExeCommand="-NoProfile -ExecutionPolicy Bypass '

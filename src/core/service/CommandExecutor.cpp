@@ -127,13 +127,6 @@ CommandExecutionResult CommandExecutor::execute(
     }
 
     std::vector<std::string> attemptedTransmitters;
-    std::vector<std::string> successfulTransmitters;
-    std::vector<std::string> failedTransmitters;
-    CommandExecutionResult lastFailure = result(
-        CommandExecutionStatus::TransmissionFailed,
-        "IR transmission failed.",
-        TransportType::IR);
-
     for (const std::string& transmitterName : transmitters)
     {
         if (transmitterName.empty())
@@ -149,6 +142,150 @@ CommandExecutionResult CommandExecutor::execute(
             continue;
         }
         attemptedTransmitters.push_back(transmitterName);
+    }
+
+    if (attemptedTransmitters.empty())
+    {
+        return result(
+            CommandExecutionStatus::InvalidMapping,
+            "No valid IR transmitters were selected.",
+            TransportType::IR);
+    }
+
+    // Two or more Pico outputs must receive one frame. Sending a complete
+    // toggle command to each output in sequence can toggle a device on and
+    // immediately back off.
+    if (attemptedTransmitters.size() >= 2)
+    {
+        IRTransmitterDatabase transmitterDatabase;
+        std::vector<IRTransmitter> synchronizedTransmitters;
+        bool allUseTowerPico = true;
+
+        for (const std::string& transmitterName : attemptedTransmitters)
+        {
+            IRTransmitter transmitter;
+            if (!transmitterDatabase.load(transmitterName, transmitter))
+            {
+                return result(
+                    CommandExecutionStatus::TransportDataNotFound,
+                    "Failed to load IR transmitter: " + transmitterName,
+                    TransportType::IR);
+            }
+
+            if (transmitter.controller != "tower-pico")
+            {
+                allUseTowerPico = false;
+                break;
+            }
+
+            synchronizedTransmitters.push_back(transmitter);
+        }
+
+        if (allUseTowerPico)
+        {
+            IRDatabase irDatabase;
+            IRCode code;
+            if (!irDatabase.load(
+                    matchedCommand->transportDevice,
+                    matchedCommand->transportCommand,
+                    code))
+            {
+                return result(
+                    CommandExecutionStatus::TransportDataNotFound,
+                    "Failed to load IR command: " +
+                        matchedCommand->transportDevice + "." +
+                        matchedCommand->transportCommand,
+                    TransportType::IR);
+            }
+
+            Device transportDevice;
+            DeviceDatabase transportDeviceDatabase;
+            unsigned int carrierKhz = 0;
+            unsigned int dutyPercent = 0;
+            if (transportDeviceDatabase.deviceExists(
+                    matchedCommand->transportDevice) &&
+                transportDeviceDatabase.loadDevice(
+                    matchedCommand->transportDevice,
+                    transportDevice))
+            {
+                carrierKhz = transportDevice.irProfile.carrierKhz;
+                dutyPercent = transportDevice.irProfile.dutyPercent;
+
+                bool firstDuty = true;
+                unsigned int synchronizedDuty = dutyPercent;
+                for (const std::string& transmitterName : attemptedTransmitters)
+                {
+                    unsigned int transmitterDuty = dutyPercent;
+                    const auto overrideDuty =
+                        transportDevice.irProfile.transmitterDutyPercent.find(
+                            transmitterName);
+                    if (overrideDuty !=
+                        transportDevice.irProfile.transmitterDutyPercent.end())
+                    {
+                        transmitterDuty = overrideDuty->second;
+                    }
+
+                    if (firstDuty)
+                    {
+                        synchronizedDuty = transmitterDuty;
+                        firstDuty = false;
+                    }
+                    else if (transmitterDuty != synchronizedDuty)
+                    {
+                        return result(
+                            CommandExecutionStatus::InvalidMapping,
+                            "Synchronized Pico outputs must use the same IR "
+                            "duty percentage.",
+                            TransportType::IR);
+                    }
+                }
+                dutyPercent = synchronizedDuty;
+            }
+
+            IRSender sender;
+            if (!sender.sendSynchronized(
+                    code,
+                    synchronizedTransmitters,
+                    dutyPercent,
+                    carrierKhz))
+            {
+                return result(
+                    CommandExecutionStatus::TransmissionFailed,
+                    "Synchronized IR broadcast failed.",
+                    TransportType::IR);
+            }
+
+            std::string message =
+                "Synchronized IR broadcast complete on " +
+                std::to_string(attemptedTransmitters.size()) +
+                " transmitter(s): ";
+            for (std::size_t index = 0;
+                 index < attemptedTransmitters.size();
+                 ++index)
+            {
+                if (index > 0)
+                {
+                    message += ", ";
+                }
+                message += attemptedTransmitters[index];
+            }
+
+            return result(
+                CommandExecutionStatus::Success,
+                message,
+                TransportType::IR);
+        }
+    }
+
+    std::vector<std::string> successfulTransmitters;
+    std::vector<std::string> failedTransmitters;
+    CommandExecutionResult lastFailure = result(
+        CommandExecutionStatus::TransmissionFailed,
+        "IR transmission failed.",
+        TransportType::IR);
+
+    for (const std::string& transmitterName : attemptedTransmitters)
+    {
 
         DeviceCommand overridden = *matchedCommand;
         overridden.transmitter = transmitterName;
@@ -163,14 +300,6 @@ CommandExecutionResult CommandExecutor::execute(
                 transmitterName + " (" + execution.message + ")");
             lastFailure = execution;
         }
-    }
-
-    if (attemptedTransmitters.empty())
-    {
-        return result(
-            CommandExecutionStatus::InvalidMapping,
-            "No valid IR transmitters were selected.",
-            TransportType::IR);
     }
 
     if (!successfulTransmitters.empty())

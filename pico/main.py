@@ -4,6 +4,7 @@ import gc
 import hashlib
 import network
 import os
+import rp2
 import select
 import socket
 import time
@@ -27,26 +28,93 @@ outputs = [Pin(number, Pin.OUT, value=0) for number in OUTPUT_PINS]
 led = Pin("LED", Pin.OUT, value=0)
 
 
+# Each program drives GP1 through GP6 as one six-bit value.  The state
+# machine checks its FIFO once per carrier cycle; a non-zero value begins a
+# mark on every selected output and zero begins a space.  This keeps both the
+# carrier phase and the raw-code envelope aligned across all transmitters.
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_10():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x)
+    mov(pins, null) [6]
+    wrap()
+
+
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_20():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x) [1]
+    mov(pins, null) [5]
+    wrap()
+
+
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_30():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x) [2]
+    mov(pins, null) [4]
+    wrap()
+
+
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_33():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x) [1]
+    mov(pins, null) [1]
+    wrap()
+
+
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_40():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x) [3]
+    mov(pins, null) [3]
+    wrap()
+
+
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_50():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x) [4]
+    mov(pins, null) [2]
+    wrap()
+
+
+@rp2.asm_pio(out_init=(rp2.PIO.OUT_LOW,) * 6)
+def carrier_60():
+    wrap_target()
+    pull(noblock)
+    mov(x, osr)
+    mov(pins, x) [5]
+    mov(pins, null) [1]
+    wrap()
+
+
 def all_off():
     for output in outputs:
         output.init(Pin.OUT, value=0)
 
 
-def send_raw(transmitter, carrier_khz, durations, duty_percent=0):
-    if transmitter < 1 or transmitter > len(outputs):
-        raise ValueError("INVALID_TRANSMITTER")
-
+def validate_raw(carrier_khz, durations, duty_percent):
     if (carrier_khz < MIN_IR_CARRIER_KHZ or
             carrier_khz > MAX_IR_CARRIER_KHZ):
         raise ValueError("INVALID_CARRIER_KHZ")
 
-    if duty_percent:
-        if (duty_percent < MIN_IR_DUTY_PERCENT or
-                duty_percent > MAX_IR_DUTY_PERCENT):
-            raise ValueError("INVALID_DUTY_PERCENT")
-        mark_duty = int(65535 * duty_percent / 100)
-    else:
-        mark_duty = IR_DUTY
+    if duty_percent and (duty_percent < MIN_IR_DUTY_PERCENT or
+                         duty_percent > MAX_IR_DUTY_PERCENT):
+        raise ValueError("INVALID_DUTY_PERCENT")
 
     if not durations:
         raise ValueError("NO_DURATIONS")
@@ -54,6 +122,38 @@ def send_raw(transmitter, carrier_khz, durations, duty_percent=0):
     for duration in durations:
         if duration < 1 or duration > 100000:
             raise ValueError("INVALID_DURATION")
+
+
+def synchronized_carrier(duty_percent):
+    # Calibration and stored device profiles use these exact duty values.
+    # Seven four-instruction programs fit together in one 32-instruction PIO.
+    programs = {
+        10: (carrier_10, 10),
+        20: (carrier_20, 10),
+        30: (carrier_30, 10),
+        33: (carrier_33, 6),
+        40: (carrier_40, 10),
+        50: (carrier_50, 10),
+        60: (carrier_60, 10),
+    }
+
+    effective_duty = duty_percent if duty_percent else 33
+    if effective_duty not in programs:
+        raise ValueError("UNSUPPORTED_SYNC_DUTY_PERCENT")
+
+    return programs[effective_duty]
+
+
+def send_raw(transmitter, carrier_khz, durations, duty_percent=0):
+    if transmitter < 1 or transmitter > len(outputs):
+        raise ValueError("INVALID_TRANSMITTER")
+
+    validate_raw(carrier_khz, durations, duty_percent)
+
+    if duty_percent:
+        mark_duty = int(65535 * duty_percent / 100)
+    else:
+        mark_duty = IR_DUTY
 
     output = outputs[transmitter - 1]
     pwm = PWM(output)
@@ -69,6 +169,46 @@ def send_raw(transmitter, carrier_khz, durations, duty_percent=0):
         pwm.duty_u16(0)
         pwm.deinit()
         output.init(Pin.OUT, value=0)
+
+
+def send_raw_multi(transmitters, carrier_khz, durations, duty_percent=0):
+    if not transmitters:
+        raise ValueError("NO_TRANSMITTERS")
+
+    output_mask = 0
+    for transmitter in transmitters:
+        if transmitter < 1 or transmitter > len(outputs):
+            raise ValueError("INVALID_TRANSMITTER")
+        output_mask |= 1 << (transmitter - 1)
+
+    validate_raw(carrier_khz, durations, duty_percent)
+    program, cycles_per_carrier = synchronized_carrier(duty_percent)
+    state_machine = None
+    gc.collect()
+
+    try:
+        state_machine = rp2.StateMachine(
+            0,
+            program,
+            freq=carrier_khz * 1000 * cycles_per_carrier,
+            out_base=outputs[0],
+        )
+        state_machine.put(output_mask)
+        state_machine.active(1)
+
+        for index, duration in enumerate(durations):
+            if index > 0:
+                state_machine.put(output_mask if index % 2 == 0 else 0)
+            time.sleep_us(duration)
+
+        # Let the state machine consume the final zero before stopping it.
+        state_machine.put(0)
+        time.sleep_us(((1000 + carrier_khz - 1) // carrier_khz) + 10)
+    finally:
+        if state_machine is not None:
+            state_machine.active(0)
+        all_off()
+        gc.collect()
 
 
 
@@ -204,6 +344,41 @@ def process_command(line):
 
             send_raw(transmitter, carrier_khz, durations, duty_percent)
             return "OK SEND " + str(transmitter), False
+
+        if command == "SEND_MULTI":
+            duty_percent = 0
+
+            if len(parts) == 4:
+                transmitters_text = parts[1]
+                carrier_khz = int(parts[2])
+                durations_text = parts[3]
+            elif len(parts) == 5:
+                transmitters_text = parts[1]
+                carrier_khz = int(parts[2])
+                duty_percent = int(parts[3])
+                durations_text = parts[4]
+            else:
+                raise ValueError(
+                    "USAGE_SEND_MULTI_OUTPUTS_CARRIER_[DUTY_]DURATIONS")
+
+            transmitters = []
+            for value in transmitters_text.split(","):
+                transmitter = int(value)
+                if transmitter not in transmitters:
+                    transmitters.append(transmitter)
+
+            durations = [
+                int(value)
+                for value in durations_text.split(",")
+            ]
+
+            send_raw_multi(
+                transmitters,
+                carrier_khz,
+                durations,
+                duty_percent,
+            )
+            return "OK SEND_MULTI " + transmitters_text, False
 
         if command == "UPDATE_MAIN":
             if len(parts) != 5:

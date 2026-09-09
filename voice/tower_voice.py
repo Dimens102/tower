@@ -30,6 +30,7 @@ from vosk import KaldiRecognizer, Model, SetLogLevel
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = PROJECT_ROOT / "data" / "voice" / "voice_commands.json"
 DEFAULT_STATUS = PROJECT_ROOT / "runtime" / "voice" / "status.json"
+DEFAULT_WAKE_REJECT_PHRASES = ["lower", "power", "our", "hour", "towel"]
 
 
 def load_config(path: Path) -> dict:
@@ -46,6 +47,23 @@ def load_config(path: Path) -> dict:
         raise ValueError("Voice commands and command_tree must be objects")
     if not commands and not command_tree:
         raise ValueError("Voice config must contain commands or a command_tree")
+    if "listening_enabled" in config and not isinstance(
+        config["listening_enabled"],
+        bool,
+    ):
+        raise ValueError("listening_enabled must be true or false")
+    wake_confidence = float(config.get("minimum_wake_confidence", 0.85))
+    if wake_confidence < 0.0 or wake_confidence > 1.0:
+        raise ValueError("minimum_wake_confidence must be between 0 and 1")
+    reject_phrases = config.get(
+        "wake_reject_phrases",
+        DEFAULT_WAKE_REJECT_PHRASES,
+    )
+    if not isinstance(reject_phrases, list) or not all(
+        isinstance(value, str) and value.strip()
+        for value in reject_phrases
+    ):
+        raise ValueError("wake_reject_phrases must contain non-empty text")
     return config
 
 
@@ -152,14 +170,30 @@ def find_pyaudio_device(audio: pyaudio.PyAudio, name_contains: str, *, input_dev
     return matches[0][0]
 
 
-def make_wake_recognizer(model: Model, sample_rate: int, wake_phrase: str) -> KaldiRecognizer:
+def make_wake_recognizer(
+    model: Model,
+    sample_rate: int,
+    wake_phrase: str,
+    command_phrases: list[str],
+    reject_phrases: list[str],
+) -> KaldiRecognizer:
     """Create a recognizer restricted to the configured wake phrase.
 
     The command stage already benefits from a constrained grammar. Applying the
     same approach here prevents the full English model from turning a clear
     single-word wake phrase into similar words such as "power" or "our".
     """
-    grammar = [wake_phrase.strip().lower(), "[unk]"]
+    wake = wake_phrase.strip().lower()
+    grammar = [wake]
+    grammar.extend(f"{wake} {phrase}" for phrase in command_phrases)
+    # Without alternatives a constrained recognizer is forced to turn words
+    # such as "lower" or "power" into "tower".  Standalone command branches
+    # and explicit confusers are valid recognition results but are rejected by
+    # the wake-path check below.
+    grammar.extend(command_phrases)
+    grammar.extend(reject_phrases)
+    grammar.append("[unk]")
+    grammar = list(dict.fromkeys(grammar))
     recognizer = KaldiRecognizer(model, sample_rate, json.dumps(grammar))
     recognizer.SetWords(True)
     return recognizer
@@ -181,6 +215,71 @@ def recognition_result(recognizer: KaldiRecognizer) -> tuple[str, float]:
     confidences = [float(word.get("conf", 0.0)) for word in words if word.get("word") != "[unk]"]
     confidence = sum(confidences) / len(confidences) if confidences else 0.0
     return text, confidence
+
+
+def wake_recognition_result(
+    recognizer: KaldiRecognizer,
+    wake_phrase: str,
+) -> tuple[str, float]:
+    """Return text and confidence of only the wake-prefix words.
+
+    A result such as ``tower zone`` must pass on the acoustic confidence of
+    ``tower`` itself rather than being rescued by a very confident branch.
+    For multi-word wake phrases the least-confident wake word is used.
+    """
+    payload = json.loads(recognizer.Result())
+    text = str(payload.get("text", "")).strip().lower()
+    wake_words = wake_phrase.strip().lower().split()
+    result_words = [
+        word
+        for word in payload.get("result", [])
+        if word.get("word") != "[unk]"
+    ]
+    if len(result_words) < len(wake_words):
+        return text, 0.0
+    if [str(word.get("word", "")).lower() for word in result_words[:len(wake_words)]] != wake_words:
+        return text, 0.0
+    confidences = [
+        float(word.get("conf", 0.0))
+        for word in result_words[:len(wake_words)]
+    ]
+    return text, min(confidences) if confidences else 0.0
+
+
+def wait_while_listening_disabled(config_path: Path, config: dict) -> None:
+    """Release all audio resources and wait for the Pi config to be enabled."""
+    print("Voice listening disabled")
+    write_voice_status(
+        config,
+        "disabled",
+        "Voice listening is disabled; microphone released",
+    )
+
+    while True:
+        time.sleep(1.0)
+        try:
+            updated_config = load_config(config_path)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            print(f"Voice disabled-state reload failed: {exc}", file=sys.stderr)
+            continue
+
+        if bool(updated_config.get("listening_enabled", True)):
+            print("Voice listening enabled; restarting audio discovery")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+def read_microphone(
+    stream,
+    chunk_size: int,
+    config: dict,
+) -> bytes:
+    try:
+        return stream.read(chunk_size, exception_on_overflow=False)
+    except OSError as exc:
+        message = f"Microphone disconnected or unavailable: {exc}"
+        print(f"Voice audio error: {message}", file=sys.stderr)
+        write_voice_status(config, "unavailable", message, ok=False)
+        raise
 
 
 def play_beep(audio: pyaudio.PyAudio, output_index: int | None, config: dict) -> None:
@@ -293,7 +392,7 @@ def post_voice_notification(
             "path": command_path,
             "actions": actions,
             "ok": ok,
-            "durationSeconds": 5,
+            "durationSeconds": max(2, 2 * max(1, len(actions))),
         },
         token,
     )
@@ -428,6 +527,39 @@ def node_children(node: dict) -> dict[str, dict]:
     return normalized
 
 
+def spoken_wake_branches(children: dict[str, dict]) -> list[str]:
+    """Return first-level branches that may accompany the wake phrase.
+
+    A complete action path must never be accepted by the always-listening
+    recognizer. Allowing only branches preserves natural utterances such as
+    ``Tower Zone`` while requiring the final action (for example ``Set One``)
+    to be recognized separately after the branch confirmation beep.
+    """
+    branches: list[str] = []
+    for spoken, (_, node) in phrase_map(children).items():
+        if node_children(node):
+            branches.append(spoken)
+    return list(dict.fromkeys(branches))
+
+
+def consume_spoken_choice(
+    text: str,
+    choices: dict[str, tuple[str, dict]],
+) -> tuple[tuple[str, dict] | None, str]:
+    """Consume the longest valid phrase from an already recognized path."""
+    for spoken in sorted(
+        choices,
+        key=lambda value: (len(value.split()), len(value)),
+        reverse=True,
+    ):
+        if text == spoken:
+            return choices[spoken], ""
+        prefix = spoken + " "
+        if text.startswith(prefix):
+            return choices[spoken], text[len(prefix):].strip()
+    return None, text
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Tower offline Vosk voice command listener")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
@@ -443,6 +575,10 @@ def main() -> int:
     config = load_config(config_path)
     config_mtime_ns = config_path.stat().st_mtime_ns
     SetLogLevel(int(config.get("vosk_log_level", -1)))
+
+    if not bool(config.get("listening_enabled", True)):
+        wait_while_listening_disabled(config_path, config)
+
     set_capture_gain(config)
 
     # PortAudio probes several optional ALSA/JACK endpoints during startup.
@@ -491,10 +627,26 @@ def main() -> int:
         cancel_phrases = [str(value).strip().lower() for value in config.get("cancel_phrases", ["never mind", "cancel"])]
         root_children = command_children(config)
         min_confidence = float(config.get("minimum_command_confidence", 0.0))
+        min_wake_confidence = float(config.get("minimum_wake_confidence", 0.85))
+        wake_reject_phrases = [
+            str(value).strip().lower()
+            for value in config.get(
+                "wake_reject_phrases",
+                DEFAULT_WAKE_REJECT_PHRASES,
+            )
+            if str(value).strip()
+        ]
         command_timeout = float(config.get("command_timeout_seconds", 5.0))
 
         model = Model(str(model_path))
-        wake_recognizer = make_wake_recognizer(model, sample_rate, wake_phrase)
+        wake_command_phrases = spoken_wake_branches(root_children)
+        wake_recognizer = make_wake_recognizer(
+            model,
+            sample_rate,
+            wake_phrase,
+            wake_command_phrases,
+            wake_reject_phrases,
+        )
 
         stream = audio.open(
             format=pyaudio.paInt16,
@@ -546,6 +698,15 @@ def main() -> int:
                                 "Audio device, sample rate, and model changes require a voice-service restart"
                             )
 
+                        if not bool(updated_config.get("listening_enabled", True)):
+                            stream.stop_stream()
+                            stream.close()
+                            audio.terminate()
+                            wait_while_listening_disabled(
+                                config_path,
+                                updated_config,
+                            )
+
                         config = updated_config
                         wake_phrase = str(config["wake_phrase"]).strip().lower()
                         cancel_phrases = [
@@ -553,7 +714,19 @@ def main() -> int:
                             for value in config.get("cancel_phrases", ["never mind", "cancel"])
                         ]
                         root_children = command_children(config)
+                        wake_command_phrases = spoken_wake_branches(root_children)
                         min_confidence = float(config.get("minimum_command_confidence", 0.0))
+                        min_wake_confidence = float(
+                            config.get("minimum_wake_confidence", 0.85)
+                        )
+                        wake_reject_phrases = [
+                            str(value).strip().lower()
+                            for value in config.get(
+                                "wake_reject_phrases",
+                                DEFAULT_WAKE_REJECT_PHRASES,
+                            )
+                            if str(value).strip()
+                        ]
                         command_timeout = float(config.get("command_timeout_seconds", 5.0))
                         config_dry_run = bool(config.get("dry_run", True))
                         dry_run = True if args.dry_run else False if args.live else config_dry_run
@@ -567,6 +740,8 @@ def main() -> int:
                             model,
                             sample_rate,
                             wake_phrase,
+                            wake_command_phrases,
+                            wake_reject_phrases,
                         )
                         config_mtime_ns = current_mtime_ns
                         print("Voice configuration reloaded")
@@ -586,14 +761,29 @@ def main() -> int:
                             ok=False,
                         )
 
-                data = stream.read(chunk_size, exception_on_overflow=False)
+                data = read_microphone(stream, chunk_size, config)
                 if not wake_recognizer.AcceptWaveform(data):
                     continue
 
-                text, confidence = recognition_result(wake_recognizer)
-                if text != wake_phrase:
+                text, confidence = wake_recognition_result(
+                    wake_recognizer,
+                    wake_phrase,
+                )
+                if text == wake_phrase:
+                    pending_command_text = ""
+                elif text.startswith(wake_phrase + " "):
+                    pending_command_text = text[len(wake_phrase):].strip()
+                else:
+                    continue
+                if confidence < min_wake_confidence:
+                    print(
+                        f"Wake rejected: {wake_phrase} "
+                        f"(confidence {confidence:.2f} < {min_wake_confidence:.2f})"
+                    )
                     continue
                 print(f"Wake detected: {wake_phrase} (confidence {confidence:.2f})")
+                if pending_command_text:
+                    print(f"Heard with wake: {pending_command_text!r} (confidence {confidence:.2f})")
                 write_voice_status(
                     config,
                     "awake",
@@ -616,31 +806,41 @@ def main() -> int:
                     deadline = time.monotonic() + command_timeout
                     selected: tuple[str, dict] | None = None
 
-                    while time.monotonic() < deadline:
-                        command_data = stream.read(chunk_size, exception_on_overflow=False)
-                        if not command_recognizer.AcceptWaveform(command_data):
-                            continue
-
-                        command_text, command_confidence = recognition_result(command_recognizer)
-                        if not command_text or command_text == "[unk]":
-                            continue
-
-                        print(f"Heard: {command_text!r} (confidence {command_confidence:.2f})")
-                        if command_text in cancel_phrases:
-                            print("Voice command cancelled")
-                            handled = True
-                            break
-                        if command_text not in choices:
-                            continue
-                        if command_confidence < min_confidence:
-                            print(
-                                f"Ignored low-confidence command ({command_confidence:.2f} < {min_confidence:.2f})"
+                    if pending_command_text:
+                        selected, pending_command_text = consume_spoken_choice(
+                            pending_command_text,
+                            choices,
+                        )
+                    else:
+                        while time.monotonic() < deadline:
+                            command_data = read_microphone(
+                                stream,
+                                chunk_size,
+                                config,
                             )
-                            handled = True
-                            break
+                            if not command_recognizer.AcceptWaveform(command_data):
+                                continue
 
-                        selected = choices[command_text]
-                        break
+                            command_text, command_confidence = recognition_result(command_recognizer)
+                            if not command_text or command_text == "[unk]":
+                                continue
+
+                            print(f"Heard: {command_text!r} (confidence {command_confidence:.2f})")
+                            if command_text in cancel_phrases:
+                                print("Voice command cancelled")
+                                handled = True
+                                break
+                            if command_text not in choices:
+                                continue
+                            if command_confidence < min_confidence:
+                                print(
+                                    f"Ignored low-confidence command ({command_confidence:.2f} < {min_confidence:.2f})"
+                                )
+                                handled = True
+                                break
+
+                            selected = choices[command_text]
+                            break
 
                     if handled:
                         break
@@ -659,12 +859,6 @@ def main() -> int:
                         command_path=[wake_phrase] + command_path,
                     )
 
-                    # Confirm command levels only: Tower stays silent, then
-                    # Power (beep), Preset three (beep), and execute the leaf.
-                    stream.stop_stream()
-                    play_beep(audio, output_index, config)
-                    stream.start_stream()
-
                     actions = node.get("actions")
                     children = node_children(node)
                     if actions is not None:
@@ -672,13 +866,30 @@ def main() -> int:
                             raise ValueError(
                                 f"Voice node '{' -> '.join(command_path)}' cannot have both actions and children"
                             )
-                        succeeded, display_actions = execute_actions(
-                            config,
-                            command_path,
-                            actions,
-                            token,
-                            dry_run,
+                    elif not children:
+                        raise ValueError(
+                            f"Voice node '{' -> '.join(command_path)}' has no actions or children"
                         )
+
+                    # Confirm command levels only: Tower stays silent, then
+                    # Power (beep), Preset three (beep), and execute the leaf.
+                    # Keep capture stopped while a leaf executes. Restarting
+                    # the USB microphone immediately before an IR request was
+                    # the only timing difference from the working UI test path.
+                    stream.stop_stream()
+                    play_beep(audio, output_index, config)
+
+                    if actions is not None:
+                        try:
+                            succeeded, display_actions = execute_actions(
+                                config,
+                                command_path,
+                                actions,
+                                token,
+                                dry_run,
+                            )
+                        finally:
+                            stream.start_stream()
                         full_path = [wake_phrase] + command_path
                         write_voice_status(
                             config,
@@ -702,10 +913,9 @@ def main() -> int:
                         )
                         handled = True
                         break
-                    if not children:
-                        raise ValueError(
-                            f"Voice node '{' -> '.join(command_path)}' has no actions or children"
-                        )
+
+                    # A branch needs live capture again for its next level.
+                    stream.start_stream()
                     current_children = children
 
                 if not handled and not timeout_reported:
@@ -713,7 +923,13 @@ def main() -> int:
 
                 # Use a fresh recognizer so command-state audio never leaks back
                 # into wake-word recognition.
-                wake_recognizer = make_wake_recognizer(model, sample_rate, wake_phrase)
+                wake_recognizer = make_wake_recognizer(
+                    model,
+                    sample_rate,
+                    wake_phrase,
+                    wake_command_phrases,
+                    wake_reject_phrases,
+                )
                 print(f"Listening for wake phrase: {wake_phrase!r}")
                 write_voice_status(
                     config,
@@ -735,4 +951,19 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (OSError, RuntimeError) as exc:
+        message = f"Voice listener waiting for audio recovery: {exc}"
+        print(message, file=sys.stderr)
+        try:
+            recovery_config = load_config(DEFAULT_CONFIG)
+            write_voice_status(
+                recovery_config,
+                "unavailable",
+                message,
+                ok=False,
+            )
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            pass
+        raise SystemExit(3)

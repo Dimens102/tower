@@ -270,7 +270,11 @@
           "actions": [
             {
               "command": "Power",
-              "device": "PAC 7.2",
+              "delay_before_seconds": 0,
+              "device": "KPN Media Box",
+              "transmitters": [
+                "Tower-IR-TX-001"
+              ],
               "type": "command"
             }
           ]
@@ -300,6 +304,7 @@
   },
   "commands": {},
   "dry_run": false,
+  "listening_enabled": true,
   "microphone_name_contains": "C930e",
   "minimum_command_confidence": 0.0,
   "model_path": "runtime/voice/models/vosk-model-small-en-us-0.15",

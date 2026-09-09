@@ -524,8 +524,9 @@ void TowerService::updateDisplay()
                         std::chrono::duration_cast<std::chrono::seconds>(
                             now - voiceNotificationStartedAt_).count();
                     const std::size_t actionIndex =
-                        static_cast<std::size_t>(elapsed) %
-                        voiceNotification_.actions.size();
+                        std::min(
+                            static_cast<std::size_t>(elapsed / 2),
+                            voiceNotification_.actions.size() - 1);
                     const VoiceDisplayAction& action =
                         voiceNotification_.actions[actionIndex];
                     targetLine = action.target;

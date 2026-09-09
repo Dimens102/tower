@@ -15,7 +15,7 @@ struct VoiceDisplayNotification
     std::vector<std::string> path;
     std::vector<VoiceDisplayAction> actions;
     bool ok = false;
-    int durationSeconds = 5;
+    int durationSeconds = 2;
 };
 
 struct VoiceApiResponse

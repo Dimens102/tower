@@ -2,6 +2,7 @@
 #include "devices/ir/ir_runtime_database.h"
 #include "devices/remote/controllers/pico_controller.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -48,6 +49,103 @@ bool IRSender::send(const IRCode& code, const IRTransmitter& transmitter, unsign
               << code.protocol << "\n";
 
     return false;
+}
+
+bool IRSender::sendSynchronized(
+    const IRCode& code,
+    const std::vector<IRTransmitter>& transmitters,
+    unsigned int dutyPercent,
+    unsigned int carrierOverrideKhz)
+{
+    constexpr unsigned int defaultCarrierKhz = 38;
+
+    if (code.protocol != "raw" || transmitters.size() < 2)
+    {
+        std::cerr
+            << "Synchronized Pico IR transmission requires raw pulse data "
+            << "and at least two transmitters.\n";
+        return false;
+    }
+
+    std::vector<std::size_t> outputs;
+    for (const IRTransmitter& transmitter : transmitters)
+    {
+        if (transmitter.controller != "tower-pico" ||
+            transmitter.output < 1 ||
+            transmitter.output > 6)
+        {
+            std::cerr
+                << "Synchronized IR output requires Tower Pico outputs 1 "
+                << "through 6; invalid transmitter: "
+                << transmitter.name << ".\n";
+            return false;
+        }
+
+        const std::size_t output =
+            static_cast<std::size_t>(transmitter.output);
+        if (std::find(outputs.begin(), outputs.end(), output) == outputs.end())
+        {
+            outputs.push_back(output);
+        }
+    }
+
+    if (outputs.size() < 2)
+    {
+        std::cerr
+            << "Synchronized IR output resolved to fewer than two unique "
+            << "Pico outputs.\n";
+        return false;
+    }
+
+    const unsigned int carrierKhz = carrierOverrideKhz > 0
+        ? carrierOverrideKhz
+        : (code.carrierKhz == 0 ? defaultCarrierKhz : code.carrierKhz);
+
+    tower::remote::controllers::PicoController pico;
+    if (!pico.initialize())
+    {
+        std::cerr
+            << "Tower Pico did not respond at "
+            << pico.host() << ":42101.\n";
+        return false;
+    }
+
+    std::cout
+        << "Broadcasting one synchronized RAW frame via Tower Pico "
+        << pico.host() << " on outputs ";
+    for (std::size_t index = 0; index < outputs.size(); ++index)
+    {
+        if (index > 0)
+        {
+            std::cout << ",";
+        }
+        std::cout << outputs[index];
+    }
+    std::cout << " at " << carrierKhz << " kHz";
+    if (dutyPercent > 0)
+    {
+        std::cout << " at " << dutyPercent << "% duty";
+    }
+    std::cout << "\n";
+
+    if (!pico.sendIrRawSynchronized(
+            outputs,
+            carrierKhz,
+            code.pulses,
+            dutyPercent))
+    {
+        std::cerr
+            << "Tower Pico rejected or did not confirm the synchronized IR "
+            << "command";
+        if (!pico.lastResponse().empty())
+        {
+            std::cerr << ": " << pico.lastResponse();
+        }
+        std::cerr << "\n";
+        return false;
+    }
+
+    return true;
 }
 
 bool IRSender::sendViaPico(

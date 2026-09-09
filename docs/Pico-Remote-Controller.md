@@ -24,8 +24,9 @@ automatic discovery is used.
 | `Tower-IR-TX-005` | 5 | GP5 |
 | `Tower-IR-TX-006` | 6 | GP6 |
 
-Only `Tower-IR-TX-001` is moved to the Pico by this release. The remaining
-existing transmitters keep their Raspberry Pi GPIO assignments.
+All six transmitters can be driven individually. When Tower selects two or
+more Pico transmitters for one IR action, it uses one synchronized broadcast
+instead of replaying the complete command once per transmitter.
 
 ## 1. Create the private Wi-Fi configuration
 
@@ -126,6 +127,10 @@ Each transmitter uses an RE909 board with a BC817 transistor driver.
 | RE909 transistor (`6C`) | BC817-40 | Switches the IR LED current; the Pico GPIO only supplies the control signal |
 | RE909 base pull-down (`103`) | 10 kΩ | Holds the BC817 off while the Pico output is floating or starting |
 
+Place one 100 nF ceramic bypass capacitor directly across the 3.3 V and ground
+connections of every RE909 board. Place one 470-1000 uF electrolytic capacitor
+across the shared transmitter rail, observing its polarity.
+
 The working signal chain is:
 
 ```text
@@ -159,6 +164,12 @@ The firmware keeps reconnecting if Wi-Fi is temporarily lost. Tower includes
 the `carrier_khz` stored with each raw IR recording in every Pico send command,
 so the Pico changes its PWM carrier automatically for each transmission. Older
 recordings without carrier metadata use 38 kHz.
+
+The TCP protocol retains `SEND` for one output and adds `SEND_MULTI` for a
+comma-separated output list. Multi-output sends use one RP2350 PIO state
+machine for GP1-GP6, so every selected output receives the same carrier phase
+and mark/space envelope. Supported synchronized duty settings are 10, 20, 30,
+33, 40, 50, and 60 percent; Tower's calibration profiles use 33, 40, 50, or 60.
 
 ## Tower service startup check
 

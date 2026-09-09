@@ -1,5 +1,6 @@
 #include "devices/remote/controllers/pico_controller.h"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
@@ -142,6 +143,93 @@ bool PicoController::sendIrRaw(
     std::string response;
     const std::string expected =
         "OK SEND " + std::to_string(output);
+
+    return transact(command.str(), response) &&
+        response == expected;
+}
+
+bool PicoController::sendIrRawSynchronized(
+    const std::vector<std::size_t>& outputs,
+    unsigned int carrierKhz,
+    const std::vector<unsigned int>& durations,
+    unsigned int dutyPercent)
+{
+    if (!m_available ||
+        outputs.size() < 2 ||
+        carrierKhz < minimumCarrierKhz ||
+        carrierKhz > maximumCarrierKhz ||
+        (dutyPercent != 0 &&
+            dutyPercent != 10 &&
+            dutyPercent != 20 &&
+            dutyPercent != 30 &&
+            dutyPercent != 33 &&
+            dutyPercent != 40 &&
+            dutyPercent != 50 &&
+            dutyPercent != 60) ||
+        durations.empty())
+    {
+        return false;
+    }
+
+    std::vector<std::size_t> uniqueOutputs;
+    for (const std::size_t output : outputs)
+    {
+        if (output < firstIrOutput || output > lastIrOutput)
+        {
+            return false;
+        }
+
+        if (std::find(
+                uniqueOutputs.begin(),
+                uniqueOutputs.end(),
+                output) == uniqueOutputs.end())
+        {
+            uniqueOutputs.push_back(output);
+        }
+    }
+
+    if (uniqueOutputs.size() < 2)
+    {
+        return false;
+    }
+
+    std::ostringstream outputList;
+    for (std::size_t index = 0; index < uniqueOutputs.size(); ++index)
+    {
+        if (index > 0)
+        {
+            outputList << ",";
+        }
+        outputList << uniqueOutputs[index];
+    }
+
+    std::ostringstream command;
+    command << "SEND_MULTI " << outputList.str() << " "
+            << carrierKhz << " ";
+
+    if (dutyPercent > 0)
+    {
+        command << dutyPercent << " ";
+    }
+
+    for (std::size_t index = 0; index < durations.size(); ++index)
+    {
+        const unsigned int duration = durations[index];
+        if (duration == 0 || duration > maximumDurationMicroseconds)
+        {
+            return false;
+        }
+
+        if (index > 0)
+        {
+            command << ",";
+        }
+        command << duration;
+    }
+
+    std::string response;
+    const std::string expected =
+        "OK SEND_MULTI " + outputList.str();
 
     return transact(command.str(), response) &&
         response == expected;

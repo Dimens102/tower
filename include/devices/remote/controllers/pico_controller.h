@@ -29,6 +29,12 @@ public:
         const std::vector<unsigned int>& durations,
         unsigned int dutyPercent = 0);
 
+    bool sendIrRawSynchronized(
+        const std::vector<std::size_t>& outputs,
+        unsigned int carrierKhz,
+        const std::vector<unsigned int>& durations,
+        unsigned int dutyPercent = 0);
+
     const std::string& host() const;
     const std::string& lastResponse() const;
 

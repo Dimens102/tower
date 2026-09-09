@@ -86,6 +86,12 @@ The web interface and phone app should:
 
 They should not implement scheduling, conditions, protocol encoding, or hardware access.
 
+Windows-only lifecycle and event triggers are a deliberate boundary exception.
+The complete schedule and action remain stored on the Tower, while Windows Task
+Scheduler stores only the Windows trigger and Tower schedule ID. The SYSTEM
+background agent queues that ID back to `/api/v1/schedules/run`, so command
+execution still uses the Tower-owned action model.
+
 ## Local display boundary
 
 The automation engine must not control the LCD or GPIO26 directly. It may expose

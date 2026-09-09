@@ -6,6 +6,7 @@ $script:voiceCatalog = $null
 $script:voiceTreePopulating = $false
 $script:voiceActionDrafts = @()
 $script:voiceActionListPopulating = $false
+$script:voiceListeningRestartPending = $false
 
 $voiceTab = New-Object System.Windows.Forms.TabPage
 $voiceTab.Text = 'Voice'
@@ -59,12 +60,20 @@ $voiceReloadButton.Size = New-Object System.Drawing.Size(82, 34)
 $voiceReloadButton.Anchor = 'Top,Right'
 $voiceHeader.Controls.Add($voiceReloadButton)
 
+$voiceListeningButton = New-Object System.Windows.Forms.Button
+$voiceListeningButton.Text = 'Disable listening'
+$voiceListeningButton.Size = New-Object System.Drawing.Size(126, 34)
+$voiceListeningButton.Anchor = 'Top,Right'
+$voiceHeader.Controls.Add($voiceListeningButton)
+
 $voiceHeader.Add_Resize({
     $voiceSaveButton.Left = [Math]::Max(200, $voiceHeader.ClientSize.Width - 116)
     $voiceSaveButton.Top = 9
     $voiceReloadButton.Left = [Math]::Max(110, $voiceSaveButton.Left - 88)
     $voiceReloadButton.Top = 9
-    $voiceStatusLabel.Width = [Math]::Max(180, $voiceReloadButton.Left - 16)
+    $voiceListeningButton.Left = [Math]::Max(4, $voiceReloadButton.Left - 132)
+    $voiceListeningButton.Top = 9
+    $voiceStatusLabel.Width = [Math]::Max(180, $voiceListeningButton.Left - 16)
 })
 
 $voiceSplit = New-Object System.Windows.Forms.SplitContainer
@@ -126,11 +135,31 @@ function New-VoiceEditorLabel([string]$text, [int]$top) {
 [void](New-VoiceEditorLabel 'Wake phrase' 18)
 $voiceWakeText = New-Object System.Windows.Forms.TextBox
 $voiceWakeText.Location = New-Object System.Drawing.Point(155, 18)
-$voiceWakeText.Size = New-Object System.Drawing.Size(300, 25)
+$voiceWakeText.Size = New-Object System.Drawing.Size(220, 25)
 $voiceEditor.Controls.Add($voiceWakeText)
 
+$voiceWakeConfidenceLabel = New-Object System.Windows.Forms.Label
+$voiceWakeConfidenceLabel.Text = 'Minimum'
+$voiceWakeConfidenceLabel.Location = New-Object System.Drawing.Point(385, 20)
+$voiceWakeConfidenceLabel.Size = New-Object System.Drawing.Size(70, 22)
+$voiceEditor.Controls.Add($voiceWakeConfidenceLabel)
+
+$voiceWakeConfidence = New-Object System.Windows.Forms.NumericUpDown
+$voiceWakeConfidence.Location = New-Object System.Drawing.Point(458, 18)
+$voiceWakeConfidence.Size = New-Object System.Drawing.Size(60, 25)
+$voiceWakeConfidence.Minimum = 50
+$voiceWakeConfidence.Maximum = 100
+$voiceWakeConfidence.Value = 85
+$voiceEditor.Controls.Add($voiceWakeConfidence)
+
+$voiceWakeConfidenceUnit = New-Object System.Windows.Forms.Label
+$voiceWakeConfidenceUnit.Text = '%'
+$voiceWakeConfidenceUnit.Location = New-Object System.Drawing.Point(522, 20)
+$voiceWakeConfidenceUnit.Size = New-Object System.Drawing.Size(24, 22)
+$voiceEditor.Controls.Add($voiceWakeConfidenceUnit)
+
 $voiceWakeHint = New-Object System.Windows.Forms.Label
-$voiceWakeHint.Text = 'The root phrase that activates the listener.'
+$voiceWakeHint.Text = 'The root phrase and its separate strictness threshold.'
 $voiceWakeHint.Location = New-Object System.Drawing.Point(155, 46)
 $voiceWakeHint.Size = New-Object System.Drawing.Size(390, 20)
 $voiceWakeHint.ForeColor = [System.Drawing.Color]::DimGray
@@ -249,6 +278,49 @@ $voiceActionsList.Location = New-Object System.Drawing.Point(155, 480)
 $voiceActionsList.Size = New-Object System.Drawing.Size(430, 121)
 $voiceEditor.Controls.Add($voiceActionsList)
 
+$voiceActionOrderPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+$voiceActionOrderPanel.Location = New-Object System.Drawing.Point(591, 480)
+$voiceActionOrderPanel.Size = New-Object System.Drawing.Size(40, 121)
+$voiceActionOrderPanel.FlowDirection =
+    [System.Windows.Forms.FlowDirection]::TopDown
+$voiceActionOrderPanel.WrapContents = $false
+$voiceActionOrderPanel.Padding = New-Object System.Windows.Forms.Padding(2, 3, 2, 0)
+$voiceEditor.Controls.Add($voiceActionOrderPanel)
+
+$voiceMoveActionUpButton = New-Object System.Windows.Forms.Button
+$voiceMoveActionUpButton.Text = ([string][char]0x2191)
+$voiceMoveActionUpButton.Size = New-Object System.Drawing.Size(34, 52)
+$voiceMoveActionUpButton.Margin = New-Object System.Windows.Forms.Padding(1, 2, 1, 2)
+$voiceMoveActionUpButton.Font = New-Object System.Drawing.Font(
+    'Segoe UI Symbol',
+    14,
+    [System.Drawing.FontStyle]::Bold
+)
+$voiceMoveActionUpButton.Enabled = $false
+[void]$voiceActionOrderPanel.Controls.Add($voiceMoveActionUpButton)
+
+$voiceMoveActionDownButton = New-Object System.Windows.Forms.Button
+$voiceMoveActionDownButton.Text = ([string][char]0x2193)
+$voiceMoveActionDownButton.Size = New-Object System.Drawing.Size(34, 52)
+$voiceMoveActionDownButton.Margin = New-Object System.Windows.Forms.Padding(1, 2, 1, 2)
+$voiceMoveActionDownButton.Font = New-Object System.Drawing.Font(
+    'Segoe UI Symbol',
+    14,
+    [System.Drawing.FontStyle]::Bold
+)
+$voiceMoveActionDownButton.Enabled = $false
+[void]$voiceActionOrderPanel.Controls.Add($voiceMoveActionDownButton)
+
+$voiceActionOrderToolTip = New-Object System.Windows.Forms.ToolTip
+$voiceActionOrderToolTip.SetToolTip(
+    $voiceMoveActionUpButton,
+    'Move the selected command action one position earlier'
+)
+$voiceActionOrderToolTip.SetToolTip(
+    $voiceMoveActionDownButton,
+    'Move the selected command action one position later'
+)
+
 $voiceActionButtons = New-Object System.Windows.Forms.FlowLayoutPanel
 $voiceActionButtons.Location = New-Object System.Drawing.Point(155, 609)
 $voiceActionButtons.Size = New-Object System.Drawing.Size(430, 40)
@@ -277,6 +349,68 @@ function Set-VoiceStatus([string]$message, [bool]$isError = $false) {
     }
     else {
         [System.Drawing.Color]::ForestGreen
+    }
+}
+
+function Get-VoiceListeningEnabled {
+    if ($null -eq $script:voiceConfig) { return $true }
+    $property = $script:voiceConfig.PSObject.Properties['listening_enabled']
+    if ($null -eq $property) { return $true }
+    return [bool]$property.Value
+}
+
+function Update-VoiceListeningButton {
+    $enabled = Get-VoiceListeningEnabled
+    $voiceListeningButton.Text = if ($enabled) {
+        'Disable listening'
+    }
+    else {
+        'Enable listening'
+    }
+    $voiceListeningButton.ForeColor = if ($enabled) {
+        [System.Drawing.Color]::Firebrick
+    }
+    else {
+        [System.Drawing.Color]::ForestGreen
+    }
+}
+
+function Set-VoiceListeningState([bool]$enabled) {
+    if (-not $script:voiceEditorLoaded) { return }
+
+    try {
+        $voiceListeningButton.Enabled = $false
+        $response = Invoke-TowerPost '/api/v1/voice/listening' @{
+            enabled = $enabled
+        }
+
+        $property = $script:voiceConfig.PSObject.Properties['listening_enabled']
+        if ($null -eq $property) {
+            $script:voiceConfig | Add-Member `
+                -MemberType NoteProperty `
+                -Name listening_enabled `
+                -Value $enabled
+        }
+        else {
+            $property.Value = $enabled
+        }
+
+        Update-VoiceListeningButton
+        Set-VoiceStatus ([string]$response.message) (-not $enabled)
+
+        if ($enabled) {
+            Start-VoiceListeningReadinessPoll
+        }
+        elseif ($null -ne $script:voiceListeningReadinessTimer) {
+            $script:voiceListeningRestartPending = $false
+            $script:voiceListeningReadinessTimer.Stop()
+        }
+    }
+    catch {
+        Set-VoiceStatus "Voice listening change failed: $($_.Exception.Message)" $true
+    }
+    finally {
+        $voiceListeningButton.Enabled = $true
     }
 }
 
@@ -464,6 +598,20 @@ function Refresh-VoiceActionList([int]$selectedIndex = 0) {
     }
     $voiceUpdateActionButton.Enabled = $voiceActionsList.SelectedIndex -ge 0
     $voiceRemoveActionButton.Enabled = $voiceActionsList.Items.Count -gt 1
+    Update-VoiceActionOrderButtons
+}
+
+function Update-VoiceActionOrderButtons {
+    $index = $voiceActionsList.SelectedIndex
+    $count = $voiceActionsList.Items.Count
+    $canReorder =
+        $voiceActionsList.Enabled -and
+        $count -gt 1 -and
+        $index -ge 0
+
+    $voiceMoveActionUpButton.Enabled = $canReorder -and $index -gt 0
+    $voiceMoveActionDownButton.Enabled =
+        $canReorder -and $index -lt ($count - 1)
 }
 
 function Show-VoiceActionFields($action) {
@@ -585,6 +733,29 @@ function Remove-VoiceActionDraft {
     Show-VoiceActionFields $script:voiceActionDrafts[$voiceActionsList.SelectedIndex]
 }
 
+function Move-VoiceActionDraft([int]$direction) {
+    $sourceIndex = $voiceActionsList.SelectedIndex
+    $targetIndex = $sourceIndex + $direction
+
+    if ($sourceIndex -lt 0 -or
+        $targetIndex -lt 0 -or
+        $targetIndex -ge $script:voiceActionDrafts.Count) {
+        return
+    }
+
+    $actions = @($script:voiceActionDrafts)
+    $moving = $actions[$sourceIndex]
+    $actions[$sourceIndex] = $actions[$targetIndex]
+    $actions[$targetIndex] = $moving
+    $script:voiceActionDrafts = @($actions)
+
+    Refresh-VoiceActionList $targetIndex
+    Show-VoiceActionFields $script:voiceActionDrafts[$targetIndex]
+    Set-VoiceStatus (
+        'Command order changed. Click Apply level, then Save to Tower.'
+    )
+}
+
 function Update-VoiceActionFields(
     [string]$targetId = '',
     [string]$commandId = '',
@@ -618,6 +789,7 @@ function Update-VoiceActionFields(
         -not $isBranch -and $voiceActionsList.SelectedIndex -ge 0
     $voiceRemoveActionButton.Enabled =
         -not $isBranch -and $voiceActionsList.Items.Count -gt 1
+    Update-VoiceActionOrderButtons
 
     if ($isPreset) {
         $voiceTargetLabel.Text = 'Preset'
@@ -918,12 +1090,58 @@ function Refresh-VoiceStatus {
         $response = Invoke-TowerGet '/api/v1/voice/status'
         $state = [string]$response.status.state
         $message = [string]$response.status.message
-        Set-VoiceStatus "Voice: $state - $message" ($state -in @('failed', 'error', 'unavailable'))
+        if ($state -eq 'listening') {
+            $script:voiceListeningRestartPending = $false
+            $wakePhrase = [string]$script:voiceConfig.wake_phrase
+            Set-VoiceStatus "Voice: Listening - ready for '$wakePhrase'"
+        }
+        elseif ($script:voiceListeningRestartPending -and
+            $state -notin @('failed', 'error', 'unavailable')) {
+            Set-VoiceStatus 'Restarting voice detection...'
+        }
+        else {
+            Set-VoiceStatus `
+                "Voice: $state - $message" `
+                ($state -in @('disabled', 'failed', 'error', 'unavailable'))
+        }
+        return $state
     }
     catch {
         Set-VoiceStatus "Voice status unavailable: $($_.Exception.Message)" $true
+        return 'unavailable'
     }
 }
+
+function Start-VoiceListeningReadinessPoll {
+    $script:voiceListeningRestartPending = $true
+    $script:voiceListeningReadinessChecks = 0
+    Set-VoiceStatus 'Restarting voice detection...'
+    $script:voiceListeningReadinessTimer.Start()
+}
+
+$script:voiceListeningReadinessChecks = 0
+$script:voiceListeningReadinessTimer =
+    New-Object System.Windows.Forms.Timer
+$script:voiceListeningReadinessTimer.Interval = 1000
+Add-TowerSafeTimerTick `
+    $script:voiceListeningReadinessTimer `
+    'Voice listening readiness' {
+        if (-not (Get-VoiceListeningEnabled)) {
+            $script:voiceListeningReadinessTimer.Stop()
+            return
+        }
+
+        $script:voiceListeningReadinessChecks++
+        $state = Refresh-VoiceStatus
+        if ($state -eq 'listening' -or
+            $script:voiceListeningReadinessChecks -ge 30) {
+            if ($state -ne 'listening') {
+                $script:voiceListeningRestartPending = $false
+                [void](Refresh-VoiceStatus)
+            }
+            $script:voiceListeningReadinessTimer.Stop()
+        }
+    }
 
 function Refresh-VoiceEditor {
     try {
@@ -935,7 +1153,23 @@ function Refresh-VoiceEditor {
         $script:voiceCatalog = $catalogResponse.catalog
         Merge-LegacyVoiceCommands
         $voiceWakeText.Text = [string]$script:voiceConfig.wake_phrase
+        $wakeConfidenceProperty =
+            $script:voiceConfig.PSObject.Properties['minimum_wake_confidence']
+        $wakeConfidencePercent = if ($null -eq $wakeConfidenceProperty) {
+            85
+        }
+        else {
+            [int][Math]::Round([double]$wakeConfidenceProperty.Value * 100.0)
+        }
+        $voiceWakeConfidence.Value = [Math]::Max(
+            [decimal]$voiceWakeConfidence.Minimum,
+            [Math]::Min(
+                [decimal]$voiceWakeConfidence.Maximum,
+                [decimal]$wakeConfidencePercent
+            )
+        )
         $script:voiceEditorLoaded = $true
+        Update-VoiceListeningButton
         Refresh-VoiceTree
         Refresh-VoiceStatus
     }
@@ -962,6 +1196,18 @@ function Save-VoiceEditor {
         return
     }
     $script:voiceConfig.wake_phrase = $wakePhrase
+    $wakeConfidence = [double]$voiceWakeConfidence.Value / 100.0
+    $wakeConfidenceProperty =
+        $script:voiceConfig.PSObject.Properties['minimum_wake_confidence']
+    if ($null -eq $wakeConfidenceProperty) {
+        $script:voiceConfig | Add-Member `
+            -MemberType NoteProperty `
+            -Name minimum_wake_confidence `
+            -Value $wakeConfidence
+    }
+    else {
+        $wakeConfidenceProperty.Value = $wakeConfidence
+    }
 
     try {
         $voiceTab.UseWaitCursor = $true
@@ -1052,6 +1298,7 @@ $voiceActionsList.Add_SelectedIndexChanged({
         Show-VoiceActionFields `
             $script:voiceActionDrafts[$voiceActionsList.SelectedIndex]
     }
+    Update-VoiceActionOrderButtons
 })
 $voiceTypeCombo.Add_SelectedIndexChanged({
     if (-not $script:voiceTreePopulating) { Update-VoiceActionFields }
@@ -1072,6 +1319,12 @@ $voiceUpdateActionButton.Add_Click({
 $voiceRemoveActionButton.Add_Click({
     Invoke-VoiceEditorEvent { Remove-VoiceActionDraft } 'remove action'
 })
+$voiceMoveActionUpButton.Add_Click({
+    Move-VoiceActionDraft -1
+})
+$voiceMoveActionDownButton.Add_Click({
+    Move-VoiceActionDraft 1
+})
 $voiceAddButton.Add_Click({
     Invoke-VoiceEditorEvent { Add-VoiceChild } 'add'
 })
@@ -1081,5 +1334,8 @@ $voiceDeleteButton.Add_Click({
 $voiceTestButton.Add_Click({ Test-VoiceAction })
 $voiceSaveButton.Add_Click({ Save-VoiceEditor })
 $voiceReloadButton.Add_Click({ Refresh-VoiceEditor })
+$voiceListeningButton.Add_Click({
+    Set-VoiceListeningState (-not (Get-VoiceListeningEnabled))
+})
 
 $voiceHeader.PerformLayout()

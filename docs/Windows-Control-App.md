@@ -81,6 +81,20 @@ Install/Repair and Remove controls require UAC. Windows Apps/Installed apps also
 contains a Tower Control uninstall entry; uninstall removes the agent and tasks
 but preserves `%APPDATA%\Tower`.
 
+## Control scheduler
+
+The `Control` tab stores every schedule and its action definition on the Tower.
+Normal one-time, daily, and weekly schedules run entirely on the Pi. The
+Windows application is not required once they are saved.
+
+Four Windows-specific triggers are also supported: user logon, machine startup,
+Windows idle, and a basic Windows Event Log match (log, provider/source, and
+event ID). These create SYSTEM tasks under `\RF Tower\Schedules`. Each task
+contains only the Tower schedule ID and queues that ID through the background
+agent; IR, RF, and Voice command-set actions remain centrally editable on the
+Pi. Saving, disabling, editing, or deleting a schedule reconciles the matching
+Windows task. Uninstall removes the managed task folder.
+
 Primary goals:
 
 - Reliable command execution without manual Tower service restarts.

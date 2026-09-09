@@ -4,6 +4,15 @@
 
 ### Added
 
+- Added a persistent Voice-tab listening On/Off control. Disabled listening
+  releases the microphone while leaving RF Tower and its command editor active.
+- Added a separately configurable wake confidence threshold to the Voice tab.
+- Added the Tower-owned Control scheduler for one-time, daily, and weekly IR,
+  RF, RF-preset, and live Voice-tree command execution.
+- Added Windows Task Scheduler integration for logon, startup, idle, and basic
+  Event Log triggers. Managed SYSTEM tasks retain only the Tower schedule ID
+  and deliver it through the existing background-agent queue.
+
 - Added Pi-owned RF Presets 1-3 in `data/rf/presets.json`, authenticated API
   endpoints for saving/executing them, and automatic migration from the
   Windows client's existing preset selections.
@@ -28,6 +37,24 @@
   capabilities, safety rules, and staged path toward manual/profile control.
 
 ### Fixed
+
+- Voice microphone discovery now retries indefinitely through systemd after a
+  USB webcam is removed, and automatically recovers after it is reconnected.
+- Wake recognition now scores the wake-prefix words separately and includes
+  common competing words, reducing forced `lower`/`power` -> `tower` matches.
+- Multi-output Pico IR actions now transmit one synchronized raw frame on all
+  selected GP1-GP6 outputs. Toggle commands are no longer replayed serially on
+  each transmitter, which could switch a device on and immediately back off.
+- Voice recognition now accepts the wake phrase and following command levels
+  in one utterance, avoiding missed `Tower Zone`/`Tower Power` phrases when no
+  wake beep is present to signal an artificial pause.
+- Restricted that idle recognition to the wake phrase plus one branch only.
+  Final action levels must be recognized separately, preventing television
+  dialogue from matching and executing an entire command path in one result.
+- Voice leaf actions now execute before the USB microphone input stream is
+  restarted, matching the reliable Voice-tab Test action timing.
+- Multi-action LCD confirmations now show each command exactly once for two
+  seconds instead of cycling repeatedly through the list.
 
 - Split RF preset persistence and request handling out of the already large
   `TowerApiServer.cpp`. The first implementation pushed that single compiler

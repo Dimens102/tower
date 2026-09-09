@@ -1304,6 +1304,7 @@ $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 # Sidebar state.
 $script:sidebarVisible = $false
 $script:sidebarAnimating = $false
+$script:sidebarPinned = $false
 $script:lastInsideAt = [DateTime]::Now
 $script:targetScreen = $null
 $script:openBounds = $null
@@ -1754,13 +1755,13 @@ function Update-TrayIcon {
             })
 
             $trayRecover = $trayMenu.Items.Add(
-                'Recover to rightmost display'
+                'Recover to primary display'
             )
             $trayRecover.Add_Click({
-                $screens = Get-OrderedScreens
-                if ($screens.Count -gt 0) {
-                    $rightmost = $screens[$screens.Count - 1]
-                    Save-TargetScreenIdentity $rightmost
+                $primaryScreen =
+                    [System.Windows.Forms.Screen]::PrimaryScreen
+                if ($null -ne $primaryScreen) {
+                    Save-TargetScreenIdentity $primaryScreen
                     Refresh-MonitorButtons
                     Hide-SidebarImmediately
                     Update-SidebarBounds
@@ -1876,6 +1877,62 @@ $piClockToolTip.SetToolTip(
     'Raspberry Pi system clock'
 )
 
+$sidebarPinButton = New-Object System.Windows.Forms.Button
+$sidebarPinButton.Text = '📌'
+$sidebarPinButton.Size = New-Object System.Drawing.Size(42, 38)
+$sidebarPinButton.Anchor = 'Top,Right'
+$sidebarPinButton.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+$sidebarPinButton.UseVisualStyleBackColor = $false
+$sidebarPinButton.BackColor = [System.Drawing.Color]::FromArgb(60, 72, 88)
+$sidebarPinButton.ForeColor = [System.Drawing.Color]::White
+$sidebarPinButton.Font = New-Object System.Drawing.Font('Segoe UI Emoji', 11)
+$sidebarPinButton.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+$sidebarPinButton.FlatAppearance.BorderColor = [System.Drawing.Color]::White
+$sidebarPinButton.FlatAppearance.BorderSize = 1
+$sidebarPinButton.TabStop = $false
+$sidebarPinButton.CausesValidation = $false
+$header.Controls.Add($sidebarPinButton)
+
+$sidebarPinToolTip = New-Object System.Windows.Forms.ToolTip
+
+function Update-SidebarPinButton {
+    if ($script:sidebarPinned) {
+        $sidebarPinButton.BackColor = [System.Drawing.Color]::SteelBlue
+        $sidebarPinButton.FlatAppearance.BorderColor =
+            [System.Drawing.Color]::FromArgb(185, 220, 250)
+        $sidebarPinToolTip.SetToolTip(
+            $sidebarPinButton,
+            'Pinned open - click to restore automatic slide-away'
+        )
+    }
+    else {
+        $sidebarPinButton.BackColor =
+            [System.Drawing.Color]::FromArgb(60, 72, 88)
+        $sidebarPinButton.FlatAppearance.BorderColor =
+            [System.Drawing.Color]::White
+        $sidebarPinToolTip.SetToolTip(
+            $sidebarPinButton,
+            'Keep Tower Control open'
+        )
+    }
+}
+
+$sidebarPinButton.Add_Click({
+    $script:sidebarPinned = -not $script:sidebarPinned
+    $script:lastInsideAt = [DateTime]::Now
+    Update-SidebarPinButton
+
+    if ($script:sidebarPinned) {
+        Set-TowerStatus 'Tower Control pinned open.'
+        $form.TopMost = $true
+        $form.BringToFront()
+    }
+    else {
+        Set-TowerStatus 'Tower Control unpinned; automatic slide-away restored.'
+    }
+})
+Update-SidebarPinButton
+
 $exitButton = New-Object System.Windows.Forms.Button
 $exitButton.Text = 'EXIT'
 $exitButton.Size = New-Object System.Drawing.Size(80, 38)
@@ -1903,6 +1960,7 @@ function Position-HeaderControls {
     $exitButton.Top = $buttonY
     $refreshButton.Top = $buttonY
     $piClockBox.Top = $buttonY
+    $sidebarPinButton.Top = $buttonY
 
     $rightPadding = 28
     $exitButton.Left = [Math]::Max(
@@ -1916,6 +1974,10 @@ function Position-HeaderControls {
     $piClockBox.Left = [Math]::Max(
         0,
         $refreshButton.Left - 10 - $piClockBox.Width
+    )
+    $sidebarPinButton.Left = [Math]::Max(
+        0,
+        $piClockBox.Left - 8 - $sidebarPinButton.Width
     )
 
     # Tower artwork and title.
@@ -1935,11 +1997,12 @@ function Position-HeaderControls {
     $status.Top = 43
     $status.Width = [Math]::Max(
         40,
-        $piClockBox.Left - $status.Left - 18
+        $sidebarPinButton.Left - $status.Left - 18
     )
     $status.Height = 22
 
     # Explicit sibling z-order: action buttons must always be on top.
+    $sidebarPinButton.BringToFront()
     $piClockBox.BringToFront()
     $refreshButton.BringToFront()
     $exitButton.BringToFront()
@@ -12982,6 +13045,16 @@ function Load-SelectedTabIfNeeded {
     }
 }
 
+$irLayoutEditorModule = Join-Path $PSScriptRoot 'Tower-Ir-Layout-Editor.ps1'
+if (Test-Path $irLayoutEditorModule) {
+    . $irLayoutEditorModule
+}
+else {
+    Write-TowerLog 'WARN' (
+        "IR layout editor module missing: $irLayoutEditorModule"
+    )
+}
+
 $sensorCardsViewButton.Add_Click({
     Set-SensorViewMode 'cards'
 })
@@ -13213,6 +13286,11 @@ Add-TowerSafeTimerTick $edgeTimer 'Sidebar edge watcher' {
         if ($atRightEdge) {
             Animate-Sidebar $true
         }
+        return
+    }
+
+    if ($script:sidebarPinned) {
+        $script:lastInsideAt = [DateTime]::Now
         return
     }
 
