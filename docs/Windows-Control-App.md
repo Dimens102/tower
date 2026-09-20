@@ -95,6 +95,37 @@ agent; IR, RF, and Voice command-set actions remain centrally editable on the
 Pi. Saving, disabling, editing, or deleting a schedule reconciles the matching
 Windows task. Uninstall removes the managed task folder.
 
+## Programmable IR remote buttons
+
+The Control tab also contains a `Remote buttons` page. It lets a physical IR
+remote such as SofaBaton run Tower-owned actions without keeping the Windows
+application open.
+
+For every saved button, Tower allocates a unique command in its own NEC address
+space. Put SofaBaton into IR learning mode, select a Tower IR transmitter, and
+press `Teach SofaBaton`. Tower repeats the generated 38 kHz code for about
+eight seconds so the SofaBaton learning wizard has time to capture it. When
+that button is later pressed, Tower's installed
+38 kHz receiver recognizes the code and executes the configured action.
+
+Supported targets are:
+
+- RF Presets 1-3 using SMART, ON, or OFF.
+- An individual RF power device using SMART, ON, or OFF.
+- Any enabled IR command and its selected transmitter.
+- Any saved Voice command leaf, executed as an ordered action set without
+  requiring speech recognition.
+
+The trigger listener requires ten seconds without the same button signal
+before accepting it again. Full NEC frames and short held-key repeats extend
+this lockout. SMART remembers successful sends per RF preset or RF device
+while `tower.service` remains running. Explicit ON/OFF also updates this
+memory. After a service restart, the first SMART action sends ON. This is
+last-sent state, not feedback from the physical appliance.
+
+Definitions are stored on the Pi in `data/control/ir_triggers.json`. The
+Windows editor only creates and changes them.
+
 Primary goals:
 
 - Reliable command execution without manual Tower service restarts.

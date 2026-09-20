@@ -14,8 +14,9 @@ struct VoiceDisplayNotification
 {
     std::vector<std::string> path;
     std::vector<VoiceDisplayAction> actions;
+    std::string phase = "completed";
     bool ok = false;
-    int durationSeconds = 2;
+    int durationSeconds = 5;
 };
 
 struct VoiceApiResponse

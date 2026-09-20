@@ -193,7 +193,9 @@ $voiceTypeCombo.Size = New-Object System.Drawing.Size(220, 25)
     'Branch (more words)',
     'RF preset',
     'RF device',
-    'IR command'
+    'IR command',
+    'Device power',
+    'Saved script'
 ))
 $voiceEditor.Controls.Add($voiceTypeCombo)
 
@@ -554,6 +556,8 @@ function Get-VoiceActionDisplayName($action) {
     $delaySeconds = [Math]::Max(0, [int]$action.delay_before_seconds)
     $delayText = if ($delaySeconds -gt 0) { " [wait ${delaySeconds}s]" } else { '' }
     switch ([string]$action.type) {
+        'device_power' { return "Power $([string]$action.device) -> $([string]$action.state)$delayText" }
+        'script' { return "Script: $([string]$action.script)$delayText" }
         'rf_preset' {
             return "RF Preset $([int]$action.preset) -> $([string]$action.action)$delayText"
         }
@@ -622,6 +626,9 @@ function Show-VoiceActionFields($action) {
     $transmitters = @()
     $delaySeconds = [Math]::Max(0, [int]$action.delay_before_seconds)
     switch ([string]$action.type) {
+        'device_power' { $voiceTypeCombo.SelectedItem = 'Device power'; $targetId = [string]$action.device; $operation = [string]$action.state }
+        'script' { $voiceTypeCombo.SelectedItem = 'Saved script'; $targetId = [string]$action.script }
+
         'rf_preset' {
             $voiceTypeCombo.SelectedItem = 'RF preset'
             $targetId = [string]$action.preset
@@ -654,6 +661,14 @@ function Show-VoiceActionFields($action) {
 function Get-VoiceActionFromFields {
     $type = [string]$voiceTypeCombo.SelectedItem
     $delaySeconds = [int]$voiceDelaySeconds.Value
+    if ($type -eq 'Device power') {
+        if ($voiceTargetCombo.SelectedIndex -lt 0) { throw 'Select a device.' }
+        return [pscustomobject]@{type='device_power';device=[string]$script:voicePowerRows[$voiceTargetCombo.SelectedIndex].id;state=[string]$voiceActionCombo.SelectedItem;delay_before_seconds=$delaySeconds}
+    }
+    if ($type -eq 'Saved script') {
+        if ($voiceTargetCombo.SelectedIndex -lt 0) { throw 'Select a saved script.' }
+        return [pscustomobject]@{type='script';script=[string]$script:voiceScriptRows[$voiceTargetCombo.SelectedIndex].id;delay_before_seconds=$delaySeconds}
+    }
     if ($type -eq 'RF preset') {
         if ($voiceTargetCombo.SelectedIndex -lt 0) { throw 'Select a preset.' }
         $preset = @($script:voiceCatalog.presets)[$voiceTargetCombo.SelectedIndex]
@@ -770,14 +785,15 @@ function Update-VoiceActionFields(
     $isPreset = $type -eq 'RF preset'
     $isRfDevice = $type -eq 'RF device'
     $isIr = $type -eq 'IR command'
+    $isPower = $type -eq 'Device power'
 
     $voiceTargetLabel.Visible = -not $isBranch
     $voiceTargetCombo.Visible = -not $isBranch
     $voiceCommandLabel.Visible = $isIr
     $voiceCommandCombo.Visible = $isIr
     $voiceActionLabel.Text = 'Action'
-    $voiceActionLabel.Visible = $isPreset -or $isRfDevice
-    $voiceActionCombo.Visible = $isPreset -or $isRfDevice
+    $voiceActionLabel.Visible = $isPreset -or $isRfDevice -or $isPower
+    $voiceActionCombo.Visible = $isPreset -or $isRfDevice -or $isPower
     $voiceTransmitterPanel.Visible = $isIr
     $voiceDelayLabel.Visible = -not $isBranch
     $voiceDelaySeconds.Visible = -not $isBranch
@@ -791,7 +807,19 @@ function Update-VoiceActionFields(
         -not $isBranch -and $voiceActionsList.Items.Count -gt 1
     Update-VoiceActionOrderButtons
 
-    if ($isPreset) {
+    if ($isPower) {
+        $voiceTargetLabel.Text = 'Device'
+        $script:voicePowerRows = @((Invoke-TowerGet '/api/v1/control/device-states').document.devices)
+        foreach ($item in $script:voicePowerRows) { [void]$voiceTargetCombo.Items.Add([string]$item.name) }
+        Set-VoiceComboIndexById $voiceTargetCombo $script:voicePowerRows $targetId
+    }
+    elseif ($type -eq 'Saved script') {
+        $voiceTargetLabel.Text = 'Saved script'
+        $script:voiceScriptRows = @((Invoke-TowerGet '/api/v1/control/scripts').scripts)
+        foreach ($item in $script:voiceScriptRows) { [void]$voiceTargetCombo.Items.Add([string]$item.name) }
+        Set-VoiceComboIndexById $voiceTargetCombo $script:voiceScriptRows $targetId
+    }
+    elseif ($isPreset) {
         $voiceTargetLabel.Text = 'Preset'
         $items = @($script:voiceCatalog.presets)
         foreach ($item in $items) {
@@ -1214,6 +1242,7 @@ function Save-VoiceEditor {
         $response = Invoke-TowerPost '/api/v1/voice/config' @{
             config = $script:voiceConfig
         }
+    if(Get-Command Set-TowerDirty -ErrorAction SilentlyContinue){Set-TowerDirty $voiceSaveButton $false}
         Set-VoiceStatus ([string]$response.message)
         Refresh-VoiceTree
     }
@@ -1247,43 +1276,8 @@ function Test-VoiceAction {
     }
 
     try {
-        $actionCount = 0
-        foreach ($action in @($node.actions)) {
-            $delaySeconds = [Math]::Max(0, [int]$action.delay_before_seconds)
-            if ($delaySeconds -gt 0) {
-                Set-VoiceStatus "Waiting $delaySeconds seconds before action $($actionCount + 1)..."
-                [System.Windows.Forms.Application]::DoEvents()
-                Start-Sleep -Seconds $delaySeconds
-            }
-            switch ([string]$action.type) {
-                'rf_preset' {
-                    $response = Invoke-TowerPost '/api/v1/rf/preset' @{
-                        preset = [int]$action.preset
-                        action = [string]$action.action
-                    }
-                }
-                'rf_group' {
-                    $response = Invoke-TowerPost '/api/v1/rf/group' @{
-                        action = [string]$action.action
-                        devices = @($action.devices)
-                    }
-                }
-                default {
-                    $request = @{
-                        device = [string]$action.device
-                        command = [string]$action.command
-                    }
-                    if (@($action.transmitters).Count -gt 0) {
-                        $request.transmitters = @($action.transmitters)
-                    }
-                    elseif (-not [string]::IsNullOrWhiteSpace([string]$action.transmitter)) {
-                        $request.transmitter = [string]$action.transmitter
-                    }
-                    $response = Invoke-TowerPost '/api/v1/execute' $request
-                }
-            }
-            $actionCount++
-        }
+        $actionCount = @($node.actions).Count
+        $response = Invoke-TowerPost '/api/v1/control/actions' @{ actions = @($node.actions) }
         Set-VoiceStatus "Test succeeded ($actionCount actions): $(@($path) -join ' -> ')"
     }
     catch {

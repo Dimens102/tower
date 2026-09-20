@@ -139,6 +139,7 @@ std::string fitDisplayLine(const std::string& value)
 TowerService::TowerService()
 {
     apiServer_.setScheduler(&scheduler_);
+    apiServer_.setIRTriggerService(&irTriggerService_);
     auto aquariumSensor =
         std::make_unique<TemperatureSensor>(
             "ID1",
@@ -172,19 +173,76 @@ TowerService::TowerService()
         {
             showVoiceNotification(notification);
         });
+
+    ExecutionDisplay::setHandler(
+        [this](const ExecutionDisplayNotification& notification)
+        {
+            queueExecutionDisplay(notification);
+        });
 }
 
 void TowerService::showVoiceNotification(
     const VoiceDisplayNotification& notification)
 {
-    std::lock_guard<std::mutex> lock(voiceNotificationMutex_);
-    voiceNotification_ = notification;
-    voiceNotificationActive_ = true;
-    voiceNotificationPainted_ = false;
-    voiceNotificationStartedAt_ = std::chrono::steady_clock::now();
-    voiceNotificationEndsAt_ =
-        voiceNotificationStartedAt_ +
-        std::chrono::seconds(notification.durationSeconds);
+    std::string path;
+    for (const std::string& segment : notification.path)
+    {
+        if (!path.empty())
+        {
+            path += " > ";
+        }
+        path += segment;
+    }
+
+    if (notification.phase == "started")
+    {
+        queueExecutionDisplay({
+            path.empty() ? "Voice command" : path,
+            "Voice sequence",
+            "starting",
+            "Running actions...",
+            true,
+            std::max(5, notification.durationSeconds),
+        });
+        return;
+    }
+
+    for (const VoiceDisplayAction& action : notification.actions)
+    {
+        queueExecutionDisplay({
+            path.empty() ? "Voice command" : path,
+            action.target,
+            action.command,
+            notification.ok ? "OK - command sent" : "FAILED",
+            notification.ok,
+            5,
+        });
+    }
+
+    queueExecutionDisplay({
+        path.empty() ? "Voice command" : path,
+        "Voice sequence",
+        notification.ok ? "completed" : "failed",
+        notification.ok ? "OK - sequence done" : "FAILED",
+        notification.ok,
+        std::max(5, notification.durationSeconds),
+    });
+}
+
+void TowerService::queueExecutionDisplay(
+    const ExecutionDisplayNotification& notification)
+{
+    ExecutionDisplayNotification normalized = notification;
+    normalized.durationSeconds =
+        std::clamp(normalized.durationSeconds, 1, 300);
+
+    std::lock_guard<std::mutex> lock(executionDisplayMutex_);
+    constexpr std::size_t maximumQueuedNotifications = 100;
+    if (executionDisplayQueue_.size() >= maximumQueuedNotifications)
+    {
+        executionDisplayQueue_.pop_front();
+    }
+    executionDisplayQueue_.push_back(std::move(normalized));
 }
 
 bool TowerService::start()
@@ -286,6 +344,20 @@ bool TowerService::start()
         Logger::warning(
             "TowerService",
             "One or more managed devices failed to initialize");
+    }
+
+    std::string triggerError;
+    if (!irTriggerService_.start(triggerError))
+    {
+        Logger::warning(
+            "TowerService",
+            "IR remote trigger service did not start: " + triggerError);
+    }
+    else
+    {
+        Logger::info(
+            "TowerService",
+            "IR remote trigger service started");
     }
 
     if (lcdAvailable)
@@ -498,65 +570,46 @@ void TowerService::updateDisplay()
     }
 
     {
-        std::lock_guard<std::mutex> lock(voiceNotificationMutex_);
-        if (voiceNotificationActive_)
+        std::lock_guard<std::mutex> lock(executionDisplayMutex_);
+        const auto now = std::chrono::steady_clock::now();
+
+        if (executionDisplayActive_ && now >= executionDisplayEndsAt_)
         {
-            const auto now = std::chrono::steady_clock::now();
-            if (now < voiceNotificationEndsAt_)
+            executionDisplayActive_ = false;
+            executionDisplayPainted_ = false;
+        }
+
+        if (!executionDisplayActive_ && !executionDisplayQueue_.empty())
+        {
+            executionDisplayCurrent_ =
+                std::move(executionDisplayQueue_.front());
+            executionDisplayQueue_.pop_front();
+            executionDisplayActive_ = true;
+            executionDisplayPainted_ = false;
+            executionDisplayEndsAt_ =
+                now + std::chrono::seconds(
+                    executionDisplayCurrent_.durationSeconds);
+        }
+
+        if (executionDisplayActive_)
+        {
+            lcd_.show(
+                fitDisplayLine(executionDisplayCurrent_.title),
+                fitDisplayLine(executionDisplayCurrent_.target),
+                fitDisplayLine(executionDisplayCurrent_.command),
+                fitDisplayLine(executionDisplayCurrent_.result));
+
+            if (!executionDisplayPainted_)
             {
-                std::string pathLine;
-                for (const std::string& segment : voiceNotification_.path)
+                lcd_.setBacklight(true);
+                backlightOn_ = true;
+                if (!permanentBacklight_)
                 {
-                    if (!pathLine.empty())
-                    {
-                        pathLine += " > ";
-                    }
-                    pathLine += segment;
+                    backlightOffAt_ = executionDisplayEndsAt_;
                 }
-
-                std::string targetLine = pathLine;
-                std::string commandLine;
-                std::string resultLine =
-                    voiceNotification_.ok ? "OK - command sent" : "FAILED";
-                if (!voiceNotification_.actions.empty())
-                {
-                    const auto elapsed =
-                        std::chrono::duration_cast<std::chrono::seconds>(
-                            now - voiceNotificationStartedAt_).count();
-                    const std::size_t actionIndex =
-                        std::min(
-                            static_cast<std::size_t>(elapsed / 2),
-                            voiceNotification_.actions.size() - 1);
-                    const VoiceDisplayAction& action =
-                        voiceNotification_.actions[actionIndex];
-                    targetLine = action.target;
-                    commandLine = action.command;
-                    resultLine =
-                        (voiceNotification_.ok ? "OK " : "FAILED ") +
-                        std::to_string(actionIndex + 1) + "/" +
-                        std::to_string(voiceNotification_.actions.size());
-                }
-
-                lcd_.show(
-                    fitDisplayLine(pathLine.empty() ? "Voice command" : pathLine),
-                    fitDisplayLine(targetLine),
-                    fitDisplayLine(commandLine),
-                    fitDisplayLine(resultLine));
-
-                if (!voiceNotificationPainted_)
-                {
-                    lcd_.setBacklight(true);
-                    backlightOn_ = true;
-                    if (!permanentBacklight_)
-                    {
-                        backlightOffAt_ = voiceNotificationEndsAt_;
-                    }
-                    voiceNotificationPainted_ = true;
-                }
-                return;
+                executionDisplayPainted_ = true;
             }
-            voiceNotificationActive_ = false;
-            voiceNotificationPainted_ = false;
+            return;
         }
     }
 
@@ -817,6 +870,8 @@ void TowerService::run()
 
 void TowerService::stop()
 {
+    ExecutionDisplay::clearHandler();
+    irTriggerService_.stop();
     apiServer_.stop();
     Logger::info(
         "TowerService",

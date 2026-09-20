@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="B3E29CAE-8F02-49ED-8C83-AC03DA7926E1" Name="Tower Control" Language="1033" Version="0.11.5" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
+  <Product Id="65E40972-2426-4BC1-B229-91724F156FA5" Name="Tower Control" Language="1033" Version="0.11.8" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="RF Tower Windows control application and background agent" />
     <MediaTemplate EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Tower Control is already installed." />
-    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.05" />
+    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.08" />
     <Property Id="ARPNOREPAIR" Value="1" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Dimens102/tower" />
     <Icon Id="TowerIcon.ico" SourceFile="$(var.WindowsSource)/assets/tower-icon-tray.ico" />
@@ -42,6 +42,9 @@
         <Component Id="Cmp_4d219d2cd82e17b552f3" Guid="E7131FFB-EDF2-5EA2-BC86-8849B28EF201" Win64="yes">
           <File Id="File_4d219d2cd82e17b552f3" Name="Tower-Control.ps1" Source="$(var.WindowsSource)/Tower-Control.ps1" KeyPath="yes" />
         </Component>
+        <Component Id="Cmp_3538497b01962f6f66fb" Guid="2A46755C-F9AE-58A2-8D08-422466672B41" Win64="yes">
+          <File Id="File_3538497b01962f6f66fb" Name="Tower-Devices-Scripts.ps1" Source="$(var.WindowsSource)/Tower-Devices-Scripts.ps1" KeyPath="yes" />
+        </Component>
         <Component Id="Cmp_77767228e99da1796768" Guid="A8ECF784-9DCF-59B8-9B69-4E4BFD855943" Win64="yes">
           <File Id="File_77767228e99da1796768" Name="Tower-Ir-Layout-Editor.ps1" Source="$(var.WindowsSource)/Tower-Ir-Layout-Editor.ps1" KeyPath="yes" />
         </Component>
@@ -51,8 +54,14 @@
         <Component Id="Cmp_f7e3a3a73e805f16ace7" Guid="326624C8-EA54-515E-A46B-982F80392FAF" Win64="yes">
           <File Id="File_f7e3a3a73e805f16ace7" Name="Tower-RF-Remote.ps1" Source="$(var.WindowsSource)/Tower-RF-Remote.ps1" KeyPath="yes" />
         </Component>
+        <Component Id="Cmp_dda5eaf183198b21bcd1" Guid="DC7DD064-BB80-547F-896B-E04D103B1789" Win64="yes">
+          <File Id="File_dda5eaf183198b21bcd1" Name="Tower-Remote-Commands.ps1" Source="$(var.WindowsSource)/Tower-Remote-Commands.ps1" KeyPath="yes" />
+        </Component>
         <Component Id="Cmp_7efb9675dad2a5571100" Guid="CADF1679-EF3F-5C8F-818B-13B527032E82" Win64="yes">
           <File Id="File_7efb9675dad2a5571100" Name="Tower-Startup-Integration.ps1" Source="$(var.WindowsSource)/Tower-Startup-Integration.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_d6a022950666d50661c4" Guid="A2B1B588-5B95-50AA-8275-793053203B57" Win64="yes">
+          <File Id="File_d6a022950666d50661c4" Name="Tower-Unsaved-Indicator.ps1" Source="$(var.WindowsSource)/Tower-Unsaved-Indicator.ps1" KeyPath="yes" />
         </Component>
         <Component Id="Cmp_ccc991bb1f490d7be5e9" Guid="F98287B5-1116-52FD-9481-AD8F55EB29B6" Win64="yes">
           <File Id="File_ccc991bb1f490d7be5e9" Name="Tower-Voice-Tab.ps1" Source="$(var.WindowsSource)/Tower-Voice-Tab.ps1" KeyPath="yes" />
@@ -137,10 +146,13 @@
       <ComponentRef Id="Cmp_e694b9a0bd4dbcea4eb8" />
       <ComponentRef Id="Cmp_543fcf4d22bad3d12ba9" />
       <ComponentRef Id="Cmp_4d219d2cd82e17b552f3" />
+      <ComponentRef Id="Cmp_3538497b01962f6f66fb" />
       <ComponentRef Id="Cmp_77767228e99da1796768" />
       <ComponentRef Id="Cmp_615efd69dc3e7924e279" />
       <ComponentRef Id="Cmp_f7e3a3a73e805f16ace7" />
+      <ComponentRef Id="Cmp_dda5eaf183198b21bcd1" />
       <ComponentRef Id="Cmp_7efb9675dad2a5571100" />
+      <ComponentRef Id="Cmp_d6a022950666d50661c4" />
       <ComponentRef Id="Cmp_ccc991bb1f490d7be5e9" />
       <ComponentRef Id="Cmp_93626760440023d45f2c" />
       <ComponentRef Id="Cmp_cf5162efbae437f81c48" />

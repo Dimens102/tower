@@ -1,22 +1,17 @@
 #include "core/service/ScheduleService.h"
 
-#include "core/service/CommandExecutor.h"
-#include "core/service/RFPresetService.h"
-#include "core/service/RFCommandService.h"
+#include "core/service/ActionExecutionService.h"
 
 #include <chrono>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
-#include <thread>
 
 namespace {
 const std::filesystem::path path = std::filesystem::path("data") / "schedules" / "schedules.json";
-const std::filesystem::path voicePath = std::filesystem::path("data") / "voice" / "voice_commands.json";
 
 std::string nowMinute() {
     const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -97,50 +92,7 @@ bool ScheduleService::remove(const std::string& id, std::string& error) {
 }
 
 bool ScheduleService::executeSchedule(nlohmann::json& schedule, std::string& error) const {
-    try {
-        std::function<void(const nlohmann::json&)> executeAction;
-        executeAction = [&](const nlohmann::json& action) {
-            const int delay = action.value("delay_before_seconds", 0);
-            if (delay > 0) std::this_thread::sleep_for(std::chrono::seconds(delay));
-            const std::string type = action.value("type", "command");
-            if (type == "command") {
-                auto result = CommandExecutor().execute(action.at("device").get<std::string>(), action.at("command").get<std::string>(), action.value("transmitters", std::vector<std::string>{}));
-                if (!result.succeeded()) throw std::runtime_error(result.message);
-            } else if (type == "rf_preset") {
-                std::vector<RFPresetExecutionResult> results; std::string detail;
-                if (!RFPresetService().execute(action.at("preset").get<int>(), action.at("action").get<std::string>(), results, detail)) throw std::runtime_error(detail);
-            } else if (type == "rf_group") {
-                RFCommandService rf;
-                for (const auto& device : action.at("devices")) { std::string detail; if (!rf.send(device.get<std::string>(), action.at("action").get<std::string>(), detail)) throw std::runtime_error(detail); }
-            } else if (type == "voice_path") {
-                std::ifstream input(voicePath);
-                if (!input) throw std::runtime_error("Cannot open Voice configuration");
-                nlohmann::json config; input >> config;
-                const auto& phrases = action.at("path");
-                if (!phrases.is_array() || phrases.empty()) throw std::runtime_error("Voice command path is empty");
-                const nlohmann::json* children = &config.at("command_tree");
-                const nlohmann::json* node = nullptr;
-                for (std::size_t phraseIndex = 0; phraseIndex < phrases.size(); ++phraseIndex) {
-                    const auto& phraseValue = phrases.at(phraseIndex);
-                    const std::string phrase = phraseValue.get<std::string>();
-                    const auto found = children->find(phrase);
-                    if (found == children->end()) throw std::runtime_error("Voice command no longer exists: " + phrase);
-                    node = &(*found);
-                    if (phraseIndex + 1 < phrases.size()) {
-                        if (!node->contains("children")) throw std::runtime_error("Voice command path ends early: " + phrase);
-                        children = &node->at("children");
-                    }
-                }
-                if (!node || !node->contains("actions") || !node->at("actions").is_array())
-                    throw std::runtime_error("Voice command path does not end in an action set");
-                for (const auto& nestedAction : node->at("actions")) executeAction(nestedAction);
-            } else throw std::runtime_error("Unsupported schedule action type: " + type);
-        };
-        for (const auto& action : schedule.at("actions")) {
-            executeAction(action);
-        }
-        return true;
-    } catch (const std::exception& e) { error = e.what(); return false; }
+    return ActionExecutionService().executeAll(schedule.at("actions"), error);
 }
 
 bool ScheduleService::runNow(const std::string& id, nlohmann::json& result, std::string& error) {

@@ -13,10 +13,10 @@ ROOT = Path(__file__).resolve().parents[2]
 WINDOWS = ROOT / "windows"
 OUTPUT = Path(__file__).resolve().parent / "generated" / "Tower-Control.wxs"
 WIX_NS = "http://schemas.microsoft.com/wix/2006/wi"
-VERSION_DISPLAY = "0.11.05"
-VERSION_MSI = "0.11.5"
+VERSION_DISPLAY = "0.11.08"
+VERSION_MSI = "0.11.8"
 UPGRADE_CODE = "6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B"
-PRODUCT_CODE = "B3E29CAE-8F02-49ED-8C83-AC03DA7926E1"
+PRODUCT_CODE = "65E40972-2426-4BC1-B229-91724F156FA5"
 
 
 def wix_id(prefix: str, value: str) -> str:

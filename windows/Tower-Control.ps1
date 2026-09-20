@@ -1287,7 +1287,7 @@ function Invoke-TowerPost([string]$path, [hashtable]$content) {
         -ContentType 'application/json' `
         -Body $body `
         -DisableKeepAlive `
-        -TimeoutSec 20
+        -TimeoutSec $(if ($path -eq '/api/v1/control/actions') { 600 } else { 20 })
     Write-TowerLog 'INFO' "POST $path succeeded"
     return $response
 }
@@ -13122,6 +13122,8 @@ else {
     Write-TowerLog 'WARN' "Control tab module missing: $controlTabModule"
 }
 
+. (Join-Path $PSScriptRoot 'Tower-Devices-Scripts.ps1')
+. (Join-Path $PSScriptRoot 'Tower-Unsaved-Indicator.ps1')
 [void]$tabs.TabPages.Add($settingsTab)
 
 $pcTimer = New-Object System.Windows.Forms.Timer

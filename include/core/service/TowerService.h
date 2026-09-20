@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -8,6 +9,8 @@
 #include "core/gpio.h"
 #include "core/network/TowerApiServer.h"
 #include "core/service/Scheduler.h"
+#include "core/service/ExecutionDisplay.h"
+#include "core/service/IRTriggerService.h"
 #include "devices/displays/LCD1602.h"
 #include "devices/remote/TemperatureSensor.h"
 #include "devices/sensors/bme688.h"
@@ -29,6 +32,9 @@ private:
     void showVoiceNotification(
         const VoiceDisplayNotification& notification);
 
+    void queueExecutionDisplay(
+        const ExecutionDisplayNotification& notification);
+
     void showBootStatus(
         const std::string& status,
         const std::string& detail = "");
@@ -36,6 +42,7 @@ private:
     std::vector<TowerApiSensorSnapshot> sensorSnapshots();
 
     Scheduler scheduler_;
+    IRTriggerService irTriggerService_;
     tower::displays::LCD1602 lcd_;
 
     TemperatureSensor* aquariumSensor_ = nullptr;
@@ -44,12 +51,12 @@ private:
 
     std::chrono::steady_clock::time_point nextDisplayUpdate_{};
 
-    std::mutex voiceNotificationMutex_;
-    VoiceDisplayNotification voiceNotification_;
-    bool voiceNotificationActive_ = false;
-    bool voiceNotificationPainted_ = false;
-    std::chrono::steady_clock::time_point voiceNotificationStartedAt_{};
-    std::chrono::steady_clock::time_point voiceNotificationEndsAt_{};
+    std::mutex executionDisplayMutex_;
+    std::deque<ExecutionDisplayNotification> executionDisplayQueue_;
+    ExecutionDisplayNotification executionDisplayCurrent_;
+    bool executionDisplayActive_ = false;
+    bool executionDisplayPainted_ = false;
+    std::chrono::steady_clock::time_point executionDisplayEndsAt_{};
 
     bool bootScreenActive_ = false;
     std::chrono::steady_clock::time_point bootScreenEndsAt_{};

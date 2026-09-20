@@ -3,8 +3,12 @@
 #include "core/network/VoiceApi.h"
 
 #include "core/service/CommandExecutor.h"
+#include "core/service/DeviceStateService.h"
+#include "core/service/ScriptService.h"
+#include "core/service/ActionExecutionService.h"
 #include "core/service/IRLearningService.h"
 #include "core/service/IRCalibrationService.h"
+#include "core/service/IRTriggerService.h"
 #include "core/service/RFCommandService.h"
 #include "core/service/RFPresetService.h"
 #include "core/service/RFProvisioningService.h"
@@ -100,6 +104,31 @@ std::string headerValue(const std::string& request, const std::string& name)
     const auto end = request.find("\r\n", valueStart);
     return request.substr(valueStart, end - valueStart);
 }
+
+class IRTriggerPause
+{
+public:
+    explicit IRTriggerPause(IRTriggerService* service)
+        : service_(service)
+    {
+        if (service_ != nullptr)
+        {
+            service_->stop();
+        }
+    }
+
+    ~IRTriggerPause()
+    {
+        if (service_ != nullptr)
+        {
+            std::string ignoredError;
+            service_->start(ignoredError);
+        }
+    }
+
+private:
+    IRTriggerService* service_;
+};
 }
 
 TowerApiServer::TowerApiServer() = default;
@@ -124,6 +153,11 @@ void TowerApiServer::setVoiceDisplayNotificationHandler(
 void TowerApiServer::setScheduler(Scheduler* scheduler)
 {
     scheduler_ = scheduler;
+}
+
+void TowerApiServer::setIRTriggerService(IRTriggerService* service)
+{
+    irTriggerService_ = service;
 }
 
 bool TowerApiServer::start(std::uint16_t port, const std::string& token)
@@ -739,6 +773,7 @@ void TowerApiServer::handleClient(int clientFd)
             std::string error;
 
             std::lock_guard<std::mutex> lock(commandMutex);
+            IRTriggerPause triggerPause(irTriggerService_);
 
             if (!learning.captureAndAnalyze(
                     device,
@@ -2333,6 +2368,149 @@ void TowerApiServer::handleClient(int clientFd)
         catch (const std::exception& exception)
         {
             sendResponse(clientFd, 400, "Bad Request", {{"ok", false}, {"error", exception.what()}});
+        }
+        return;
+    }
+
+    if (path == "/api/v1/control/device-states" || path == "/api/v1/control/power-profile" ||
+        path == "/api/v1/control/scripts" || path == "/api/v1/control/scripts/delete" || path == "/api/v1/control/scripts/run" ||
+        path == "/api/v1/control/actions") {
+        try {
+            nlohmann::json response={{"ok",true}};
+            if(method=="GET" && path=="/api/v1/control/device-states") response["document"]=DeviceStateService::snapshot();
+            else if(method=="GET" && path=="/api/v1/control/scripts") response["scripts"]=ScriptService::list();
+            else if(method=="POST") {
+                auto end=request.find("\r\n\r\n");
+                auto body=nlohmann::json::parse(end==std::string::npos?"":request.substr(end+4));
+                if(path=="/api/v1/control/device-states") DeviceStateService::correct(body.at("device"),body.at("state"));
+                else if(path=="/api/v1/control/power-profile") DeviceStateService::saveProfile(body.at("device"),body.at("profile"));
+                else if(path=="/api/v1/control/scripts") ScriptService::save(body.at("script"));
+                else if(path=="/api/v1/control/scripts/delete") ScriptService::remove(body.at("id"));
+                else if(path=="/api/v1/control/scripts/run") {
+                    std::string detail;bool ok=ScriptService::run(body.at("id"),detail);
+                    sendResponse(clientFd,200,"OK",{{"ok",ok},{"message",detail}});return;
+                }
+                else {
+                    std::string error;
+                    if(!ActionExecutionService().executeAll(body.at("actions"),error)) throw std::runtime_error(error);
+                }
+                response["message"]="Tower action completed";
+            } else throw std::runtime_error("Unsupported method");
+            sendResponse(clientFd,200,"OK",response);
+        } catch(const std::exception& e) {sendResponse(clientFd,400,"Bad Request",{{"ok",false},{"error",e.what()}});}
+        return;
+    }
+
+    if (path == "/api/v1/control/ir-triggers" && method == "GET")
+    {
+        if (irTriggerService_ == nullptr)
+        {
+            sendResponse(clientFd, 503, "Service Unavailable", {
+                {"ok", false},
+                {"error", "IR trigger service is unavailable"}
+            });
+            return;
+        }
+        sendResponse(clientFd, 200, "OK", {
+            {"ok", true},
+            {"document", irTriggerService_->list()}
+        });
+        return;
+    }
+
+    if (path == "/api/v1/control/ir-triggers" && method == "POST")
+    {
+        try
+        {
+            if (irTriggerService_ == nullptr)
+            {
+                throw std::runtime_error("IR trigger service is unavailable");
+            }
+            const auto headerEnd = request.find("\r\n\r\n");
+            const std::string body = headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+            const auto json = nlohmann::json::parse(body);
+            nlohmann::json result;
+            std::string error;
+            if (!irTriggerService_->save(
+                    json.contains("triggers")
+                        ? json.at("triggers")
+                        : json,
+                    result,
+                    error))
+            {
+                throw std::runtime_error(error);
+            }
+            sendResponse(clientFd, 200, "OK", {
+                {"ok", true},
+                {"document", result},
+                {"message", "Remote IR commands saved on Tower"}
+            });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(clientFd, 400, "Bad Request", {
+                {"ok", false},
+                {"error", exception.what()}
+            });
+        }
+        return;
+    }
+
+    if ((path == "/api/v1/control/ir-triggers/delete" ||
+         path == "/api/v1/control/ir-triggers/teach" ||
+         path == "/api/v1/control/ir-triggers/run") &&
+        method == "POST")
+    {
+        try
+        {
+            if (irTriggerService_ == nullptr)
+            {
+                throw std::runtime_error("IR trigger service is unavailable");
+            }
+            const auto headerEnd = request.find("\r\n\r\n");
+            const std::string body = headerEnd == std::string::npos
+                ? std::string{}
+                : request.substr(headerEnd + 4);
+            const auto json = nlohmann::json::parse(body);
+            const std::string id = json.at("id").get<std::string>();
+            std::string error;
+            bool ok = false;
+            std::string message;
+            if (path == "/api/v1/control/ir-triggers/delete")
+            {
+                ok = irTriggerService_->remove(id, error);
+                message = "Remote IR command deleted";
+            }
+            else if (path == "/api/v1/control/ir-triggers/teach")
+            {
+                ok = irTriggerService_->teach(
+                    id,
+                    json.value("transmitter", "Tower-IR-TX-001"),
+                    error);
+                message = "Teaching code transmitted to SofaBaton";
+            }
+            else
+            {
+                ok = irTriggerService_->runNow(id, error);
+                message = "Remote IR command action completed";
+            }
+            if (!ok)
+            {
+                throw std::runtime_error(error);
+            }
+            sendResponse(clientFd, 200, "OK", {
+                {"ok", true},
+                {"message", message}
+            });
+        }
+        catch (const std::exception& exception)
+        {
+            sendResponse(clientFd, 400, "Bad Request", {
+                {"ok", false},
+                {"error", exception.what()}
+            });
         }
         return;
     }

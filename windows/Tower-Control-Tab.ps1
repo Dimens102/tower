@@ -19,6 +19,21 @@ $controlTab.Padding = New-Object System.Windows.Forms.Padding(10)
 $script:controlTab = $controlTab
 [void]$tabs.TabPages.Add($controlTab)
 
+$controlModeTabs = New-Object System.Windows.Forms.TabControl
+$controlModeTabs.Dock = 'Fill'
+$controlTab.Controls.Add($controlModeTabs)
+
+$controlSchedulesPage = New-Object System.Windows.Forms.TabPage
+$controlSchedulesPage.Text = 'Schedules'
+$controlSchedulesPage.Padding = New-Object System.Windows.Forms.Padding(6)
+[void]$controlModeTabs.TabPages.Add($controlSchedulesPage)
+
+$controlRemotePage = New-Object System.Windows.Forms.TabPage
+$controlRemotePage.Text = 'Remote buttons'
+$controlRemotePage.Padding = New-Object System.Windows.Forms.Padding(6)
+$script:controlRemotePage = $controlRemotePage
+[void]$controlModeTabs.TabPages.Add($controlRemotePage)
+
 $controlRoot = New-Object System.Windows.Forms.TableLayoutPanel
 $controlRoot.Dock = 'Fill'
 $controlRoot.ColumnCount = 1
@@ -32,7 +47,7 @@ $controlRoot.Margin = New-Object System.Windows.Forms.Padding(0)
     [System.Windows.Forms.SizeType]::Percent,
     100
 )))
-$controlTab.Controls.Add($controlRoot)
+$controlSchedulesPage.Controls.Add($controlRoot)
 
 $controlHeader = New-Object System.Windows.Forms.Panel
 $controlHeader.Dock = 'Fill'
@@ -294,7 +309,8 @@ $controlSourceCombo.Size = New-Object System.Drawing.Size(230, 25)
     'Voice command set',
     'RF preset',
     'RF device',
-    'IR command'
+    'IR command',
+    'Saved script'
 ))
 $controlEditor.Controls.Add($controlSourceCombo)
 
@@ -463,6 +479,9 @@ function Get-ControlActionDisplayName($action) {
     $delaySeconds = [Math]::Max(0, [int]$action.delay_before_seconds)
     $delayText = if ($delaySeconds -gt 0) { " after ${delaySeconds}s" } else { '' }
     switch ([string]$action.type) {
+        'script' {return "Script: $([string]$action.script)$delayText"}
+        'device_power' {return "Power: $([string]$action.device) -> $([string]$action.state)$delayText"}
+
         'voice_path' {
             return "Voice: $(@($action.path) -join ' -> ')$delayText"
         }
@@ -781,7 +800,13 @@ function Update-ControlActionFields(
     $controlDelaySeconds.Visible = -not $isVoice
     $controlDelayHint.Visible = -not $isVoice
 
-    if ($isVoice) {
+    if ($type -eq 'Saved script') {
+        $controlTargetLabel.Text = 'Saved script'
+        $script:controlScriptRows = @((Invoke-TowerGet '/api/v1/control/scripts').scripts)
+        foreach($item in $script:controlScriptRows) { [void]$controlTargetCombo.Items.Add([string]$item.name) }
+        Set-ControlComboIndexById $controlTargetCombo $script:controlScriptRows $targetId
+    }
+    elseif ($isVoice) {
         $controlTargetLabel.Text = 'Command set'
         foreach ($leaf in @($script:controlVoiceLeaves)) {
             [void]$controlTargetCombo.Items.Add([string]$leaf.Label)
@@ -852,6 +877,10 @@ function Update-ControlActionFields(
 
 function Get-ControlActionsFromFields {
     $type = [string]$controlSourceCombo.SelectedItem
+    if ($type -eq 'Saved script') {
+        if($controlTargetCombo.SelectedIndex -lt 0){throw 'Select a saved script.'}
+        return @([pscustomobject]@{type='script';script=[string]$script:controlScriptRows[$controlTargetCombo.SelectedIndex].id;delay_before_seconds=[int]$controlDelaySeconds.Value})
+    }
     $delaySeconds = [int]$controlDelaySeconds.Value
 
     if ($type -eq 'Voice command set') {
@@ -912,6 +941,8 @@ function Get-ControlSourceFromFields {
     $type = [string]$controlSourceCombo.SelectedItem
     if ($controlTargetCombo.SelectedIndex -lt 0) { throw 'Select a command target.' }
     switch ($type) {
+        'Saved script' {return [pscustomobject]@{type='script';id=[string]$script:controlScriptRows[$controlTargetCombo.SelectedIndex].id;label=[string]$controlTargetCombo.SelectedItem}}
+
         'Voice command set' {
             $leaf = $script:controlVoiceLeaves[$controlTargetCombo.SelectedIndex]
             return [pscustomobject][ordered]@{
@@ -1062,6 +1093,7 @@ function Show-ControlSchedule($schedule) {
         $sourceType = [string]$source.type
         if ([string]::IsNullOrWhiteSpace($sourceType)) {
             switch ([string]$firstAction.type) {
+                'script' { $sourceType = 'script' }
                 'voice_path' { $sourceType = 'voice' }
                 'rf_preset' { $sourceType = 'rf_preset' }
                 'rf_group' { $sourceType = 'rf_device' }
@@ -1069,6 +1101,7 @@ function Show-ControlSchedule($schedule) {
             }
         }
         switch ($sourceType) {
+            'script' { $controlSourceCombo.SelectedItem='Saved script'; $targetId=[string]$firstAction.script }
             'voice' {
                 $controlSourceCombo.SelectedItem = 'Voice command set'
                 $targetId = if (@($source.path).Count -gt 0) {
@@ -1405,6 +1438,7 @@ function Save-ControlDocument([bool]$applySelection = $true) {
             ) | Out-Null
             return $false
         }
+    if(Get-Command Set-TowerDirty -ErrorAction SilentlyContinue){Set-TowerDirty $controlSaveButton $false}
         Set-ControlStatus "$(@($script:controlDocument.schedules).Count) schedule(s) saved and synchronized."
         return $true
     }
@@ -1601,3 +1635,11 @@ $controlReloadButton.Add_Click({
 })
 
 Clear-ControlScheduleEditor
+
+$controlRemoteModule = Join-Path $PSScriptRoot 'Tower-Remote-Commands.ps1'
+if (Test-Path $controlRemoteModule) {
+    . $controlRemoteModule
+}
+else {
+    Set-ControlStatus "Remote-button module missing: $controlRemoteModule" $true
+}

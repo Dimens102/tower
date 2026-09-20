@@ -1,4 +1,7 @@
 #include "core/service/CommandExecutor.h"
+#include "core/service/DeviceStateService.h"
+
+#include "core/service/ExecutionDisplay.h"
 
 #include "devices/device.h"
 #include "devices/device_database.h"
@@ -27,9 +30,27 @@ CommandExecutionResult result(
     executionResult.message = message;
     return executionResult;
 }
+
+void publishExecution(
+    const DeviceCommand& command,
+    const CommandExecutionResult& execution)
+{
+    ExecutionDisplay::publish({
+        command.transport == TransportType::IR
+            ? "IR command"
+            : "RF command",
+        command.transportDevice,
+        command.name.empty() ? command.id : command.name,
+        execution.succeeded()
+            ? "OK - command sent"
+            : "FAILED - not sent",
+        execution.succeeded(),
+        5,
+    });
+}
 }
 
-CommandExecutionResult CommandExecutor::execute(
+CommandExecutionResult CommandExecutor::executeRaw(
     const std::string& deviceId,
     const std::string& commandId)
 {
@@ -61,7 +82,7 @@ CommandExecutionResult CommandExecutor::execute(
     {
         if (command.id == commandId)
         {
-            return execute(command);
+            return executeRaw(command);
         }
     }
 
@@ -70,14 +91,14 @@ CommandExecutionResult CommandExecutor::execute(
         "Command not found: " + deviceId + "." + commandId);
 }
 
-CommandExecutionResult CommandExecutor::execute(
+CommandExecutionResult CommandExecutor::executeRaw(
     const std::string& deviceId,
     const std::string& commandId,
     const std::vector<std::string>& transmitters)
 {
     if (transmitters.empty())
     {
-        return execute(deviceId, commandId);
+        return executeRaw(deviceId, commandId);
     }
 
     DeviceDatabase database;
@@ -121,9 +142,16 @@ CommandExecutionResult CommandExecutor::execute(
             "Command not found: " + deviceId + "." + commandId);
     }
 
+    const auto publishAndReturn =
+        [matchedCommand](CommandExecutionResult execution)
+        {
+            publishExecution(*matchedCommand, execution);
+            return execution;
+        };
+
     if (matchedCommand->transport != TransportType::IR)
     {
-        return execute(*matchedCommand);
+        return executeRaw(*matchedCommand);
     }
 
     std::vector<std::string> attemptedTransmitters;
@@ -146,10 +174,10 @@ CommandExecutionResult CommandExecutor::execute(
 
     if (attemptedTransmitters.empty())
     {
-        return result(
+        return publishAndReturn(result(
             CommandExecutionStatus::InvalidMapping,
             "No valid IR transmitters were selected.",
-            TransportType::IR);
+            TransportType::IR));
     }
 
     // Two or more Pico outputs must receive one frame. Sending a complete
@@ -166,10 +194,10 @@ CommandExecutionResult CommandExecutor::execute(
             IRTransmitter transmitter;
             if (!transmitterDatabase.load(transmitterName, transmitter))
             {
-                return result(
+                return publishAndReturn(result(
                     CommandExecutionStatus::TransportDataNotFound,
                     "Failed to load IR transmitter: " + transmitterName,
-                    TransportType::IR);
+                    TransportType::IR));
             }
 
             if (transmitter.controller != "tower-pico")
@@ -190,12 +218,12 @@ CommandExecutionResult CommandExecutor::execute(
                     matchedCommand->transportCommand,
                     code))
             {
-                return result(
+                return publishAndReturn(result(
                     CommandExecutionStatus::TransportDataNotFound,
                     "Failed to load IR command: " +
                         matchedCommand->transportDevice + "." +
                         matchedCommand->transportCommand,
-                    TransportType::IR);
+                    TransportType::IR));
             }
 
             Device transportDevice;
@@ -232,11 +260,11 @@ CommandExecutionResult CommandExecutor::execute(
                     }
                     else if (transmitterDuty != synchronizedDuty)
                     {
-                        return result(
+                        return publishAndReturn(result(
                             CommandExecutionStatus::InvalidMapping,
                             "Synchronized Pico outputs must use the same IR "
                             "duty percentage.",
-                            TransportType::IR);
+                            TransportType::IR));
                     }
                 }
                 dutyPercent = synchronizedDuty;
@@ -249,10 +277,10 @@ CommandExecutionResult CommandExecutor::execute(
                     dutyPercent,
                     carrierKhz))
             {
-                return result(
+                return publishAndReturn(result(
                     CommandExecutionStatus::TransmissionFailed,
                     "Synchronized IR broadcast failed.",
-                    TransportType::IR);
+                    TransportType::IR));
             }
 
             std::string message =
@@ -270,10 +298,10 @@ CommandExecutionResult CommandExecutor::execute(
                 message += attemptedTransmitters[index];
             }
 
-            return result(
+            return publishAndReturn(result(
                 CommandExecutionStatus::Success,
                 message,
-                TransportType::IR);
+                TransportType::IR));
         }
     }
 
@@ -289,7 +317,7 @@ CommandExecutionResult CommandExecutor::execute(
 
         DeviceCommand overridden = *matchedCommand;
         overridden.transmitter = transmitterName;
-        const CommandExecutionResult execution = execute(overridden);
+        const CommandExecutionResult execution = executeRaw(overridden);
         if (execution.succeeded())
         {
             successfulTransmitters.push_back(transmitterName);
@@ -349,33 +377,41 @@ CommandExecutionResult CommandExecutor::execute(
     return result(lastFailure.status, message, TransportType::IR);
 }
 
-CommandExecutionResult CommandExecutor::execute(
+CommandExecutionResult CommandExecutor::executeRaw(
     const DeviceCommand& command)
 {
     if (!command.enabled)
     {
-        return result(
+        const CommandExecutionResult execution = result(
             CommandExecutionStatus::CommandDisabled,
             "Command is disabled: " + command.id,
             command.transport);
+        publishExecution(command, execution);
+        return execution;
     }
 
+    CommandExecutionResult execution;
     try
     {
         if (command.transport == TransportType::RF)
         {
-            return executeRF(command);
+            execution = executeRF(command);
         }
-
-        return executeIR(command);
+        else
+        {
+            execution = executeIR(command);
+        }
     }
     catch (const std::exception& error)
     {
-        return result(
+        execution = result(
             CommandExecutionStatus::TransportDataInvalid,
             "Invalid transport data: " + std::string(error.what()),
             command.transport);
     }
+
+    publishExecution(command, execution);
+    return execution;
 }
 
 CommandExecutionResult CommandExecutor::executeIR(
@@ -503,4 +539,27 @@ CommandExecutionResult CommandExecutor::executeRF(
         CommandExecutionStatus::Success,
         "RF execution complete.",
         TransportType::RF);
+}
+
+CommandExecutionResult CommandExecutor::execute(const std::string& device, const std::string& command) {
+    return execute(device, command, {});
+}
+CommandExecutionResult CommandExecutor::execute(const std::string& device, const std::string& command, const std::vector<std::string>& outputs) {
+    CommandExecutionResult r;
+    try {
+        DeviceDatabase db; Device d; std::string key="ir:"+device, effectCommand=command;
+        if(db.loadDevice(device,d)) for(const auto& c:d.commands) if(c.id==command) {
+            key=(c.transport==TransportType::RF?"rf:":"ir:")+c.transportDevice; effectCommand=c.transportCommand; break;
+        }
+        DeviceStateService::track(key, effectCommand, [&]{r=executeRaw(device,command,outputs);return r.succeeded();});
+    } catch(const std::exception& e) {r.status=CommandExecutionStatus::TransmissionFailed;r.message=e.what();}
+    return r;
+}
+CommandExecutionResult CommandExecutor::execute(const DeviceCommand& command) {
+    CommandExecutionResult r;
+    try {
+        DeviceStateService::track((command.transport==TransportType::RF?"rf:":"ir:")+command.transportDevice, command.transportCommand,
+            [&]{r=executeRaw(command);return r.succeeded();});
+    } catch(const std::exception& e) {r.status=CommandExecutionStatus::TransmissionFailed;r.message=e.what();}
+    return r;
 }

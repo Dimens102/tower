@@ -49,6 +49,10 @@ public:
         const DeviceCommand& command);
 
 private:
+    CommandExecutionResult executeRaw(const std::string&, const std::string&);
+    CommandExecutionResult executeRaw(const std::string&, const std::string&, const std::vector<std::string>&);
+    CommandExecutionResult executeRaw(const DeviceCommand&);
+
     CommandExecutionResult executeIR(
         const DeviceCommand& command);
 

@@ -2,7 +2,7 @@ param([switch]$NoLaunch)
 
 $ErrorActionPreference = 'Stop'
 $productName = 'Tower Control'
-$productVersion = '0.11.05'
+$productVersion = '0.11.07'
 $installDirectory = Join-Path $env:ProgramFiles $productName
 $sourceDirectory = $PSScriptRoot
 $configDirectory = Join-Path $env:APPDATA 'Tower'

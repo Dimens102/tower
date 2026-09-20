@@ -9,6 +9,7 @@
 
 #include "core/network/VoiceApi.h"
 class Scheduler;
+class IRTriggerService;
 
 struct TowerApiSensorMeasurement
 {
@@ -43,6 +44,7 @@ public:
         VoiceDisplayNotificationHandler handler);
 
     void setScheduler(Scheduler* scheduler);
+    void setIRTriggerService(IRTriggerService* service);
 
 private:
     void run();
@@ -55,4 +57,5 @@ private:
     std::function<std::vector<TowerApiSensorSnapshot>()> sensorProvider_;
     VoiceDisplayNotificationHandler voiceDisplayNotificationHandler_;
     Scheduler* scheduler_ = nullptr;
+    IRTriggerService* irTriggerService_ = nullptr;
 };

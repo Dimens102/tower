@@ -1,5 +1,38 @@
 # Tower Changelog
 
+## v0.11.08 - 2026-09-20
+
+- Persistent estimated device state shared by voice, schedules, IR remote buttons and manual controls.
+- Devices tab with manual correction and configurable ON/OFF sequences; repeated shutdowns skip devices already OFF.
+- Convert Set Two/Set Three to state requests, preserving Dell double-press shutdown and schedule settings.
+- Scripts tab with finite Bash jobs and Wake-on-LAN; saved scripts selectable in voice, schedules and remote buttons.
+- Blinking red unsaved indicator on Save to Tower, and persistent remote-button editor width.
+- Hardware-free tests for state concurrency, repeated shutdown, scripts and Wake-on-LAN packets.
+
+## v0.11.07 - 2026-09-19
+
+### Added
+
+- Added programmable SofaBaton IR shortcut buttons in Control > Remote
+  buttons. Tower assigns each button a unique 38 kHz NEC code, transmits it
+  for SofaBaton learning, and recognizes it through the installed 38 kHz IR
+  receiver.
+- Added actions for RF presets (including toggle), RF devices, IR commands,
+  and saved Voice command sets. Repeated NEC frames from one held key are
+  debounced so a toggle runs only once.
+- Added Tower-wide LCD execution notifications. Direct IR/RF commands,
+  presets, schedules, learned remote buttons, and Voice sequences now use the
+  same five-second queued display.
+- Added start and completion messages for multi-action presets and Voice
+  command sets, with every contained action displayed in execution order.
+
+### Changed
+
+- RF Presets now accept a `toggle` operation. The service remembers the last
+  successful state until restart; the first toggle after restart sends ON.
+- The active IR-trigger listener temporarily releases its LIRC receiver while
+  the normal six-receiver IR learning workflow captures a command.
+
 ## Unreleased - post-v0.11.01
 
 ### Added

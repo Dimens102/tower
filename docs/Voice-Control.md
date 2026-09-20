@@ -162,12 +162,12 @@ found after it is reconnected. Changes to microphone name, sample rate, or Vosk
 model still require a service restart because they change open audio/model
 resources.
 
-After a spoken leaf executes, the voice process reports the canonical command
-path, resolved targets, commands, and success state to Tower. It shows the
-voice path plus the actual remote or RF target and command. Each action appears
-exactly once for two seconds; it never cycles back to an earlier action. After
-the last action, the backlight switches off and the normal environmental
-display remains available for the next button press.
+Before a spoken leaf executes, the voice process queues a sequence-start
+message on Tower's LCD. The shared execution display then shows each actual IR
+or RF action once, in order, for five seconds. A final Voice-sequence success
+or failure message follows. The display does not cycle back to an earlier
+action; after the final five-second message, the backlight switches off and
+the normal environmental display remains available for the next button press.
 
 ## Current command branches
 

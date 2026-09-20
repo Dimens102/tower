@@ -13,7 +13,7 @@ cd ~/Development/rf-tower
 bash installer/windows/build-msi.sh
 ```
 
-Output: `installer/windows/output/Tower-Control-0.11.05-x64.msi`
+Output: `installer/windows/output/Tower-Control-0.11.07-x64.msi`
 
 ## Installation behavior
 

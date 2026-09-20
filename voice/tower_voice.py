@@ -377,6 +377,7 @@ def post_voice_notification(
     actions: list[dict[str, str]],
     ok: bool,
     token: str,
+    phase: str = "completed",
 ) -> None:
     api = config.get("api", {})
     url = str(
@@ -391,8 +392,9 @@ def post_voice_notification(
         {
             "path": command_path,
             "actions": actions,
+            "phase": phase,
             "ok": ok,
-            "durationSeconds": max(2, 2 * max(1, len(actions))),
+            "durationSeconds": 5,
         },
         token,
     )
@@ -416,70 +418,25 @@ def execute_actions(
         print("  No actions configured")
         return True, []
 
-    display_actions: list[dict[str, str]] = []
-
-    for number, action in enumerate(actions, start=1):
-        if not isinstance(action, dict):
-            raise ValueError(f"Invalid action #{number} for voice command '{phrase}'")
-
-        action_type = str(action.get("type", "command"))
-        if action_type == "command":
-            if "device" not in action or "command" not in action:
-                raise ValueError(f"Invalid command action #{number} for voice command '{phrase}'")
-            description = f"{action['device']} :: {action['command']}"
-            display_actions.append({
-                "target": str(action["device"]),
-                "command": str(action["command"]),
-            })
-        elif action_type == "rf_group":
-            devices = action.get("devices")
-            group_action = str(action.get("action", ""))
-            if group_action not in ("on", "off") or not isinstance(devices, list) or not devices:
-                raise ValueError(f"Invalid RF group action #{number} for voice command '{phrase}'")
-            group_name = str(action.get("name", "RF group"))
-            description = f"{group_name} :: {group_action} ({len(devices)} devices)"
-            display_actions.append({"target": group_name, "command": group_action})
-        elif action_type == "rf_preset":
-            preset = int(action.get("preset", 0))
-            preset_action = str(action.get("action", ""))
-            if preset not in (1, 2, 3) or preset_action not in ("on", "off"):
-                raise ValueError(f"Invalid RF preset action #{number} for voice path '{phrase}'")
-            description = f"Preset {preset} :: {preset_action} (Tower-managed)"
-            display_actions.append({
-                "target": f"Preset {preset}",
-                "command": preset_action,
-            })
-        else:
-            raise ValueError(f"Unsupported action type '{action_type}' for voice command '{phrase}'")
-
-        delay_before_seconds = min(
-            300, max(0, int(action.get("delay_before_seconds", 0)))
-        )
-        if delay_before_seconds:
-            print(f"  Waiting {delay_before_seconds}s before action {number}")
-            time.sleep(delay_before_seconds)
-
-        repeat = max(1, int(action.get("repeat", 1)))
-        delay_ms = max(0, int(action.get("delay_ms", 0)))
-
-        for repetition in range(repeat):
-            if dry_run:
-                suffix = f" ({repetition + 1}/{repeat})" if repeat > 1 else ""
-                print(f"  DRY RUN -> {description}{suffix}")
-            else:
-                if action_type == "rf_group":
-                    ok, message = post_rf_group_action(config, action, token)
-                elif action_type == "rf_preset":
-                    ok, message = post_rf_preset_action(config, action, token)
-                else:
-                    ok, message = post_tower_action(config, action, token)
-                status = "OK" if ok else "FAILED"
-                print(f"  {status} -> {description} -- {message}")
-                if not ok:
-                    return False, display_actions
-            if delay_ms and (repetition + 1 < repeat or number < len(actions)):
-                time.sleep(delay_ms / 1000.0)
-    return True, display_actions
+    display_actions = [
+        {"target": str(a.get("device", a.get("name", a.get("script", "Sequence")))),
+         "command": str(a.get("state", a.get("command", a.get("action", "run"))))}
+        for a in actions if isinstance(a, dict)
+    ]
+    if dry_run:
+        for action in actions:
+            print(f"  DRY RUN -> {action}")
+        return True, display_actions
+    # Execute the entire list in Tower, sharing one state check with schedules
+    # and programmable remotes. Never retry a timed-out power operation.
+    api = dict(config.get("api", {}))
+    execute_url = str(api.get("execute_url", "http://127.0.0.1:8080/api/v1/execute"))
+    url = execute_url.rsplit("/api/v1/", 1)[0] + "/api/v1/control/actions"
+    api["timeout_seconds"] = 600.0
+    request_config = dict(config, api=api)
+    ok, message = post_json_action(request_config, url, {"actions": actions}, token)
+    print(f"  {'OK' if ok else 'FAILED'} -> {phrase} -- {message}")
+    return ok, display_actions
 
 
 def command_children(config: dict) -> dict[str, dict]:
@@ -880,6 +837,15 @@ def main() -> int:
                     play_beep(audio, output_index, config)
 
                     if actions is not None:
+                        if not dry_run:
+                            post_voice_notification(
+                                config,
+                                command_path,
+                                [],
+                                True,
+                                token,
+                                "started",
+                            )
                         try:
                             succeeded, display_actions = execute_actions(
                                 config,
@@ -903,7 +869,7 @@ def main() -> int:
                             post_voice_notification(
                                 config,
                                 command_path,
-                                display_actions,
+                                [],
                                 succeeded,
                                 token,
                             )

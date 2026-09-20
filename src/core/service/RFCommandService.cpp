@@ -1,16 +1,24 @@
 #include "core/service/RFCommandService.h"
 
+#include "core/service/ExecutionDisplay.h"
+
 #include "devices/rf/rf_database.h"
 #include "devices/rf/rf_sender.h"
+
+#include "core/service/DeviceStateService.h"
+#include <map>
+#include <mutex>
+
 
 bool RFCommandService::send(
     const std::string& deviceName,
     const std::string& action,
     std::string& error)
 {
-    if (action != "on" && action != "off")
+    std::lock_guard<std::recursive_mutex> stateLock(DeviceStateService::executionMutex());
+    if (action != "on" && action != "off" && action != "toggle")
     {
-        error = "Action must be on or off";
+        error = "Action must be on, off, or toggle";
         return false;
     }
 
@@ -23,13 +31,31 @@ bool RFCommandService::send(
         return false;
     }
 
+    const std::string resolvedAction = action == "toggle"
+        ? (DeviceStateService::state("rf:"+deviceName)=="on" ? "off" : "on") : action;
     RFSender sender;
-    if (!sender.send(device, action == "on"))
+    if (!DeviceStateService::track("rf:"+deviceName, resolvedAction, [&]{return sender.send(device, resolvedAction == "on");}))
     {
         error = "RF transmission failed";
+        ExecutionDisplay::publish({
+            "RF command",
+            device.deviceName.empty() ? device.name : device.deviceName,
+            resolvedAction,
+            "FAILED",
+            false,
+            5,
+        });
         return false;
     }
 
     error.clear();
+    ExecutionDisplay::publish({
+        "RF command",
+        device.deviceName.empty() ? device.name : device.deviceName,
+        resolvedAction,
+        "OK - command sent",
+        true,
+        5,
+    });
     return true;
 }

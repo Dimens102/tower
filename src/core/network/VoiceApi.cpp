@@ -101,7 +101,15 @@ void validateActions(const json& actions, const std::string& path)
             throw std::runtime_error(
                 "Action delay at '" + path + "' must be 0-300 seconds");
         }
-        if (type == "command")
+        if (type == "device_power") {
+            const auto state=action.value("state", "");
+            if(action.value("device", "").empty() || (state!="on" && state!="off" && state!="toggle"))
+                throw std::runtime_error("Device power requires device and on/off/toggle");
+        }
+        else if(type=="script") {
+            if(action.value("script", "").empty())throw std::runtime_error("Choose a saved script");
+        }
+        else if (type == "command")
         {
             if (action.value("device", "").empty() ||
                 action.value("command", "").empty())
@@ -532,9 +540,18 @@ VoiceApiResponse handleVoiceApiRequest(
                     }
                 }
             }
+            notification.phase = request.value("phase", "completed");
+            if (notification.phase != "started" &&
+                notification.phase != "completed")
+            {
+                return errorResponse(
+                    400,
+                    "Bad Request",
+                    "Notification phase must be started or completed");
+            }
             notification.ok = request.value("ok", false);
             notification.durationSeconds =
-                std::clamp(request.value("durationSeconds", 2), 1, 300);
+                std::clamp(request.value("durationSeconds", 5), 1, 300);
             if (notification.path.empty())
             {
                 return errorResponse(400, "Bad Request", "Notification path cannot be empty");

@@ -2,7 +2,7 @@
 
 ## MSI installation
 
-Run `installer\windows\output\Tower-Control-0.11.05-x64.msi` and accept the UAC
+Run `installer\windows\output\Tower-Control-0.11.07-x64.msi` and accept the UAC
 prompt. It installs Tower Control in `C:\Program Files\Tower Control`, creates
 desktop and Start-menu shortcuts, and registers a normal Windows Installed Apps
 entry.

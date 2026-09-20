@@ -80,6 +80,12 @@ a kernel-interface check, not an electrical or optical test of the receiver.
 The normal Tower boot header remains visible and `IR-Rec.` identifies the
 hardware being initialized on the standard boot progress row.
 
+The 38 kHz receiver on BCM GPIO22 is also the live listener for programmable
+SofaBaton/Tower shortcut buttons. These shortcuts use Tower's generated NEC
+address `0x54`; the other five receivers remain available for the existing
+multi-carrier learning workflow. Tower temporarily pauses the live listener
+when a normal IR learning capture needs all six LIRC devices.
+
 ## IR transmitters
 
 All six transmitter definitions are active and routed through Tower Pico
