@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
@@ -134,6 +135,55 @@ std::string fitDisplayLine(const std::string& value)
     return value.size() <= width ? value : value.substr(0, width);
 }
 
+std::string compactVoiceTarget(
+    const ExecutionDisplayNotification& notification)
+{
+    if (notification.title.rfind("ir:", 0) == 0 ||
+        notification.title.rfind("rf:", 0) == 0)
+    {
+        return notification.title.substr(3);
+    }
+
+    if (!notification.target.empty())
+    {
+        return notification.target;
+    }
+
+    return notification.title;
+}
+
+bool isSequenceSummary(
+    const ExecutionDisplayNotification& notification)
+{
+    return notification.title.rfind("RF Preset ", 0) == 0 ||
+        notification.title == "Voice sequence" ||
+        notification.target == "Voice sequence";
+}
+
+bool isRelativeVolumeCommand(const std::string& command)
+{
+    std::string lower = command;
+    std::transform(
+        lower.begin(),
+        lower.end(),
+        lower.begin(),
+        [](unsigned char character)
+        {
+            return static_cast<char>(std::tolower(character));
+        });
+
+    return lower.find("volume") != std::string::npos &&
+        (lower.find("up") != std::string::npos ||
+         lower.find("down") != std::string::npos);
+}
+
+bool isSameDisplayTarget(
+    const ExecutionDisplayNotification& left,
+    const ExecutionDisplayNotification& right)
+{
+    return left.title == right.title && left.target == right.target;
+}
+
 } // namespace
 
 TowerService::TowerService()
@@ -184,59 +234,110 @@ TowerService::TowerService()
 void TowerService::showVoiceNotification(
     const VoiceDisplayNotification& notification)
 {
-    std::string path;
-    for (const std::string& segment : notification.path)
-    {
-        if (!path.empty())
-        {
-            path += " > ";
-        }
-        path += segment;
-    }
-
     if (notification.phase == "started")
     {
-        queueExecutionDisplay({
-            path.empty() ? "Voice command" : path,
-            "Voice sequence",
-            "starting",
-            "Running actions...",
-            true,
-            std::max(5, notification.durationSeconds),
-        });
+        std::lock_guard<std::mutex> lock(executionDisplayMutex_);
+        voiceSequenceDisplayActive_ = true;
+        executionDisplayQueue_.clear();
+        executionDisplayActive_ = false;
+        executionDisplayPainted_ = false;
         return;
     }
 
-    for (const VoiceDisplayAction& action : notification.actions)
-    {
-        queueExecutionDisplay({
-            path.empty() ? "Voice command" : path,
-            action.target,
-            action.command,
-            notification.ok ? "OK - command sent" : "FAILED",
-            notification.ok,
-            5,
-        });
-    }
+    ExecutionDisplayNotification completed;
+    completed.target = "Voice command";
+    completed.command = notification.ok ? "complete" : "failed";
+    completed.ok = notification.ok;
+    completed.durationSeconds = 1;
+    completed.durationMilliseconds = 1500;
 
-    queueExecutionDisplay({
-        path.empty() ? "Voice command" : path,
-        "Voice sequence",
-        notification.ok ? "completed" : "failed",
-        notification.ok ? "OK - sequence done" : "FAILED",
-        notification.ok,
-        std::max(5, notification.durationSeconds),
-    });
+    std::lock_guard<std::mutex> lock(executionDisplayMutex_);
+    voiceSequenceDisplayActive_ = false;
+    executionDisplayQueue_.clear();
+    executionDisplayActive_ = false;
+    executionDisplayPainted_ = false;
+    executionDisplayQueue_.push_back(std::move(completed));
 }
 
 void TowerService::queueExecutionDisplay(
     const ExecutionDisplayNotification& notification)
 {
     ExecutionDisplayNotification normalized = notification;
-    normalized.durationSeconds =
-        std::clamp(normalized.durationSeconds, 1, 300);
 
     std::lock_guard<std::mutex> lock(executionDisplayMutex_);
+
+    if (voiceSequenceDisplayActive_)
+    {
+        if (isSequenceSummary(normalized))
+        {
+            return;
+        }
+
+        const std::string deviceName = compactVoiceTarget(normalized);
+        normalized.title.clear();
+        normalized.target = deviceName;
+        normalized.command.clear();
+        normalized.result.clear();
+        normalized.durationSeconds = 1;
+        normalized.durationMilliseconds = 1000;
+
+        // A voice sequence is live: the newest device replaces the previous
+        // screen instead of waiting behind a list of five-second messages.
+        executionDisplayQueue_.clear();
+        executionDisplayActive_ = false;
+        executionDisplayPainted_ = false;
+    }
+    else if (normalized.durationMilliseconds > 0)
+    {
+        normalized.durationMilliseconds =
+            std::clamp(normalized.durationMilliseconds, 100, 300000);
+    }
+    else
+    {
+        normalized.durationSeconds =
+            std::clamp(normalized.durationSeconds, 1, 300);
+    }
+
+    if (isRelativeVolumeCommand(normalized.command))
+    {
+        if (executionDisplayActive_ &&
+            isRelativeVolumeCommand(executionDisplayCurrent_.command) &&
+            isSameDisplayTarget(executionDisplayCurrent_, normalized))
+        {
+            if (executionDisplayCurrent_.command == normalized.command)
+            {
+                ++executionDisplayCurrent_.repetitions;
+            }
+            else
+            {
+                executionDisplayCurrent_ = normalized;
+            }
+
+            executionDisplayEndsAt_ =
+                std::chrono::steady_clock::now() +
+                std::chrono::seconds(normalized.durationSeconds);
+            executionDisplayPainted_ = false;
+            return;
+        }
+
+        if (!executionDisplayQueue_.empty() &&
+            isRelativeVolumeCommand(
+                executionDisplayQueue_.back().command) &&
+            isSameDisplayTarget(
+                executionDisplayQueue_.back(), normalized))
+        {
+            if (executionDisplayQueue_.back().command == normalized.command)
+            {
+                ++executionDisplayQueue_.back().repetitions;
+            }
+            else
+            {
+                executionDisplayQueue_.back() = normalized;
+            }
+            return;
+        }
+    }
+
     constexpr std::size_t maximumQueuedNotifications = 100;
     if (executionDisplayQueue_.size() >= maximumQueuedNotifications)
     {
@@ -535,7 +636,14 @@ void TowerService::update()
 
     updateBacklightButton();
 
-    if (now >= nextDisplayUpdate_)
+    bool executionDisplayPending = false;
+    {
+        std::lock_guard<std::mutex> lock(executionDisplayMutex_);
+        executionDisplayPending =
+            executionDisplayActive_ || !executionDisplayQueue_.empty();
+    }
+
+    if (executionDisplayPending || now >= nextDisplayUpdate_)
     {
         updateDisplay();
 
@@ -586,17 +694,29 @@ void TowerService::updateDisplay()
             executionDisplayQueue_.pop_front();
             executionDisplayActive_ = true;
             executionDisplayPainted_ = false;
-            executionDisplayEndsAt_ =
-                now + std::chrono::seconds(
-                    executionDisplayCurrent_.durationSeconds);
+            executionDisplayEndsAt_ = now +
+                (executionDisplayCurrent_.durationMilliseconds > 0
+                    ? std::chrono::milliseconds(
+                        executionDisplayCurrent_.durationMilliseconds)
+                    : std::chrono::milliseconds(
+                        executionDisplayCurrent_.durationSeconds * 1000));
         }
 
         if (executionDisplayActive_)
         {
+            std::string commandLine = executionDisplayCurrent_.command;
+            if (executionDisplayCurrent_.repetitions > 1 &&
+                isRelativeVolumeCommand(commandLine))
+            {
+                commandLine += " by " +
+                    std::to_string(
+                        executionDisplayCurrent_.repetitions);
+            }
+
             lcd_.show(
                 fitDisplayLine(executionDisplayCurrent_.title),
                 fitDisplayLine(executionDisplayCurrent_.target),
-                fitDisplayLine(executionDisplayCurrent_.command),
+                fitDisplayLine(commandLine),
                 fitDisplayLine(executionDisplayCurrent_.result));
 
             if (!executionDisplayPainted_)

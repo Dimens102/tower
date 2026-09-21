@@ -1,6 +1,7 @@
 #include "core/service/ScheduleService.h"
 
 #include "core/service/ActionExecutionService.h"
+#include "core/logging/Logger.h"
 
 #include <chrono>
 #include <algorithm>
@@ -13,8 +14,8 @@
 namespace {
 const std::filesystem::path path = std::filesystem::path("data") / "schedules" / "schedules.json";
 
-std::string nowMinute() {
-    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+std::string minuteText(const std::chrono::system_clock::time_point point) {
+    const auto now = std::chrono::system_clock::to_time_t(point);
     std::tm local{};
     localtime_r(&now, &local);
     std::ostringstream out;
@@ -22,8 +23,8 @@ std::string nowMinute() {
     return out.str();
 }
 
-std::string today() {
-    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+std::string dateText(const std::chrono::system_clock::time_point point) {
+    const auto now = std::chrono::system_clock::to_time_t(point);
     std::tm local{};
     localtime_r(&now, &local);
     std::ostringstream out;
@@ -31,18 +32,20 @@ std::string today() {
     return out.str();
 }
 
-bool matches(const nlohmann::json& schedule) {
+bool matchesAt(
+    const nlohmann::json& schedule,
+    const std::chrono::system_clock::time_point point) {
     if (!schedule.value("enabled", true) || !schedule.contains("trigger")) return false;
     const auto& trigger = schedule.at("trigger");
     const std::string type = trigger.value("type", "daily");
-    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    const auto now = std::chrono::system_clock::to_time_t(point);
     std::tm local{};
     localtime_r(&now, &local);
     std::ostringstream clock;
     clock << std::setfill('0') << std::setw(2) << local.tm_hour << ":"
           << std::setfill('0') << std::setw(2) << local.tm_min;
     if (clock.str() != trigger.value("time", "")) return false;
-    if (type == "once") return trigger.value("date", "") == today();
+    if (type == "once") return trigger.value("date", "") == dateText(point);
     if (type == "weekly") {
         for (const auto& day : trigger.value("days", nlohmann::json::array()))
             if (day.is_number_integer() && day.get<int>() == local.tm_wday) return true;
@@ -98,15 +101,50 @@ bool ScheduleService::executeSchedule(nlohmann::json& schedule, std::string& err
 bool ScheduleService::runNow(const std::string& id, nlohmann::json& result, std::string& error) {
     std::lock_guard lock(mutex_);
     for (auto& schedule : document_["schedules"]) if (schedule.value("id", "") == id) {
-        const bool ok = executeSchedule(schedule, error); schedule["lastRun"] = nowMinute(); schedule["lastResult"] = ok ? "success" : error; save(error);
+        const bool ok = executeSchedule(schedule, error); schedule["lastRun"] = minuteText(std::chrono::system_clock::now()); schedule["lastResult"] = ok ? "success" : error; save(error);
         result = {{"ok", ok}, {"schedule", schedule}}; return ok;
     }
     error = "Schedule not found: " + id; return false;
 }
 
 void ScheduleService::update() {
-    const std::string minute = nowMinute(); if (minute == lastMinute_) return; lastMinute_ = minute;
-    std::lock_guard lock(mutex_); bool changed = false; std::string error;
-    for (auto& schedule : document_["schedules"]) if (matches(schedule)) { const bool ok = executeSchedule(schedule, error); schedule["lastRun"] = minute; schedule["lastResult"] = ok ? "success" : error; if (schedule.at("trigger").value("type", "daily") == "once") schedule["enabled"] = false; changed = true; }
-    if (changed) save(error);
+    using namespace std::chrono;
+    const auto now = floor<minutes>(system_clock::now());
+    if (lastCheck_ != system_clock::time_point{} && now <= lastCheck_) return;
+
+    // On startup, catch schedules missed by a brief restart. A large clock jump or
+    // long shutdown must not unexpectedly start a morning routine hours later.
+    auto first = lastCheck_ == system_clock::time_point{}
+        ? now - minutes(5)
+        : floor<minutes>(lastCheck_);
+    if (now - first > minutes(15)) first = now - minutes(5);
+    lastCheck_ = now;
+
+    std::lock_guard lock(mutex_);
+    for (auto candidate = first + minutes(1); candidate <= now; candidate += minutes(1)) {
+        const std::string occurrence = minuteText(candidate);
+        for (auto& schedule : document_["schedules"]) {
+            if (!matchesAt(schedule, candidate) || schedule.value("lastRun", "") == occurrence) continue;
+
+            const std::string name = schedule.value("name", schedule.value("id", "unnamed"));
+            schedule["lastRun"] = occurrence;
+            schedule["lastResult"] = "running";
+            std::string saveError;
+            if (!save(saveError)) {
+                Logger::error("Scheduler", "Cannot record start of '" + name + "': " + saveError);
+                continue;
+            }
+
+            Logger::info("Scheduler", "Starting '" + name + "' for " + occurrence);
+            std::string executionError;
+            const bool ok = executeSchedule(schedule, executionError);
+            schedule["lastResult"] = ok ? "success" : executionError;
+            if (schedule.at("trigger").value("type", "daily") == "once") schedule["enabled"] = false;
+            if (!save(saveError)) {
+                Logger::error("Scheduler", "Cannot save result of '" + name + "': " + saveError);
+            }
+            if (ok) Logger::info("Scheduler", "Completed '" + name + "'");
+            else Logger::error("Scheduler", "Failed '" + name + "': " + executionError);
+        }
+    }
 }

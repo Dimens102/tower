@@ -41,7 +41,7 @@ bool ActionExecutionService::execute(
         else if(type == "script") {
             std::string detail;
             const bool ok=ScriptService::run(action.at("script").get<std::string>(), detail);
-            ExecutionDisplay::publish({"Saved script",action.at("script").get<std::string>(),ok?"Completed":"Failed",detail,ok,5});
+            ExecutionDisplay::publish({"Saved script",action.at("script").get<std::string>(),ok?(detail.rfind("Queued",0)==0?"Queued":"Completed"):"Failed",detail,ok,5});
             if(!ok){error=detail;return false;}
         }
         else if (type == "command")
@@ -192,9 +192,9 @@ bool ActionExecutionService::executeAll(
         return false;
     }
 
-    // Includes delays and multi-press power sequences, so two callers cannot
-    // interleave startup and shutdown for the same devices.
-    std::lock_guard<std::recursive_mutex> lock(DeviceStateService::executionMutex());
+    // Serialize action lists while allowing receiver observations between actions.
+    // Individual sends and multi-press power operations hold the state mutex.
+    std::lock_guard<std::recursive_mutex> lock(DeviceStateService::sequenceMutex());
     static thread_local int depth=0;
     if(depth>=8){error="Too many nested action sets";return false;}
     struct DepthGuard{int& n;DepthGuard(int& n):n(n){++n;}~DepthGuard(){--n;}} guard(depth);

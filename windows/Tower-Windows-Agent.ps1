@@ -191,6 +191,10 @@ function Remove-TowerIntegration {
     if (-not (Test-IsAdministrator)) {
         throw 'Administrator rights are required to remove startup integration.'
     }
+    foreach($worker in @(Get-ScheduledTask -TaskName 'Tower Script Worker - *' -ErrorAction SilentlyContinue)) {
+        Stop-ScheduledTask -InputObject $worker -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -InputObject $worker -Confirm:$false
+    }
     foreach ($name in @($taskAgentName, $taskGuiName)) {
         Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
         Unregister-ScheduledTask -TaskName $name -Confirm:$false `

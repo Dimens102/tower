@@ -16,6 +16,7 @@ bool RFCommandService::send(
     std::string& error)
 {
     std::lock_guard<std::recursive_mutex> stateLock(DeviceStateService::executionMutex());
+    if(DeviceStateService::disabled("rf:"+deviceName)){error.clear();ExecutionDisplay::publish({deviceName,"Disabled","Skipped","No signal sent",true,5});return true;}
     if (action != "on" && action != "off" && action != "toggle")
     {
         error = "Action must be on, off, or toggle";

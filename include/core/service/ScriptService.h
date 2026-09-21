@@ -7,5 +7,8 @@ public:
     static void save(const nlohmann::json& script);
     static void remove(const std::string& id);
     static bool run(const std::string& id, std::string& message);
+    static nlohmann::json claim(const std::string& target);
+    static void complete(const nlohmann::json& result);
+    static nlohmann::json jobs();
     static bool wake(const std::string& mac,const std::string& broadcast,std::string& message,int port=9);
 };

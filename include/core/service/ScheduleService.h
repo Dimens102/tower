@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <mutex>
 #include <string>
 
@@ -23,5 +24,5 @@ private:
 
     mutable std::mutex mutex_;
     nlohmann::json document_ = {{"version", 1}, {"schedules", nlohmann::json::array()}};
-    std::string lastMinute_;
+    std::chrono::system_clock::time_point lastCheck_{};
 };

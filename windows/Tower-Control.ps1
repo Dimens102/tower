@@ -1287,7 +1287,7 @@ function Invoke-TowerPost([string]$path, [hashtable]$content) {
         -ContentType 'application/json' `
         -Body $body `
         -DisableKeepAlive `
-        -TimeoutSec $(if ($path -eq '/api/v1/control/actions') { 600 } else { 20 })
+        -TimeoutSec $(if ($path -in @('/api/v1/control/actions','/api/v1/control/scripts/run')) { 600 } else { 20 })
     Write-TowerLog 'INFO' "POST $path succeeded"
     return $response
 }

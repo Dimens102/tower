@@ -40,6 +40,7 @@ private:
     bool load(std::string& error);
     bool write(std::string& error) const;
     void receiverLoop();
+    void observationLoop();
     void processFrame(
         const std::vector<std::uint32_t>& frame);
     bool executeTrigger(
@@ -50,6 +51,7 @@ private:
     nlohmann::json document_;
     std::atomic<bool> running_{false};
     std::thread receiverThread_;
+    std::thread observationThread_;
     std::string receiverDevice_;
     std::string receiverStatus_ = "Stopped";
     std::map<std::string, std::chrono::steady_clock::time_point> lastTriggered_;

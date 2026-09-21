@@ -1,4 +1,5 @@
 #include "core/service/IRCalibrationService.h"
+#include "core/service/DeviceStateService.h"
 
 #include "devices/device.h"
 #include "devices/device_database.h"
@@ -316,11 +317,11 @@ bool IRCalibrationService::sendBatch(
          index < count;
          ++index)
     {
-        if (!sender.send(
+        if (!DeviceStateService::track("ir:"+deviceName, irCommand, [&]{return sender.send(
                 code,
                 transmitter,
                 dutyPercent,
-                carrierKhz))
+                carrierKhz);}))
         {
             error =
                 "IR transmission failed during "

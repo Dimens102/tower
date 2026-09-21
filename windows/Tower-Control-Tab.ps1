@@ -7,6 +7,7 @@ $script:controlCatalog = $null
 $script:controlVoiceConfig = $null
 $script:controlVoiceLeaves = @()
 $script:controlScheduleRows = @()
+$script:controlDraftScheduleIds = @{}
 $script:controlPopulating = $false
 $script:controlEventLogsLoaded = $false
 $script:controlWindowsSyncNeeded = $false
@@ -1206,6 +1207,7 @@ function Add-ControlSchedule {
         } else { @() }
     }
     $script:controlDocument.schedules = @($script:controlDocument.schedules) + @($newSchedule)
+    $script:controlDraftScheduleIds[[string]$newSchedule.id] = $true
     Refresh-ControlScheduleList ([string]$newSchedule.id)
     $controlNameText.SelectAll()
     $controlNameText.Focus()
@@ -1424,6 +1426,7 @@ function Save-ControlDocument([bool]$applySelection = $true) {
             schedules = @($script:controlDocument.schedules)
         }
         $script:controlDocument = $response.schedules
+        $script:controlDraftScheduleIds.Clear()
         Refresh-ControlScheduleList
         try {
             Sync-ControlWindowsSchedules
@@ -1461,13 +1464,29 @@ function Save-ControlDocument([bool]$applySelection = $true) {
 function Remove-ControlSchedule {
     $schedule = Get-ControlSelectedSchedule
     if ($null -eq $schedule) { return }
+    $isDraft = $script:controlDraftScheduleIds.ContainsKey([string]$schedule.id)
+    $question = if ($isDraft) {
+        "Discard unsaved schedule '$([string]$schedule.name)'?"
+    } else {
+        "Delete schedule '$([string]$schedule.name)' from the Tower?"
+    }
     $answer = [System.Windows.Forms.MessageBox]::Show(
-        "Delete schedule '$([string]$schedule.name)' from the Tower?",
+        $question,
         'Delete schedule',
         'YesNo',
         'Warning'
     )
     if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    if ($isDraft) {
+        $script:controlDocument.schedules = @(
+            $script:controlDocument.schedules |
+                Where-Object { [string]$_.id -ne [string]$schedule.id }
+        )
+        $script:controlDraftScheduleIds.Remove([string]$schedule.id)
+        Refresh-ControlScheduleList
+        Set-ControlStatus "Unsaved schedule discarded: $([string]$schedule.name)"
+        return
+    }
     try {
         $controlTab.UseWaitCursor = $true
         $removedWindowsSchedule = [string]$schedule.trigger.type -like 'windows_*'
@@ -1531,6 +1550,7 @@ function Refresh-ControlEditor {
         $catalogResponse = Invoke-TowerGet '/api/v1/voice/catalog'
         $voiceResponse = Invoke-TowerGet '/api/v1/voice/config'
         $script:controlDocument = $scheduleResponse.schedules
+        $script:controlDraftScheduleIds.Clear()
         $script:controlCatalog = $catalogResponse.catalog
         $script:controlVoiceConfig = $voiceResponse.config
         if ($null -eq $script:controlDocument.schedules) {

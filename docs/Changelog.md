@@ -1,5 +1,36 @@
 # Tower Changelog
 
+## v0.11.12 - 2026-09-21
+
+- Show voice action sequences live instead of replaying queued five-second LCD messages after execution.
+- Display only each device name while it is activated, replacing it with the next device as the sequence progresses.
+- Finish with a minimal two-line `Voice command` / `complete` message for 1.5 seconds.
+- Collapse repeated Volume Up or Volume Down presses into one continuously updated message such as `Volume Up by 23`, with one five-second timeout after the final press.
+
+## v0.11.11 - 2026-09-21
+
+- Link one RF mains device to one IR appliance and configure whether the appliance starts ON, OFF or Unknown when RF power is restored.
+- Successful RF OFF marks the linked IR appliance OFF; successful RF ON applies its configured hardware startup state without transmitting an extra IR command.
+- Manual RF state corrections update the linked IR estimate using the same relationship.
+- Flush each journal line immediately so scheduler start/completion timestamps reach systemd without buffering delay.
+
+## v0.11.10 - 2026-09-21
+
+- Replace fixed State/Input/Channel columns with one dynamic Current configuration summary per device.
+- Infer common learned-remote effects for power, sources, channels, volume, mute and Denon sound-mode buttons; command effects remain editable for device-specific behavior.
+- Track arbitrary named configuration properties while preserving existing source/channel mappings.
+- Make Tower schedules survive brief service restarts or blocked update loops with a five-minute startup catch-up window.
+- Persist a schedule's running marker before execution, prevent duplicate execution, and log every scheduled start, completion and failure to the service journal.
+
+## v0.11.09 - 2026-09-20
+
+- Independent persistent Disabled flag skips IR/RF device commands, including managed sequences and calibration sends.
+- Devices show input, channel and last command, with editable source/channel mappings.
+- Observe available IR receivers, match learned command frames, and update estimated state from physical remotes. Suppress own transmissions and duplicate sightings; ambiguous matches are ignored.
+- Windows PowerShell scripts run through an optional per-user logon worker with explicit PC/user targeting, expiry and completion reporting.
+- Scripts editor rows size to their content; adjustable timeouts and Windows job status.
+- Unsaved schedules can be discarded locally without a failing Tower delete request.
+
 ## v0.11.08 - 2026-09-20
 
 - Persistent estimated device state shared by voice, schedules, IR remote buttons and manual controls.

@@ -551,6 +551,7 @@ CommandExecutionResult CommandExecutor::execute(const std::string& device, const
         if(db.loadDevice(device,d)) for(const auto& c:d.commands) if(c.id==command) {
             key=(c.transport==TransportType::RF?"rf:":"ir:")+c.transportDevice; effectCommand=c.transportCommand; break;
         }
+        r=result(CommandExecutionStatus::Success,"Disabled device skipped; no signal sent");
         DeviceStateService::track(key, effectCommand, [&]{r=executeRaw(device,command,outputs);return r.succeeded();});
     } catch(const std::exception& e) {r.status=CommandExecutionStatus::TransmissionFailed;r.message=e.what();}
     return r;
@@ -558,6 +559,7 @@ CommandExecutionResult CommandExecutor::execute(const std::string& device, const
 CommandExecutionResult CommandExecutor::execute(const DeviceCommand& command) {
     CommandExecutionResult r;
     try {
+        r=result(CommandExecutionStatus::Success,"Disabled device skipped; no signal sent",command.transport);
         DeviceStateService::track((command.transport==TransportType::RF?"rf:":"ir:")+command.transportDevice, command.transportCommand,
             [&]{r=executeRaw(command);return r.succeeded();});
     } catch(const std::exception& e) {r.status=CommandExecutionStatus::TransmissionFailed;r.message=e.what();}

@@ -1,6 +1,7 @@
 #include "core/network/VoiceApi.h"
 
 #include "core/service/RFPresetService.h"
+#include "core/service/DeviceStateService.h"
 #include "devices/device.h"
 #include "devices/device_database.h"
 #include "devices/rf/rf_database.h"
@@ -378,7 +379,10 @@ json voiceCatalog()
             }
             commands.push_back({
                 {"id", command.id},
-                {"name", command.name.empty() ? command.id : command.name}
+                {"transportCommand", command.transportCommand.empty() ? command.id : command.transportCommand},
+                {"name", command.name.empty() ? command.id : command.name},
+                {"inferredFields", DeviceStateService::inferredCommandFields(
+                    command.transportCommand.empty() ? command.id : command.transportCommand)}
             });
         }
         if (!commands.empty())

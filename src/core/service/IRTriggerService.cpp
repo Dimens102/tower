@@ -221,6 +221,7 @@ bool IRTriggerService::start(std::string& error)
         return true;
     }
     receiverThread_ = std::thread(&IRTriggerService::receiverLoop, this);
+    observationThread_ = std::thread(&IRTriggerService::observationLoop, this);
     error.clear();
     return true;
 }
@@ -228,6 +229,7 @@ bool IRTriggerService::start(std::string& error)
 void IRTriggerService::stop()
 {
     running_ = false;
+    if(observationThread_.joinable())observationThread_.join();
     if (receiverThread_.joinable())
     {
         receiverThread_.join();

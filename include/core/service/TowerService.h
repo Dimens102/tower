@@ -56,6 +56,7 @@ private:
     ExecutionDisplayNotification executionDisplayCurrent_;
     bool executionDisplayActive_ = false;
     bool executionDisplayPainted_ = false;
+    bool voiceSequenceDisplayActive_ = false;
     std::chrono::steady_clock::time_point executionDisplayEndsAt_{};
 
     bool bootScreenActive_ = false;

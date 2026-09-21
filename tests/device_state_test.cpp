@@ -20,7 +20,7 @@ bool RFCommandService::send(const std::string&,const std::string&,std::string&){
 bool RFPresetService::execute(int,const std::string&,std::vector<RFPresetExecutionResult>&,std::string&)const{return true;}
 void ExecutionDisplay::publish(const ExecutionDisplayNotification&){}
 std::vector<std::string> DeviceDatabase::listDevices(){return {};}
-bool DeviceDatabase::loadDevice(const std::string&,Device&){return false;}
+bool DeviceDatabase::loadDevice(const std::string& id,Device& device){if(id!="KPN")return false;device.id=id;device.name=id;device.type="IR Device";return true;}
 std::vector<RFDevice> RFDatabase::listPowerDevices(){return {};}
 int main(){
     auto root=std::filesystem::temp_directory_path()/"tower-state-test-XXXXXX";std::string name=root.string();assert(mkdtemp(name.data()));std::filesystem::current_path(name);
@@ -59,5 +59,41 @@ int main(){
     json pathAction={{"type","voice_path"},{"path",json::array({"zone","shutdown"})}};
     assert(ActionExecutionService().execute(pathAction,error));assert(sends==2); // Only Dell was on.
     assert(ActionExecutionService().execute(pathAction,error));assert(sends==2); // Later schedule skips all.
+    // Disabled devices are skipped through managed power and raw/test paths.
+    DeviceStateService::configure("ir:KPN",{{"disabled",true}});sends=0;
+    assert(DeviceStateService::ensure("ir:KPN","on",json::array(),error));
+    assert(DeviceStateService::track("ir:KPN","Power",[]{++sends;return true;}));
+    assert(sends==0);assert(DeviceStateService::state("ir:KPN")=="off");
+    DeviceStateService::configure("ir:KPN",{{"disabled",false},{"command_fields",{{"HDMI",{{"source_input","CBL/SAT"}}},{"1",{{"channel","1"}}}}}});
+    assert(DeviceStateService::track("ir:KPN","HDMI",[]{return true;}));
+    assert(DeviceStateService::track("ir:KPN","1",[]{return true;}));
+    DeviceStateService::correct("ir:KPN","on");
+    json fields;{std::ifstream in("data/control/device_states.json");in>>fields;}
+    assert(fields["states"]["ir:KPN"]["source_input"]=="CBL/SAT");assert(fields["states"]["ir:KPN"]["channel"]=="1");
+    DeviceStateService::configure("ir:KPN",{{"command_fields",{{"1",{{"channel","digit:1"}}},{"2",{{"channel","digit:2"}}},{"Up",{{"channel","+1"}}}}}});
+    assert(DeviceStateService::track("ir:KPN","1",[]{return true;}));assert(DeviceStateService::track("ir:KPN","2",[]{return true;}));
+    {std::ifstream in("data/control/device_states.json");in>>fields;}assert(fields["states"]["ir:KPN"]["channel"]=="12");
+    assert(DeviceStateService::track("ir:KPN","Up",[]{return true;}));
+    {std::ifstream in("data/control/device_states.json");in>>fields;}assert(fields["states"]["ir:KPN"]["channel"]=="13");
+    assert(DeviceStateService::track("ir:KPN","Channel Up",[]{return true;}));
+    assert(DeviceStateService::track("ir:KPN","Volume Up",[]{return true;}));
+    assert(DeviceStateService::track("ir:KPN","CBL-SAT",[]{return true;}));
+    {std::ifstream in("data/control/device_states.json");in>>fields;}
+    assert(fields["states"]["ir:KPN"]["configuration"]["Channel"]=="14");
+    assert(fields["states"]["ir:KPN"]["configuration"]["Volume"]=="relative +1 step");
+    assert(fields["states"]["ir:KPN"]["configuration"]["Source"]=="CBL-SAT");
+    // One RF mains device owns one linked IR appliance state. The link records
+    // hardware behavior and never calls the IR sender itself.
+    DeviceStateService::configure("rf:Socket",{{"linked_ir",{{"device","ir:KPN"},{"after_on","on"}}}});
+    DeviceStateService::correct("rf:Socket","on");assert(DeviceStateService::state("ir:KPN")=="on");
+    {std::ifstream in("data/control/device_states.json");in>>fields;}assert(fields["states"]["ir:KPN"]["source"]=="linked RF power: manual correction");
+    DeviceStateService::correct("rf:Socket","off");assert(DeviceStateService::state("ir:KPN")=="off");
+    assert(DeviceStateService::track("rf:Socket","on",[]{return true;}));assert(DeviceStateService::state("ir:KPN")=="on");
+    assert(DeviceStateService::track("rf:Socket","off",[]{return true;}));assert(DeviceStateService::state("ir:KPN")=="off");
+    DeviceStateService::correct("ir:KPN","on");
+    DeviceStateService::observe("ir:KPN","Power");assert(DeviceStateService::state("ir:KPN")=="on"); // own-IR suppression
+    std::this_thread::sleep_for(std::chrono::milliseconds(750));
+    DeviceStateService::observe("ir:KPN","Power");assert(DeviceStateService::state("ir:KPN")=="off");
+    DeviceStateService::observe("ir:KPN","Power");assert(DeviceStateService::state("ir:KPN")=="off"); // same press on another receiver
     std::filesystem::remove_all(name);std::cout<<"Device-state and shared-action tests passed\n";
 }

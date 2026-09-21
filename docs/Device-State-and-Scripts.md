@@ -1,9 +1,12 @@
-# Device state and scripts — v0.11.08
+# Device state and scripts — v0.11.11
 
 ## Devices
 
-Tower stores estimated ON/OFF/Unknown state in `data/control/device_states.json`.
-The Devices tab lists IR and RF devices, the last update, and its source.
+Tower stores estimated configuration in `data/control/device_states.json`.
+The Devices tab combines the properties known for each device into one Current
+configuration column, followed by the last update and its source. Properties are
+dynamic: a Denon can show Power, Source, Volume, Mute or Sound mode while a KPN
+box may show Power and Channel.
 
 - **Mark On / Mark Off / Mark Unknown** correct the record without transmitting.
 - **Turn On / Turn Off** request a state and skip a device already in that state.
@@ -24,12 +27,81 @@ transmission, then the estimated result after success, using atomic, synced
 writes. Interrupted/failed operations stay Unknown. Requests in the Tower
 service are serialized, including a device's entire power sequence.
 
-Normal IR Remote commands still transmit on every press. Configured power
-commands update the shared estimate; other commands leave it unchanged. Dell's
-raw confirmation-style Power presses leave its state Unknown: use the managed
-Turn On/Turn Off actions or converted voice routines for tracked Dell power.
+Normal IR Remote commands still transmit on every press unless the device is
+disabled. Configured power commands update the shared estimate. Learned commands
+can update arbitrary named properties. A two-press shutdown profile
+using the same Power command tracks OFF-to-ON with one press, and ON-to-OFF after
+the second press near the configured delay. Unknown remains Unknown until corrected.
 Low-level CLI raw sends and shell scripts are not automatically interpreted as
 device-state changes.
+
+## Disabled devices and physical remotes
+
+Disable / Enable acts immediately and preserves the last known state. Disabled
+devices are skipped by the common IR/RF command paths, managed power, presets,
+voice, schedules, remote buttons, tests using those paths, and calibration sends.
+Raw CLI send/replay commands and user-written scripts bypass this layer.
+
+The Tower service observes all available IR receivers. Every 30 seconds it
+refreshes its learned-command catalogue and receiver discovery. It matches
+supported decoded protocols, or closely matching raw pulse frames. Unsupported
+or ambiguous signals are ignored; it cannot identify arbitrary unlearned codes.
+Holding a remote button or receiving its frame on several receivers counts once.
+Tower transmissions and teaching are suppressed; observations during a locked
+power operation can be ignored. Reception continues between actions and during
+ordinary action delays. This is estimated state, not device
+feedback. Misheard, blocked, or unrecognized presses require manual correction.
+
+In Devices > Command effects, Tower pre-fills common effects inferred from the
+learned command names. Correct or add a property and resulting value when a
+device uses different wording:
+- Source: for example `CBL-SAT` for Denon's CBL-SAT command.
+- Channel: `1` for a complete channel selection; `digit:1` for keypad 1.
+  Consecutive keypad digits within two seconds are combined into a channel.
+- Channel up/down: `+1` / `-1`; these require a known numeric channel and cannot
+  account for skipped/unavailable channels or provider-specific wraparound.
+- Volume: `+1` or `-1` records relative button steps because IR has no feedback
+  for the absolute dB value. `toggle` records a toggle whose initial state may
+  remain unknown.
+- Blank leaves the configuration unchanged. Save stores mappings without sending IR.
+
+Use Refresh in Devices to see new observations. Its Last command and Observed via
+columns distinguish physical remote presses from commands sent by Tower.
+
+## RF mains links
+
+Select an RF power device and open **RF to IR link**. One RF outlet can own one
+IR appliance. Select the IR device and describe its hardware state after mains
+power returns: ON automatically, OFF automatically, or Unknown/varies.
+
+After a successful RF OFF, Tower records the linked IR appliance as OFF because
+it has no mains power. After RF ON, Tower applies the selected startup state.
+This is a state relationship only: it deliberately sends no additional IR
+command, preventing an automatic startup from being toggled straight back off.
+Schedules that require an additional IR action should keep RF power first and
+then request the desired IR state explicitly.
+
+## Windows scripts
+
+Choose Windows - PowerShell in Scripts and enter the target as `computer|domain\user`
+(the app supplies the current PC/user for new scripts). Reinstall the Windows app
+before using Enable Windows worker. This registers a limited-privilege per-user
+logon task and starts it. It runs separately from Tower Control, using that user's
+existing AppData/Tower/client.json connection settings. Windows must be on and
+that user logged in; the desktop can be locked. Disable Windows worker removes
+the task. Removing Windows startup integration also removes all script-worker tasks.
+
+Windows actions are queued asynchronously: later actions in a Tower sequence do
+not wait for Windows completion. Run status shows queued/running/completed/failed,
+expired, or unknown. An unclaimed job expires after 60 seconds. Claimed jobs are
+never automatically executed again; if the worker dies the result becomes Unknown.
+Changing/deleting a saved script does not change a job already queued with its body.
+
+PowerShell scripts run without elevation, default to terminating errors, and use
+the saved timeout (1-120 seconds). Timeout stops the script process; applications
+it already launched may remain open. Output is bounded and truncated for display.
+For example, save `Start-Process notepad.exe` to open Notepad in that user's desktop.
+Pi Bash and Wake-on-LAN behavior remains available in the same type selector.
 
 ## Existing morning routines
 
@@ -84,7 +156,7 @@ cover Voice, schedules, remote buttons, device power profiles and scripts.
 
 ## Verification
 
-`bash tests/run-state-tests.sh` runs hardware-free state and script tests.
+`bash tests/run-state-tests.sh` runs hardware-free state, script and scheduler tests.
 Covered cases: repeated and simultaneous shutdown, partial device state,
 interrupted Dell shutdown, raw toggle tracking, shared voice-path execution,
 script success/failure/timeout, and a Wake-on-LAN packet captured on loopback.

@@ -57,6 +57,7 @@ struct IRRawRepresentativeFrame
 class IRAnalyzer
 {
 public:
+    static bool decodeDurations(const std::vector<unsigned int>& durations, IRDecode& result);
     IRFileAnalysis analyzeFile(const std::filesystem::path& path) const;
     std::vector<IRReceiverAnalysis> analyzeDirectory(
         const std::filesystem::path& directory) const;

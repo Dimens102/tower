@@ -88,5 +88,5 @@ void Logger::log(
         << component
         << "] "
         << message
-        << '\n';
+        << std::endl;
 }

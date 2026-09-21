@@ -18,5 +18,12 @@ int main(){
     socklen_t length=sizeof(addr);assert(getsockname(fd,reinterpret_cast<sockaddr*>(&addr),&length)==0);
     assert(ScriptService::wake("02:11:22:33:44:55","127.0.0.1",message,ntohs(addr.sin_port)));unsigned char packet[102];assert(recv(fd,packet,102,0)==102);close(fd);
     for(int i=0;i<6;i++)assert(packet[i]==255);const unsigned char expected[]={2,17,34,51,68,85};for(int j=0;j<16;j++)for(int i=0;i<6;i++)assert(packet[6+j*6+i]==expected[i]);
-    ScriptService::remove("example");assert(ScriptService::list().empty());std::filesystem::remove_all(path);std::cout<<"Script and Wake-on-LAN tests passed\n";
+    script["kind"]="powershell";script["target"]="dragon|dragon\\dude";script["body"]="Start-Process notepad.exe";
+    ScriptService::save(script);assert(ScriptService::run("example",message));assert(message.find("Queued on Windows")==0);
+    assert(ScriptService::claim("other-pc|other-user").is_null());
+    auto job=ScriptService::claim("dragon|dragon\\dude");assert(job["body"]==script["body"]);
+    assert(ScriptService::claim("dragon|dragon\\dude").is_null());
+    ScriptService::complete({{"id",job["id"]},{"target",job["target"]},{"ok",true},{"message","Launched"}});
+    assert(ScriptService::jobs()[0]["status"]=="completed");assert(!ScriptService::jobs()[0].contains("body"));
+    ScriptService::remove("example");assert(ScriptService::list().empty());std::filesystem::remove_all(path);std::cout<<"Script, Windows queue and Wake-on-LAN tests passed\n";
 }

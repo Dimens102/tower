@@ -202,7 +202,7 @@ bool RFPresetService::execute(
     std::string& error) const
 {
     results.clear();
-    std::lock_guard<std::recursive_mutex> executionLock(DeviceStateService::executionMutex());
+    std::lock_guard<std::recursive_mutex> executionLock(DeviceStateService::sequenceMutex());
     try
     {
         validatePreset(preset);
@@ -232,7 +232,7 @@ bool RFPresetService::execute(
         }
 
         bool allOn=true;
-        for(const auto& device:devices) allOn=allOn && DeviceStateService::state("rf:"+device)=="on";
+        for(const auto& device:devices) if(!DeviceStateService::disabled("rf:"+device)) allOn=allOn && DeviceStateService::state("rf:"+device)=="on";
         const std::string resolvedAction=action=="toggle"?(allOn?"off":"on"):action;
 
         ExecutionDisplay::publish({

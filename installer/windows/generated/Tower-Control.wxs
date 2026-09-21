@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="65E40972-2426-4BC1-B229-91724F156FA5" Name="Tower Control" Language="1033" Version="0.11.8" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
+  <Product Id="894F8F6C-AF84-4670-A3F4-134744011249" Name="Tower Control" Language="1033" Version="0.11.12" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="RF Tower Windows control application and background agent" />
     <MediaTemplate EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Tower Control is already installed." />
-    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.08" />
+    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.12" />
     <Property Id="ARPNOREPAIR" Value="1" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Dimens102/tower" />
     <Icon Id="TowerIcon.ico" SourceFile="$(var.WindowsSource)/assets/tower-icon-tray.ico" />
@@ -56,6 +56,9 @@
         </Component>
         <Component Id="Cmp_dda5eaf183198b21bcd1" Guid="DC7DD064-BB80-547F-896B-E04D103B1789" Win64="yes">
           <File Id="File_dda5eaf183198b21bcd1" Name="Tower-Remote-Commands.ps1" Source="$(var.WindowsSource)/Tower-Remote-Commands.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_84e35ffaf02c5d6c5a1f" Guid="67D4AE48-670F-5E5B-9BCC-423A631B235E" Win64="yes">
+          <File Id="File_84e35ffaf02c5d6c5a1f" Name="Tower-Script-Worker.ps1" Source="$(var.WindowsSource)/Tower-Script-Worker.ps1" KeyPath="yes" />
         </Component>
         <Component Id="Cmp_7efb9675dad2a5571100" Guid="CADF1679-EF3F-5C8F-818B-13B527032E82" Win64="yes">
           <File Id="File_7efb9675dad2a5571100" Name="Tower-Startup-Integration.ps1" Source="$(var.WindowsSource)/Tower-Startup-Integration.ps1" KeyPath="yes" />
@@ -151,6 +154,7 @@
       <ComponentRef Id="Cmp_615efd69dc3e7924e279" />
       <ComponentRef Id="Cmp_f7e3a3a73e805f16ace7" />
       <ComponentRef Id="Cmp_dda5eaf183198b21bcd1" />
+      <ComponentRef Id="Cmp_84e35ffaf02c5d6c5a1f" />
       <ComponentRef Id="Cmp_7efb9675dad2a5571100" />
       <ComponentRef Id="Cmp_d6a022950666d50661c4" />
       <ComponentRef Id="Cmp_ccc991bb1f490d7be5e9" />

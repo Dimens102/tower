@@ -2372,17 +2372,22 @@ void TowerApiServer::handleClient(int clientFd)
         return;
     }
 
-    if (path == "/api/v1/control/device-states" || path == "/api/v1/control/power-profile" ||
+    if (path == "/api/v1/control/device-states" || path == "/api/v1/control/power-profile" || path == "/api/v1/control/device-settings" ||
+        path == "/api/v1/control/windows-jobs" || path == "/api/v1/control/windows-jobs/claim" || path == "/api/v1/control/windows-jobs/complete" ||
         path == "/api/v1/control/scripts" || path == "/api/v1/control/scripts/delete" || path == "/api/v1/control/scripts/run" ||
         path == "/api/v1/control/actions") {
         try {
             nlohmann::json response={{"ok",true}};
             if(method=="GET" && path=="/api/v1/control/device-states") response["document"]=DeviceStateService::snapshot();
             else if(method=="GET" && path=="/api/v1/control/scripts") response["scripts"]=ScriptService::list();
+            else if(method=="GET" && path=="/api/v1/control/windows-jobs") response["jobs"]=ScriptService::jobs();
             else if(method=="POST") {
                 auto end=request.find("\r\n\r\n");
                 auto body=nlohmann::json::parse(end==std::string::npos?"":request.substr(end+4));
                 if(path=="/api/v1/control/device-states") DeviceStateService::correct(body.at("device"),body.at("state"));
+                else if(path=="/api/v1/control/device-settings") DeviceStateService::configure(body.at("device"),body.at("settings"));
+                else if(path=="/api/v1/control/windows-jobs/claim") response["job"]=ScriptService::claim(body.at("target"));
+                else if(path=="/api/v1/control/windows-jobs/complete") ScriptService::complete(body);
                 else if(path=="/api/v1/control/power-profile") DeviceStateService::saveProfile(body.at("device"),body.at("profile"));
                 else if(path=="/api/v1/control/scripts") ScriptService::save(body.at("script"));
                 else if(path=="/api/v1/control/scripts/delete") ScriptService::remove(body.at("id"));

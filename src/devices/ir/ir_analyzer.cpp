@@ -413,6 +413,12 @@ std::string IRFileAnalysis::result() const
     return "PARTIAL";
 }
 
+bool IRAnalyzer::decodeDurations(const std::vector<unsigned int>& durations, IRDecode& result)
+{
+    Frame frame;bool pulse=true;for(auto duration:durations){frame.push_back({pulse,duration});pulse=!pulse;}
+    auto decoded=decodeFrame(frame);if(!decoded)return false;result=*decoded;return true;
+}
+
 IRFileAnalysis IRAnalyzer::analyzeFile(const std::filesystem::path& path) const
 {
     const auto parsed = parse(path);
