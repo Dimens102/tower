@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="894F8F6C-AF84-4670-A3F4-134744011249" Name="Tower Control" Language="1033" Version="0.11.12" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
+  <Product Id="15414E15-C76F-40AF-9073-989936417F0E" Name="Tower Control" Language="1033" Version="0.11.20" Manufacturer="RF Tower Project" UpgradeCode="6B9BA4B0-6F56-45E6-94BC-AEF7A7C6C94B">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Description="RF Tower Windows control application and background agent" />
     <MediaTemplate EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Tower Control is already installed." />
-    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.12" />
+    <Property Id="ARPCOMMENTS" Value="Tower Control 0.11.20" />
     <Property Id="ARPNOREPAIR" Value="1" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Dimens102/tower" />
     <Icon Id="TowerIcon.ico" SourceFile="$(var.WindowsSource)/assets/tower-icon-tray.ico" />
@@ -44,6 +44,12 @@
         </Component>
         <Component Id="Cmp_3538497b01962f6f66fb" Guid="2A46755C-F9AE-58A2-8D08-422466672B41" Win64="yes">
           <File Id="File_3538497b01962f6f66fb" Name="Tower-Devices-Scripts.ps1" Source="$(var.WindowsSource)/Tower-Devices-Scripts.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_47fd3bb2137f4af6c084" Guid="A39E8F4D-9CF5-5855-A738-35173832070C" Win64="yes">
+          <File Id="File_47fd3bb2137f4af6c084" Name="Tower-Home-Action.ps1" Source="$(var.WindowsSource)/Tower-Home-Action.ps1" KeyPath="yes" />
+        </Component>
+        <Component Id="Cmp_afb2f5ddd6e91f1c99ea" Guid="4DD646D3-4A0B-59BB-A88A-BA81900A6D85" Win64="yes">
+          <File Id="File_afb2f5ddd6e91f1c99ea" Name="Tower-Home-Actions.ps1" Source="$(var.WindowsSource)/Tower-Home-Actions.ps1" KeyPath="yes" />
         </Component>
         <Component Id="Cmp_77767228e99da1796768" Guid="A8ECF784-9DCF-59B8-9B69-4E4BFD855943" Win64="yes">
           <File Id="File_77767228e99da1796768" Name="Tower-Ir-Layout-Editor.ps1" Source="$(var.WindowsSource)/Tower-Ir-Layout-Editor.ps1" KeyPath="yes" />
@@ -150,6 +156,8 @@
       <ComponentRef Id="Cmp_543fcf4d22bad3d12ba9" />
       <ComponentRef Id="Cmp_4d219d2cd82e17b552f3" />
       <ComponentRef Id="Cmp_3538497b01962f6f66fb" />
+      <ComponentRef Id="Cmp_47fd3bb2137f4af6c084" />
+      <ComponentRef Id="Cmp_afb2f5ddd6e91f1c99ea" />
       <ComponentRef Id="Cmp_77767228e99da1796768" />
       <ComponentRef Id="Cmp_615efd69dc3e7924e279" />
       <ComponentRef Id="Cmp_f7e3a3a73e805f16ace7" />

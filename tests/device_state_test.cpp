@@ -18,7 +18,6 @@ CommandExecutionResult CommandExecutor::execute(const std::string&,const std::st
 }
 bool RFCommandService::send(const std::string&,const std::string&,std::string&){return true;}
 bool RFPresetService::execute(int,const std::string&,std::vector<RFPresetExecutionResult>&,std::string&)const{return true;}
-void ExecutionDisplay::publish(const ExecutionDisplayNotification&){}
 std::vector<std::string> DeviceDatabase::listDevices(){return {};}
 bool DeviceDatabase::loadDevice(const std::string& id,Device& device){if(id!="KPN")return false;device.id=id;device.name=id;device.type="IR Device";return true;}
 std::vector<RFDevice> RFDatabase::listPowerDevices(){return {};}
@@ -26,7 +25,9 @@ int main(){
     auto root=std::filesystem::temp_directory_path()/"tower-state-test-XXXXXX";std::string name=root.string();assert(mkdtemp(name.data()));std::filesystem::current_path(name);
     json profile={{"discrete",false},{"on",json::array({{{"command","Power"}}})},{"off",json::array({{{"command","Power"}},{{"command","Power"},{"delay_before_seconds",0}}})},{"effects",{{"Power","unknown"}}}};
     DeviceStateService::saveProfile("ir:Dell",profile);std::string error;
-    assert(!DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(sends==0);
+    // Estimated state is passive: explicit requests always transmit, even
+    // when state is Unknown or already matches the requested state.
+    assert(DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(sends==2);
     DeviceStateService::correct("ir:Dell","on");
     // Saving either unchanged or edited settings must preserve a manual mark
     // and its provenance; saving a profile must not transmit anything.
@@ -35,30 +36,30 @@ int main(){
     auto editedProfile=profile;editedProfile["transmitters"]=json::array({"Tower-IR-TX-004"});
     DeviceStateService::saveProfile("ir:Dell",editedProfile);
     json afterSave;{std::ifstream in("data/control/device_states.json");in>>afterSave;}
-    assert(afterSave["states"]==beforeSave["states"]);assert(sends==0);
+    assert(afterSave["states"]==beforeSave["states"]);assert(sends==2);
     assert(afterSave["profiles"]["ir:Dell"]==editedProfile);
-    assert(DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(sends==2);assert(DeviceStateService::state("ir:Dell")=="off");
-    assert(DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(sends==2); // Remote then schedule.
+    assert(DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(sends==4);assert(DeviceStateService::state("ir:Dell")=="off");
+    assert(DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(sends==6);
+    assert(!DeviceStateService::ensure("ir:Dell","toggle",json::array(),error));assert(sends==6);
     DeviceStateService::correct("ir:Dell","on");sends=0;
     std::thread a([]{std::string e;assert(DeviceStateService::ensure("ir:Dell","off",json::array(),e));});
-    std::thread b([]{std::string e;assert(DeviceStateService::ensure("ir:Dell","off",json::array(),e));});a.join();b.join();assert(sends==2);
+    std::thread b([]{std::string e;assert(DeviceStateService::ensure("ir:Dell","off",json::array(),e));});a.join();b.join();assert(sends==4);
     DeviceStateService::correct("ir:Dell","on");sends=0;failAt=2;
-    assert(!DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(DeviceStateService::state("ir:Dell")=="unknown");
+    assert(!DeviceStateService::ensure("ir:Dell","off",json::array(),error));assert(DeviceStateService::state("ir:Dell")=="on");
     failAt=0;
     auto toggle=profile;toggle["off"]=toggle["on"];toggle["effects"]["Power"]="toggle";DeviceStateService::saveProfile("ir:KPN",toggle);DeviceStateService::correct("ir:KPN","off");
     assert(DeviceStateService::track("ir:KPN","Power",[]{return true;}));assert(DeviceStateService::state("ir:KPN")=="on");
     assert(!DeviceStateService::track("ir:KPN","Power",[]{return false;}));assert(DeviceStateService::state("ir:KPN")=="unknown");
     DeviceStateService::correct("ir:KPN","off");assert(DeviceStateService::track("ir:KPN","1",[]{return true;}));assert(DeviceStateService::state("ir:KPN")=="off");
-    // State is read from disk each time; an interrupted operation stays unknown.
-    std::ifstream in("data/control/device_states.json");json stored;in>>stored;assert(stored["states"]["ir:Dell"]["state"]=="unknown");in.close();
-    // Run the same voice path as both the remote and scheduler do.
+    // Run the same voice path as both the remote and scheduler do. Every
+    // invocation transmits every configured action, independent of estimates.
     std::filesystem::create_directories("data/voice");
     json actions=json::array({{{"type","device_power"},{"device","ir:Dell"},{"state","off"}},{{"type","device_power"},{"device","ir:KPN"},{"state","off"}}});
     {std::ofstream out("data/voice/voice_commands.json");out<<json{{"command_tree",{{"zone",{{"children",{{"shutdown",{{"actions",actions}}}}}}}}}};}
     DeviceStateService::correct("ir:Dell","on");DeviceStateService::correct("ir:KPN","off");sends=0;
     json pathAction={{"type","voice_path"},{"path",json::array({"zone","shutdown"})}};
-    assert(ActionExecutionService().execute(pathAction,error));assert(sends==2); // Only Dell was on.
-    assert(ActionExecutionService().execute(pathAction,error));assert(sends==2); // Later schedule skips all.
+    assert(ActionExecutionService().execute(pathAction,error));assert(sends==3);
+    assert(ActionExecutionService().execute(pathAction,error));assert(sends==6);
     // Disabled devices are skipped through managed power and raw/test paths.
     DeviceStateService::configure("ir:KPN",{{"disabled",true}});sends=0;
     assert(DeviceStateService::ensure("ir:KPN","on",json::array(),error));

@@ -1,6 +1,7 @@
 #include "core/service/ScheduleService.h"
 
 #include "core/service/ActionExecutionService.h"
+#include "core/service/ExecutionDisplay.h"
 #include "core/logging/Logger.h"
 
 #include <chrono>
@@ -95,7 +96,20 @@ bool ScheduleService::remove(const std::string& id, std::string& error) {
 }
 
 bool ScheduleService::executeSchedule(nlohmann::json& schedule, std::string& error) const {
-    return ActionExecutionService().executeAll(schedule.at("actions"), error);
+    bool completed = false;
+    bool displayTopLevel = false;
+    {
+        ExecutionDisplaySequence displaySequence;
+        displayTopLevel = displaySequence.topLevel();
+        completed = ActionExecutionService().executeAll(schedule.at("actions"), error);
+    }
+    if (displayTopLevel)
+    {
+        ExecutionDisplay::publishCompletion(
+            schedule.value("name", "Schedule"),
+            completed);
+    }
+    return completed;
 }
 
 bool ScheduleService::runNow(const std::string& id, nlohmann::json& result, std::string& error) {

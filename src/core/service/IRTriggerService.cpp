@@ -513,26 +513,21 @@ bool IRTriggerService::executeTrigger(
     const nlohmann::json& trigger,
     std::string& error)
 {
-    ExecutionDisplay::publish({
-        "Remote IR command",
-        trigger.value("name", "Unnamed trigger"),
-        "Command received",
-        "Running actions...",
-        true,
-        5,
-    });
-
-    const bool ok = ActionExecutionService().executeAll(
-        trigger.at("actions"),
-        error);
-    ExecutionDisplay::publish({
-        "Remote IR command",
-        trigger.value("name", "Unnamed trigger"),
-        ok ? "sequence completed" : "sequence failed",
-        ok ? "OK - trigger finished" : "FAILED - check log",
-        ok,
-        5,
-    });
+    bool ok = false;
+    bool displayTopLevel = false;
+    {
+        ExecutionDisplaySequence displaySequence;
+        displayTopLevel = displaySequence.topLevel();
+        ok = ActionExecutionService().executeAll(
+            trigger.at("actions"),
+            error);
+    }
+    if (displayTopLevel)
+    {
+        ExecutionDisplay::publishCompletion(
+            trigger.value("name", "Remote button"),
+            ok);
+    }
     return ok;
 }
 

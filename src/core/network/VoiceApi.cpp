@@ -104,8 +104,8 @@ void validateActions(const json& actions, const std::string& path)
         }
         if (type == "device_power") {
             const auto state=action.value("state", "");
-            if(action.value("device", "").empty() || (state!="on" && state!="off" && state!="toggle"))
-                throw std::runtime_error("Device power requires device and on/off/toggle");
+            if(action.value("device", "").empty() || (state!="on" && state!="off"))
+                throw std::runtime_error("Device power requires device and on/off");
         }
         else if(type=="script") {
             if(action.value("script", "").empty())throw std::runtime_error("Choose a saved script");

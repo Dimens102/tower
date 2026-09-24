@@ -101,6 +101,19 @@ function Install-TowerIntegration {
     if (-not (Test-Path -LiteralPath $installedAgent)) {
         throw "Tower background agent not found: $installedAgent"
     }
+    $installedWorker = Join-Path `
+        ([string]$request.appDirectory) `
+        'Tower-Script-Worker.ps1'
+    if (-not (Test-Path -LiteralPath $installedWorker)) {
+        throw "Tower script worker not found: $installedWorker"
+    }
+    $workerAccount = [Security.Principal.NTAccount]::new(
+        [string]$request.userId
+    )
+    $workerSid = $workerAccount.Translate(
+        [Security.Principal.SecurityIdentifier]
+    ).Value
+    $workerTaskName = 'Tower Script Worker - ' + $workerSid
 
     Stop-ScheduledTask -TaskName $taskAgentName -ErrorAction SilentlyContinue
 
@@ -183,8 +196,41 @@ function Install-TowerIntegration {
         -Description 'Starts the visible RF Tower Control application after user logon.' `
         -Force | Out-Null
 
+    $workerArguments =
+        '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass ' +
+        "-File `"$installedWorker`" -Mode Run"
+    $workerAction = New-ScheduledTaskAction `
+        -Execute $powerShell `
+        -Argument $workerArguments `
+        -WorkingDirectory ([string]$request.appDirectory)
+    $workerTrigger = New-ScheduledTaskTrigger `
+        -AtLogOn `
+        -User ([string]$request.userId)
+    $workerPrincipal = New-ScheduledTaskPrincipal `
+        -UserId ([string]$request.userId) `
+        -LogonType Interactive `
+        -RunLevel Highest
+    $workerSettings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -RestartCount 999 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -MultipleInstances IgnoreNew
+    Stop-ScheduledTask -TaskName $workerTaskName -ErrorAction SilentlyContinue
+    Register-ScheduledTask `
+        -TaskName $workerTaskName `
+        -Action $workerAction `
+        -Trigger $workerTrigger `
+        -Principal $workerPrincipal `
+        -Settings $workerSettings `
+        -Description 'Runs authenticated Tower PowerShell jobs in the logged-in user session.' `
+        -Force | Out-Null
+
     Start-ScheduledTask -TaskName $taskAgentName
-    Write-AgentLog 'INFO' 'Windows startup integration installed or repaired.'
+    Start-ScheduledTask -TaskName $workerTaskName
+    Write-AgentLog 'INFO' 'Windows startup integration and script worker installed or repaired.'
 }
 
 function Remove-TowerIntegration {

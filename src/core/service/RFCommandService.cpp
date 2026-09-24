@@ -17,9 +17,9 @@ bool RFCommandService::send(
 {
     std::lock_guard<std::recursive_mutex> stateLock(DeviceStateService::executionMutex());
     if(DeviceStateService::disabled("rf:"+deviceName)){error.clear();ExecutionDisplay::publish({deviceName,"Disabled","Skipped","No signal sent",true,5});return true;}
-    if (action != "on" && action != "off" && action != "toggle")
+    if (action != "on" && action != "off")
     {
-        error = "Action must be on, off, or toggle";
+        error = "Automatic SMART/toggle actions are disabled; choose ON or OFF";
         return false;
     }
 
@@ -32,8 +32,7 @@ bool RFCommandService::send(
         return false;
     }
 
-    const std::string resolvedAction = action == "toggle"
-        ? (DeviceStateService::state("rf:"+deviceName)=="on" ? "off" : "on") : action;
+    const std::string resolvedAction = action;
     RFSender sender;
     if (!DeviceStateService::track("rf:"+deviceName, resolvedAction, [&]{return sender.send(device, resolvedAction == "on");}))
     {

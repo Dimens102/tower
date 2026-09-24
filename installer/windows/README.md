@@ -13,7 +13,7 @@ cd ~/Development/rf-tower
 bash installer/windows/build-msi.sh
 ```
 
-Output: `installer/windows/output/Tower-Control-0.11.07-x64.msi`
+Output: `installer/windows/output/Tower-Control-0.11.20-x64.msi`
 
 ## Installation behavior
 
@@ -22,7 +22,7 @@ Output: `installer/windows/output/Tower-Control-0.11.07-x64.msi`
 - Registers Tower Control with Windows Installed Apps.
 - Preserves `%APPDATA%\Tower` personal settings during upgrades and uninstall.
 - If `%APPDATA%\Tower\client.json` already contains a server and token, the
-  background agent and both startup tasks are installed automatically.
+  background agent, GUI task, and per-user script-worker task are installed automatically.
 - If no valid connection exists yet, Tower Control is still installed. Start
   it, configure the Tower connection, then use **Settings > Install / Repair**
   to activate the background agent.

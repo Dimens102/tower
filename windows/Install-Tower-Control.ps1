@@ -2,7 +2,7 @@ param([switch]$NoLaunch)
 
 $ErrorActionPreference = 'Stop'
 $productName = 'Tower Control'
-$productVersion = '0.11.12'
+$productVersion = '0.11.20'
 $installDirectory = Join-Path $env:ProgramFiles $productName
 $sourceDirectory = $PSScriptRoot
 $configDirectory = Join-Path $env:APPDATA 'Tower'
@@ -132,7 +132,7 @@ try {
     [System.Windows.Forms.MessageBox]::Show(
         "Tower Control $productVersion was installed successfully.`r`n`r`n" +
         "Application: $installDirectory`r`n" +
-        'The background agent is already running.',
+        'The background agent and Windows script worker are already running.',
         'Tower Control installation', 'OK', 'Information'
     ) | Out-Null
 

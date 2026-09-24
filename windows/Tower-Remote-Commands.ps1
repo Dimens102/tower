@@ -267,8 +267,8 @@ $remoteExplanation.Text = (
     "1. Create and Save the button so Tower assigns its unique code.`r`n" +
     "2. Start learning on SofaBaton and press Teach SofaBaton here.`r`n" +
     "3. Press the learned SofaBaton button; Tower receives it and runs the action.`r`n`r`n" +
-    "SMART alternates ON/OFF using the last successful send for that RF preset or device. " +
-    "Recorded states survive Tower restarts. An unknown RF state starts with ON. Release the remote button for 10 seconds before using it again."
+    "RF presets and devices now use explicit ON or OFF actions. SMART was removed because estimated device state is passive and is never allowed to choose an operational command. " +
+    "Release the remote button for 10 seconds before using it again."
 )
 $remoteExplanation.Location = New-Object System.Drawing.Point(165, 450)
 $remoteExplanation.Size = New-Object System.Drawing.Size(430, 180)
@@ -358,7 +358,7 @@ function Update-RemoteActionFields(
                 "$([string]$item.name)  ($([int]$item.deviceCount) devices)"
             )
         }
-        [void]$remoteOperation.Items.AddRange(@('SMART', 'ON', 'OFF'))
+        [void]$remoteOperation.Items.AddRange(@('ON', 'OFF'))
         Set-RemoteTargetById $items $targetId
     } elseif ($type -eq 'RF device') {
         $items = @($script:controlCatalog.rfDevices)
@@ -367,7 +367,7 @@ function Update-RemoteActionFields(
                 "$([string]$item.name)  [$([string]$item.id)]"
             )
         }
-        [void]$remoteOperation.Items.AddRange(@('SMART', 'ON', 'OFF'))
+        [void]$remoteOperation.Items.AddRange(@('ON', 'OFF'))
         Set-RemoteTargetById $items $targetId
     } elseif ($type -eq 'IR command') {
         $items = @($script:controlCatalog.irDevices)
@@ -380,7 +380,10 @@ function Update-RemoteActionFields(
         Update-RemoteCommandChoices $commandId
     } elseif ($type -eq 'Saved script') {
         $script:remoteScriptRows=@((Invoke-TowerGet '/api/v1/control/scripts').scripts)
-        foreach($item in $script:remoteScriptRows){[void]$remoteTarget.Items.Add([string]$item.name)}
+        foreach($item in $script:remoteScriptRows){
+            $prefix=switch([string]$item.kind){'wol'{'[WOL]'}'powershell'{'[WIN]'}default{'[PI]'}}
+            [void]$remoteTarget.Items.Add("$prefix $([string]$item.name)")
+        }
         Set-RemoteTargetById $script:remoteScriptRows $targetId
         $remoteOperation.Visible=$false;$remoteOperationLabel.Visible=$false
     } elseif ($type -eq 'Voice command set') {
@@ -405,7 +408,14 @@ function Update-RemoteActionFields(
         $remoteTarget.SelectedIndex = 0
     }
     if ($type -ne 'IR command' -and $operation) {
-        $remoteOperation.SelectedItem = if ($operation -eq 'toggle') { 'SMART' } else { $operation.ToUpperInvariant() }
+        if ($operation -eq 'toggle') {
+            $remoteOperation.Items.Insert(0, 'SMART disabled - choose ON or OFF')
+            $remoteOperation.SelectedIndex = 0
+            Set-RemoteStatus 'This older button used SMART. Select explicit ON or OFF and save it.' $true
+        }
+        else {
+            $remoteOperation.SelectedItem = $operation.ToUpperInvariant()
+        }
     }
     if ($type -ne 'IR command' -and
         $remoteOperation.SelectedIndex -lt 0 -and
@@ -419,20 +429,26 @@ function Get-RemoteActionFromFields {
     if ($remoteTarget.SelectedIndex -lt 0) { throw 'Select a target.' }
     if($type -eq 'Saved script'){return [pscustomobject]@{type='script';script=[string]$script:remoteScriptRows[$remoteTarget.SelectedIndex].id}}
     if ($type -eq 'RF preset') {
+        if ([string]$remoteOperation.SelectedItem -like 'SMART*') {
+            throw 'SMART is disabled. Choose explicit ON or OFF.'
+        }
         $preset = @($script:controlCatalog.presets)[$remoteTarget.SelectedIndex]
         return [pscustomobject][ordered]@{
             type = 'rf_preset'
             preset = [int]$preset.id
-            action = if ([string]$remoteOperation.SelectedItem -eq 'SMART') { 'toggle' } else { ([string]$remoteOperation.SelectedItem).ToLowerInvariant() }
+            action = ([string]$remoteOperation.SelectedItem).ToLowerInvariant()
         }
     }
     if ($type -eq 'RF device') {
+        if ([string]$remoteOperation.SelectedItem -like 'SMART*') {
+            throw 'SMART is disabled. Choose explicit ON or OFF.'
+        }
         $device = @($script:controlCatalog.rfDevices)[$remoteTarget.SelectedIndex]
         return [pscustomobject][ordered]@{
             type = 'rf_group'
             name = [string]$device.name
             devices = @([string]$device.id)
-            action = if ([string]$remoteOperation.SelectedItem -eq 'SMART') { 'toggle' } else { ([string]$remoteOperation.SelectedItem).ToLowerInvariant() }
+            action = ([string]$remoteOperation.SelectedItem).ToLowerInvariant()
         }
     }
     if ($type -eq 'IR command') {
@@ -596,7 +612,7 @@ function Add-RemoteTrigger {
         actions = @([pscustomobject][ordered]@{
             type = 'rf_preset'
             preset = 1
-            action = 'toggle'
+            action = 'on'
         })
     }
     $script:remoteCommandDocument.triggers = @(

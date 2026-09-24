@@ -2,13 +2,14 @@
 
 ## MSI installation
 
-Run `installer\windows\output\Tower-Control-0.11.07-x64.msi` and accept the UAC
+Run `installer\windows\output\Tower-Control-0.11.20-x64.msi` and accept the UAC
 prompt. It installs Tower Control in `C:\Program Files\Tower Control`, creates
 desktop and Start-menu shortcuts, and registers a normal Windows Installed Apps
 entry.
 
 If `%APPDATA%\Tower\client.json` already contains the Tower address and token,
-the MSI also configures and starts the background agent automatically. On a new
+the MSI also configures and starts the background agent and per-user PowerShell
+script worker automatically. On a new
 PC, start Tower Control, configure the connection, and use **Settings > Install
 / Repair** once.
 
@@ -23,7 +24,8 @@ uninstall.
 3. Double-click `Install-Tower-Control.cmd` and accept the UAC prompt.
 
 The installer places the application in `C:\Program Files\Tower Control`, starts
-the background agent immediately, registers the GUI for delayed user-logon
+the background agent and script worker immediately, registers both the GUI and
+worker for user-logon
 startup, adds Start-menu and desktop shortcuts, and creates a Windows uninstall
 entry. Both shortcuts start the registered GUI task without opening a console.
 

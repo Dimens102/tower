@@ -206,9 +206,10 @@ bool RFPresetService::execute(
     try
     {
         validatePreset(preset);
-        if (action != "on" && action != "off" && action != "toggle")
+        if (action != "on" && action != "off")
         {
-            throw std::runtime_error("Action must be on, off, or toggle");
+            throw std::runtime_error(
+                "Automatic SMART/toggle actions are disabled; choose ON or OFF");
         }
 
         const std::size_t presetIndex =
@@ -231,42 +232,34 @@ bool RFPresetService::execute(
             throw std::runtime_error("RF preset has no devices selected");
         }
 
-        bool allOn=true;
-        for(const auto& device:devices) if(!DeviceStateService::disabled("rf:"+device)) allOn=allOn && DeviceStateService::state("rf:"+device)=="on";
-        const std::string resolvedAction=action=="toggle"?(allOn?"off":"on"):action;
+        const std::string resolvedAction=action;
 
-        ExecutionDisplay::publish({
-            "RF Preset " + std::to_string(preset),
-            resolvedAction == "on" ? "Powering devices ON" : "Powering devices OFF",
-            std::to_string(devices.size()) + " device(s)",
-            "Starting sequence...",
-            true,
-            5,
-        });
-
-        RFCommandService rfService;
         bool allSucceeded = true;
-        for (const std::string& device : devices)
+        bool displayTopLevel = false;
         {
-            RFPresetExecutionResult result;
-            result.device = device;
-            result.ok = DeviceStateService::ensure("rf:"+device, resolvedAction, nlohmann::json::array(), result.error);
-            allSucceeded = allSucceeded && result.ok;
-            results.push_back(result);
+            ExecutionDisplaySequence displaySequence;
+            displayTopLevel = displaySequence.topLevel();
+            RFCommandService rfService;
+            for (const std::string& device : devices)
+            {
+                RFPresetExecutionResult result;
+                result.device = device;
+                result.ok = DeviceStateService::ensure("rf:"+device, resolvedAction, nlohmann::json::array(), result.error);
+                allSucceeded = allSucceeded && result.ok;
+                results.push_back(result);
+            }
         }
         if (!allSucceeded)
         {
             error = "One or more RF preset commands failed";
         }
 
-        ExecutionDisplay::publish({
-            "RF Preset " + std::to_string(preset),
-            resolvedAction == "on" ? "ON sequence" : "OFF sequence",
-            allSucceeded ? "completed" : "completed with errors",
-            allSucceeded ? "OK - preset finished" : "FAILED - check log",
-            allSucceeded,
-            5,
-        });
+        if (displayTopLevel)
+        {
+            ExecutionDisplay::publishCompletion(
+                "Preset " + std::to_string(preset),
+                allSucceeded);
+        }
         return allSucceeded;
     }
     catch (const std::exception& exception)

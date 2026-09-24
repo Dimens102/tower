@@ -6,11 +6,14 @@ $script:controlDocument = $null
 $script:controlCatalog = $null
 $script:controlVoiceConfig = $null
 $script:controlVoiceLeaves = @()
+$script:controlScriptRows = @()
 $script:controlScheduleRows = @()
 $script:controlDraftScheduleIds = @{}
 $script:controlPopulating = $false
 $script:controlEventLogsLoaded = $false
 $script:controlWindowsSyncNeeded = $false
+$script:controlDraftActions = @()
+$script:controlEditingActionIndex = -1
 $script:controlWindowsScheduleManager = Join-Path $PSScriptRoot 'Tower-Windows-Schedule-Manager.ps1'
 $script:controlCurrentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
@@ -121,6 +124,11 @@ $controlAddButton.Text = '+ New schedule'
 $controlAddButton.Size = New-Object System.Drawing.Size(120, 29)
 [void]$controlScheduleButtons.Controls.Add($controlAddButton)
 
+$controlCloneButton = New-Object System.Windows.Forms.Button
+$controlCloneButton.Text = 'Clone'
+$controlCloneButton.Size = New-Object System.Drawing.Size(78, 29)
+[void]$controlScheduleButtons.Controls.Add($controlCloneButton)
+
 $controlDeleteButton = New-Object System.Windows.Forms.Button
 $controlDeleteButton.Text = 'Delete'
 $controlDeleteButton.Size = New-Object System.Drawing.Size(78, 29)
@@ -183,7 +191,9 @@ $controlTriggerCombo.Size = New-Object System.Drawing.Size(245, 25)
 [void]$controlTriggerCombo.Items.AddRange(@(
     'On a schedule',
     'At log on',
+    'At log off',
     'At startup',
+    'On shutdown',
     'On idle',
     'On an event'
 ))
@@ -370,46 +380,73 @@ $controlDelayHint.Size = New-Object System.Drawing.Size(230, 21)
 $controlDelayHint.ForeColor = [System.Drawing.Color]::DimGray
 $controlEditor.Controls.Add($controlDelayHint)
 
-$controlActionPreviewLabel = New-ControlEditorLabel 'Will execute' 524
-$controlActionPreview = New-Object System.Windows.Forms.TextBox
-$controlActionPreview.Location = New-Object System.Drawing.Point(150, 524)
-$controlActionPreview.Size = New-Object System.Drawing.Size(445, 68)
-$controlActionPreview.Multiline = $true
-$controlActionPreview.ReadOnly = $true
-$controlActionPreview.ScrollBars = 'Vertical'
-$controlActionPreview.BackColor = [System.Drawing.SystemColors]::Window
-$controlEditor.Controls.Add($controlActionPreview)
+$controlActionPreviewLabel = New-ControlEditorLabel 'Command actions' 524
+$controlActionList = New-Object System.Windows.Forms.ListBox
+$controlActionList.Location = New-Object System.Drawing.Point(150, 524)
+$controlActionList.Size = New-Object System.Drawing.Size(445, 100)
+$controlActionList.HorizontalScrollbar = $true
+$controlEditor.Controls.Add($controlActionList)
+
+$controlActionAddButton = New-Object System.Windows.Forms.Button
+$controlActionAddButton.Text = '+ Add action'
+$controlActionAddButton.Location = New-Object System.Drawing.Point(150, 632)
+$controlActionAddButton.Size = New-Object System.Drawing.Size(98, 30)
+$controlEditor.Controls.Add($controlActionAddButton)
+
+$controlActionUpdateButton = New-Object System.Windows.Forms.Button
+$controlActionUpdateButton.Text = 'Update action'
+$controlActionUpdateButton.Location = New-Object System.Drawing.Point(254, 632)
+$controlActionUpdateButton.Size = New-Object System.Drawing.Size(102, 30)
+$controlEditor.Controls.Add($controlActionUpdateButton)
+
+$controlActionRemoveButton = New-Object System.Windows.Forms.Button
+$controlActionRemoveButton.Text = 'Remove'
+$controlActionRemoveButton.Location = New-Object System.Drawing.Point(362, 632)
+$controlActionRemoveButton.Size = New-Object System.Drawing.Size(75, 30)
+$controlEditor.Controls.Add($controlActionRemoveButton)
+
+$controlActionUpButton = New-Object System.Windows.Forms.Button
+$controlActionUpButton.Text = [char]0x2191
+$controlActionUpButton.Location = New-Object System.Drawing.Point(443, 632)
+$controlActionUpButton.Size = New-Object System.Drawing.Size(45, 30)
+$controlEditor.Controls.Add($controlActionUpButton)
+
+$controlActionDownButton = New-Object System.Windows.Forms.Button
+$controlActionDownButton.Text = [char]0x2193
+$controlActionDownButton.Location = New-Object System.Drawing.Point(494, 632)
+$controlActionDownButton.Size = New-Object System.Drawing.Size(45, 30)
+$controlEditor.Controls.Add($controlActionDownButton)
 
 $controlApplyButton = New-Object System.Windows.Forms.Button
 $controlApplyButton.Text = 'Apply schedule'
-$controlApplyButton.Location = New-Object System.Drawing.Point(150, 614)
+$controlApplyButton.Location = New-Object System.Drawing.Point(150, 680)
 $controlApplyButton.Size = New-Object System.Drawing.Size(122, 32)
 $controlEditor.Controls.Add($controlApplyButton)
 
 $controlRunButton = New-Object System.Windows.Forms.Button
 $controlRunButton.Text = 'Run now'
-$controlRunButton.Location = New-Object System.Drawing.Point(282, 614)
+$controlRunButton.Location = New-Object System.Drawing.Point(282, 680)
 $controlRunButton.Size = New-Object System.Drawing.Size(100, 32)
 $controlEditor.Controls.Add($controlRunButton)
 
 $controlEditorHint = New-Object System.Windows.Forms.Label
 $controlEditorHint.Text = 'Apply updates the draft. Save to Tower makes it persistent. Voice sets stay linked and use their latest actions.'
-$controlEditorHint.Location = New-Object System.Drawing.Point(150, 655)
+$controlEditorHint.Location = New-Object System.Drawing.Point(150, 721)
 $controlEditorHint.Size = New-Object System.Drawing.Size(450, 42)
 $controlEditorHint.ForeColor = [System.Drawing.Color]::DimGray
 $controlEditor.Controls.Add($controlEditorHint)
 
-$controlNextLabel = New-ControlEditorLabel 'Next run' 700
+$controlNextLabel = New-ControlEditorLabel 'Next run' 766
 $controlNextRun = New-Object System.Windows.Forms.Label
-$controlNextRun.Location = New-Object System.Drawing.Point(150, 700)
+$controlNextRun.Location = New-Object System.Drawing.Point(150, 766)
 $controlNextRun.Size = New-Object System.Drawing.Size(445, 25)
 $controlNextRun.Text = 'No schedule selected'
 $controlNextRun.ForeColor = [System.Drawing.Color]::DimGray
 $controlEditor.Controls.Add($controlNextRun)
 
-$controlLastLabel = New-ControlEditorLabel 'Last result' 736
+$controlLastLabel = New-ControlEditorLabel 'Last result' 802
 $controlLastResult = New-Object System.Windows.Forms.Label
-$controlLastResult.Location = New-Object System.Drawing.Point(150, 736)
+$controlLastResult.Location = New-Object System.Drawing.Point(150, 802)
 $controlLastResult.Size = New-Object System.Drawing.Size(445, 48)
 $controlLastResult.Text = 'Never run'
 $controlLastResult.ForeColor = [System.Drawing.Color]::DimGray
@@ -480,7 +517,21 @@ function Get-ControlActionDisplayName($action) {
     $delaySeconds = [Math]::Max(0, [int]$action.delay_before_seconds)
     $delayText = if ($delaySeconds -gt 0) { " after ${delaySeconds}s" } else { '' }
     switch ([string]$action.type) {
-        'script' {return "Script: $([string]$action.script)$delayText"}
+        'script' {
+            $scriptId = [string]$action.script
+            $saved = @($script:controlScriptRows | Where-Object {
+                [string]$_.id -eq $scriptId
+            }) | Select-Object -First 1
+            if ($null -ne $saved) {
+                $prefix = switch ([string]$saved.kind) {
+                    'wol' {'[WOL]'}
+                    'powershell' {'[WIN]'}
+                    default {'[PI]'}
+                }
+                return "Script: $prefix $([string]$saved.name)$delayText"
+            }
+            return "Script: missing [$scriptId]$delayText"
+        }
         'device_power' {return "Power: $([string]$action.device) -> $([string]$action.state)$delayText"}
 
         'voice_path' {
@@ -705,7 +756,9 @@ function Update-ControlTriggerFields {
     $isOnce = $isSchedule -and [string]$controlScheduleTypeCombo.SelectedItem -eq 'One time'
     $isWeekly = $isSchedule -and [string]$controlScheduleTypeCombo.SelectedItem -eq 'Weekly'
     $isLogon = $selection -eq 'At log on'
+    $isLogoff = $selection -eq 'At log off'
     $isStartup = $selection -eq 'At startup'
+    $isShutdown = $selection -eq 'On shutdown'
     $isIdle = $selection -eq 'On idle'
     $isEvent = $selection -eq 'On an event'
 
@@ -722,7 +775,7 @@ function Update-ControlTriggerFields {
     $controlLogonSpecificRadio.Visible = $isLogon
     $controlLogonUserText.Visible = $isLogon
     $controlLogonUserText.Enabled = $isLogon -and $controlLogonSpecificRadio.Checked
-    $controlWindowsTriggerHint.Visible = $isStartup -or $isIdle
+    $controlWindowsTriggerHint.Visible = $isStartup -or $isLogoff -or $isShutdown -or $isIdle
     $controlEventLogLabel.Visible = $isEvent
     $controlEventLogCombo.Visible = $isEvent
     $controlEventSourceLabel.Visible = $isEvent
@@ -733,6 +786,14 @@ function Update-ControlTriggerFields {
     if ($isStartup) {
         $controlWindowsTriggerHint.Text =
             'No additional settings required. The command is queued during Windows startup and runs when the Tower agent connects.'
+    }
+    elseif ($isLogoff) {
+        $controlWindowsTriggerHint.Text =
+            'Runs when Windows records an interactive user logoff. The Security log must record event 4647.'
+    }
+    elseif ($isShutdown) {
+        $controlWindowsTriggerHint.Text =
+            'Runs immediately when Windows records a real power-off request. Restarts are excluded.'
     }
     elseif ($isIdle) {
         $controlWindowsTriggerHint.Text =
@@ -756,25 +817,38 @@ function Update-ControlTriggerFields {
 }
 
 function Update-ControlActionPreview {
-    if ($script:controlPopulating) { return }
+    $selected = $controlActionList.SelectedIndex
+    $controlActionUpdateButton.Enabled = $selected -ge 0
+    $controlActionRemoveButton.Enabled = $selected -ge 0
+    $controlActionUpButton.Enabled = $selected -gt 0
+    $controlActionDownButton.Enabled =
+        $selected -ge 0 -and $selected -lt ($script:controlDraftActions.Count - 1)
+}
+
+function Refresh-ControlActionList([int]$selectedIndex = -1) {
+    $script:controlPopulating = $true
     try {
-        $actions = @()
-        if ([string]$controlSourceCombo.SelectedItem -eq 'Voice command set' -and
-            $controlTargetCombo.SelectedIndex -ge 0) {
-            $actions = @($script:controlVoiceLeaves[$controlTargetCombo.SelectedIndex].Actions)
+        $controlActionList.Items.Clear()
+        for ($index = 0; $index -lt $script:controlDraftActions.Count; $index++) {
+            [void]$controlActionList.Items.Add(
+                "$($index + 1). $(Get-ControlActionDisplayName $script:controlDraftActions[$index])"
+            )
+        }
+        if ($controlActionList.Items.Count -gt 0) {
+            if ($selectedIndex -lt 0) { $selectedIndex = 0 }
+            $controlActionList.SelectedIndex = [Math]::Min(
+                $selectedIndex,
+                $controlActionList.Items.Count - 1
+            )
         }
         else {
-            $actions = @(Get-ControlActionsFromFields)
+            $script:controlEditingActionIndex = -1
         }
-        $lines = @()
-        for ($index = 0; $index -lt $actions.Count; $index++) {
-            $lines += "$($index + 1). $(Get-ControlActionDisplayName $actions[$index])"
-        }
-        $controlActionPreview.Text = $lines -join "`r`n"
     }
-    catch {
-        $controlActionPreview.Text = [string]$_.Exception.Message
+    finally {
+        $script:controlPopulating = $false
     }
+    Update-ControlActionPreview
 }
 
 function Update-ControlActionFields(
@@ -804,7 +878,14 @@ function Update-ControlActionFields(
     if ($type -eq 'Saved script') {
         $controlTargetLabel.Text = 'Saved script'
         $script:controlScriptRows = @((Invoke-TowerGet '/api/v1/control/scripts').scripts)
-        foreach($item in $script:controlScriptRows) { [void]$controlTargetCombo.Items.Add([string]$item.name) }
+        foreach($item in $script:controlScriptRows) {
+            $prefix = switch ([string]$item.kind) {
+                'wol' {'[WOL]'}
+                'powershell' {'[WIN]'}
+                default {'[PI]'}
+            }
+            [void]$controlTargetCombo.Items.Add("$prefix $([string]$item.name)")
+        }
         Set-ControlComboIndexById $controlTargetCombo $script:controlScriptRows $targetId
     }
     elseif ($isVoice) {
@@ -938,6 +1019,113 @@ function Get-ControlActionsFromFields {
     throw 'Select a command source.'
 }
 
+function Set-ControlFieldsFromAction($action) {
+    if ($null -eq $action) { return }
+    $script:controlPopulating = $true
+    try {
+        $targetId = ''
+        $commandId = ''
+        $operation = ''
+        $transmitters = @()
+        switch ([string]$action.type) {
+            'script' {
+                $controlSourceCombo.SelectedItem = 'Saved script'
+                $targetId = [string]$action.script
+            }
+            'voice_path' {
+                $controlSourceCombo.SelectedItem = 'Voice command set'
+                $targetId = @($action.path) -join "`n"
+            }
+            'rf_preset' {
+                $controlSourceCombo.SelectedItem = 'RF preset'
+                $targetId = [string]$action.preset
+                $operation = [string]$action.action
+            }
+            'rf_group' {
+                $controlSourceCombo.SelectedItem = 'RF device'
+                $targetId = [string](@($action.devices)[0])
+                $operation = [string]$action.action
+            }
+            default {
+                $controlSourceCombo.SelectedItem = 'IR command'
+                $targetId = [string]$action.device
+                $commandId = [string]$action.command
+                $transmitters = @($action.transmitters)
+            }
+        }
+        $delay = [Math]::Max(0, [int]$action.delay_before_seconds)
+        $controlDelaySeconds.Value = [Math]::Min(
+            [decimal]$controlDelaySeconds.Maximum,
+            [decimal]$delay
+        )
+    }
+    finally {
+        $script:controlPopulating = $false
+    }
+    Update-ControlActionFields $targetId $commandId $operation $transmitters
+}
+
+function Add-ControlDraftAction {
+    try {
+        $action = @(Get-ControlActionsFromFields) | Select-Object -First 1
+        $script:controlDraftActions = @($script:controlDraftActions) + @(
+            (Copy-ControlObject $action)
+        )
+        Refresh-ControlActionList ($script:controlDraftActions.Count - 1)
+        Set-ControlStatus 'Action added to the schedule draft. Press Apply schedule when ready.'
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            [string]$_.Exception.Message,
+            'Add schedule action',
+            'OK',
+            'Warning'
+        ) | Out-Null
+    }
+}
+
+function Update-ControlDraftAction {
+    $index = $controlActionList.SelectedIndex
+    if ($index -lt 0 -or $index -ge $script:controlDraftActions.Count) { return }
+    try {
+        $action = @(Get-ControlActionsFromFields) | Select-Object -First 1
+        $script:controlDraftActions[$index] = Copy-ControlObject $action
+        Refresh-ControlActionList $index
+        Set-ControlStatus 'Selected schedule action updated.'
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            [string]$_.Exception.Message,
+            'Update schedule action',
+            'OK',
+            'Warning'
+        ) | Out-Null
+    }
+}
+
+function Remove-ControlDraftAction {
+    $index = $controlActionList.SelectedIndex
+    if ($index -lt 0 -or $index -ge $script:controlDraftActions.Count) { return }
+    $remaining = @()
+    for ($itemIndex = 0; $itemIndex -lt $script:controlDraftActions.Count; $itemIndex++) {
+        if ($itemIndex -ne $index) { $remaining += $script:controlDraftActions[$itemIndex] }
+    }
+    $script:controlDraftActions = @($remaining)
+    Refresh-ControlActionList ([Math]::Min($index, $script:controlDraftActions.Count - 1))
+    Set-ControlStatus 'Action removed from the schedule draft.'
+}
+
+function Move-ControlDraftAction([int]$direction) {
+    $index = $controlActionList.SelectedIndex
+    $target = $index + $direction
+    if ($index -lt 0 -or $target -lt 0 -or $target -ge $script:controlDraftActions.Count) { return }
+    $temporary = $script:controlDraftActions[$index]
+    $script:controlDraftActions[$index] = $script:controlDraftActions[$target]
+    $script:controlDraftActions[$target] = $temporary
+    Refresh-ControlActionList $target
+    Set-ControlStatus 'Schedule action order updated.'
+}
+
 function Get-ControlSourceFromFields {
     $type = [string]$controlSourceCombo.SelectedItem
     if ($controlTargetCombo.SelectedIndex -lt 0) { throw 'Select a command target.' }
@@ -1007,15 +1195,17 @@ function Clear-ControlScheduleEditor {
         $controlNextRun.Text = 'No schedule selected'
         $controlLastResult.Text = 'Never run'
         $controlDeleteButton.Enabled = $false
+        $controlCloneButton.Enabled = $false
         $controlRunButton.Enabled = $false
         $controlApplyButton.Enabled = $false
+        $script:controlDraftActions = @()
     }
     finally {
         $script:controlPopulating = $false
     }
     Update-ControlTriggerFields
     Update-ControlActionFields
-    $controlActionPreview.Text = 'Press + New schedule to create a Tower or Windows-triggered command.'
+    Refresh-ControlActionList
     $controlEditor.Enabled = $false
 }
 
@@ -1049,6 +1239,8 @@ function Show-ControlSchedule($schedule) {
                 } else { [string]$schedule.trigger.userId }
             }
             'windows_startup' { $controlTriggerCombo.SelectedItem = 'At startup' }
+            'windows_logoff' { $controlTriggerCombo.SelectedItem = 'At log off' }
+            'windows_shutdown' { $controlTriggerCombo.SelectedItem = 'On shutdown' }
             'windows_idle' { $controlTriggerCombo.SelectedItem = 'On idle' }
             'windows_event' {
                 $controlTriggerCombo.SelectedItem = 'On an event'
@@ -1087,12 +1279,15 @@ function Show-ControlSchedule($schedule) {
 
         $source = $schedule.source
         $firstAction = @($schedule.actions) | Select-Object -First 1
+        $script:controlDraftActions = @(
+            @($schedule.actions) | ForEach-Object { Copy-ControlObject $_ }
+        )
         $targetId = ''
         $commandId = ''
         $operation = ''
         $transmitters = @()
         $sourceType = [string]$source.type
-        if ([string]::IsNullOrWhiteSpace($sourceType)) {
+        if ($sourceType -notin @('script','voice','rf_preset','rf_device','ir')) {
             switch ([string]$firstAction.type) {
                 'script' { $sourceType = 'script' }
                 'voice_path' { $sourceType = 'voice' }
@@ -1155,6 +1350,7 @@ function Show-ControlSchedule($schedule) {
             }
         }
         $controlDeleteButton.Enabled = $true
+        $controlCloneButton.Enabled = $true
         $controlRunButton.Enabled = $true
         $controlApplyButton.Enabled = $true
     }
@@ -1163,7 +1359,7 @@ function Show-ControlSchedule($schedule) {
     }
     Update-ControlTriggerFields
     Update-ControlActionFields $targetId $commandId $operation $transmitters
-    Update-ControlActionPreview
+    Refresh-ControlActionList 0
 }
 
 function Add-ControlSchedule {
@@ -1212,6 +1408,45 @@ function Add-ControlSchedule {
     $controlNameText.SelectAll()
     $controlNameText.Focus()
     Set-ControlStatus 'New draft created. Choose its timing and command, then Save to Tower.'
+}
+
+function Get-ControlCloneName([string]$baseName) {
+    $stem = $baseName.Trim()
+    if ([string]::IsNullOrWhiteSpace($stem)) { $stem = 'Schedule' }
+    $number = 2
+    do {
+        $candidate = "$stem ($number)"
+        $exists = @($script:controlDocument.schedules | Where-Object {
+            [string]$_.name -ieq $candidate
+        }).Count -gt 0
+        $number++
+    } while ($exists)
+    return $candidate
+}
+
+function Clone-ControlSchedule {
+    $schedule = Get-ControlSelectedSchedule
+    if ($null -eq $schedule) { return }
+    if (-not (Apply-ControlSchedule $true)) { return }
+    $schedule = Get-ControlSelectedSchedule
+    $clone = Copy-ControlObject $schedule
+    $clone.id = ([guid]::NewGuid()).ToString('N')
+    $clone.name = Get-ControlCloneName ([string]$schedule.name)
+    if ($null -ne $clone.PSObject.Properties['lastRun']) {
+        $clone.PSObject.Properties.Remove('lastRun')
+    }
+    if ($null -ne $clone.PSObject.Properties['lastResult']) {
+        $clone.PSObject.Properties.Remove('lastResult')
+    }
+    $script:controlDocument.schedules = @($script:controlDocument.schedules) + @($clone)
+    $script:controlDraftScheduleIds[[string]$clone.id] = $true
+    if ([string]$clone.trigger.type -like 'windows_*') {
+        $script:controlWindowsSyncNeeded = $true
+    }
+    Refresh-ControlScheduleList ([string]$clone.id)
+    $controlNameText.SelectAll()
+    $controlNameText.Focus()
+    Set-ControlStatus "Cloned schedule as '$([string]$clone.name)'. Save to Tower when ready."
 }
 
 function Get-ControlSelectedSchedule {
@@ -1271,6 +1506,12 @@ function Apply-ControlSchedule([bool]$showErrors = $true) {
         elseif ($triggerSelection -eq 'At startup') {
             $trigger = [ordered]@{ type = 'windows_startup' }
         }
+        elseif ($triggerSelection -eq 'At log off') {
+            $trigger = [ordered]@{ type = 'windows_logoff' }
+        }
+        elseif ($triggerSelection -eq 'On shutdown') {
+            $trigger = [ordered]@{ type = 'windows_shutdown' }
+        }
         elseif ($triggerSelection -eq 'On idle') {
             $trigger = [ordered]@{ type = 'windows_idle' }
         }
@@ -1297,13 +1538,27 @@ function Apply-ControlSchedule([bool]$showErrors = $true) {
             throw 'Select a trigger.'
         }
 
+        if ($script:controlDraftActions.Count -eq 0) {
+            throw 'Add at least one command action to this schedule.'
+        }
+        $source = if ($script:controlDraftActions.Count -eq 1) {
+            Get-ControlSourceFromFields
+        }
+        else {
+            [pscustomobject][ordered]@{
+                type = 'multi'
+                label = "$($script:controlDraftActions.Count) ordered actions"
+            }
+        }
         $replacement = [ordered]@{
             id = [string]$schedule.id
             name = $name
             enabled = [bool]$controlEnabledCheck.Checked
             trigger = Copy-ControlObject $trigger
-            source = Get-ControlSourceFromFields
-            actions = @(Get-ControlActionsFromFields)
+            source = $source
+            actions = @(
+                $script:controlDraftActions | ForEach-Object { Copy-ControlObject $_ }
+            )
         }
         if (-not [string]::IsNullOrWhiteSpace([string]$schedule.lastRun)) {
             $replacement.lastRun = [string]$schedule.lastRun
@@ -1549,10 +1804,12 @@ function Refresh-ControlEditor {
         $scheduleResponse = Invoke-TowerGet '/api/v1/schedules'
         $catalogResponse = Invoke-TowerGet '/api/v1/voice/catalog'
         $voiceResponse = Invoke-TowerGet '/api/v1/voice/config'
+        $scriptResponse = Invoke-TowerGet '/api/v1/control/scripts'
         $script:controlDocument = $scheduleResponse.schedules
         $script:controlDraftScheduleIds.Clear()
         $script:controlCatalog = $catalogResponse.catalog
         $script:controlVoiceConfig = $voiceResponse.config
+        $script:controlScriptRows = @($scriptResponse.scripts)
         if ($null -eq $script:controlDocument.schedules) {
             $script:controlDocument = [pscustomobject]@{
                 version = 1
@@ -1581,6 +1838,15 @@ $controlScheduleList.Add_SelectedIndexChanged({
         $controlScheduleList.SelectedIndex -ge 0 -and
         $controlScheduleList.SelectedIndex -lt $script:controlScheduleRows.Count) {
         Show-ControlSchedule $script:controlScheduleRows[$controlScheduleList.SelectedIndex]
+    }
+})
+$controlActionList.Add_SelectedIndexChanged({
+    if (-not $script:controlPopulating -and
+        $controlActionList.SelectedIndex -ge 0 -and
+        $controlActionList.SelectedIndex -lt $script:controlDraftActions.Count) {
+        $script:controlEditingActionIndex = $controlActionList.SelectedIndex
+        Set-ControlFieldsFromAction $script:controlDraftActions[$controlActionList.SelectedIndex]
+        Update-ControlActionPreview
     }
 })
 $controlTriggerCombo.Add_SelectedIndexChanged({
@@ -1635,11 +1901,29 @@ foreach ($check in $script:controlTransmitterChecks.Values) {
 $controlAddButton.Add_Click({
     Invoke-ControlEditorEvent { Add-ControlSchedule } 'new schedule'
 })
+$controlCloneButton.Add_Click({
+    Invoke-ControlEditorEvent { Clone-ControlSchedule } 'clone schedule'
+})
 $controlNewHeaderButton.Add_Click({
     Invoke-ControlEditorEvent { Add-ControlSchedule } 'new schedule'
 })
 $controlDeleteButton.Add_Click({
     Invoke-ControlEditorEvent { Remove-ControlSchedule } 'delete'
+})
+$controlActionAddButton.Add_Click({
+    Invoke-ControlEditorEvent { Add-ControlDraftAction } 'add schedule action'
+})
+$controlActionUpdateButton.Add_Click({
+    Invoke-ControlEditorEvent { Update-ControlDraftAction } 'update schedule action'
+})
+$controlActionRemoveButton.Add_Click({
+    Invoke-ControlEditorEvent { Remove-ControlDraftAction } 'remove schedule action'
+})
+$controlActionUpButton.Add_Click({
+    Invoke-ControlEditorEvent { Move-ControlDraftAction -1 } 'move schedule action up'
+})
+$controlActionDownButton.Add_Click({
+    Invoke-ControlEditorEvent { Move-ControlDraftAction 1 } 'move schedule action down'
 })
 $controlApplyButton.Add_Click({
     Invoke-ControlEditorEvent { [void](Apply-ControlSchedule $true) } 'apply'

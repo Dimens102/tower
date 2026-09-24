@@ -173,7 +173,19 @@ if ([string]$config.sensorViewMode -notin @('cards', 'list', 'details')) {
 
 function Save-TowerConfig {
     New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
-    $config | ConvertTo-Json | Set-Content -Path $configPath -Encoding UTF8
+    $config | ConvertTo-Json -Depth 20 | Set-Content -Path $configPath -Encoding UTF8
+}
+
+if ($null -eq $config.PSObject.Properties['homeActions']) {
+    $config | Add-Member -NotePropertyName homeActions -NotePropertyValue @(
+        [pscustomobject]@{ id=[Guid]::NewGuid().ToString('N'); label='Preset 1 ON'; kind='rf_preset'; target='1'; action='on'; color='Green' }
+        [pscustomobject]@{ id=[Guid]::NewGuid().ToString('N'); label='Preset 1 OFF'; kind='rf_preset'; target='1'; action='off'; color='Red' }
+        [pscustomobject]@{ id=[Guid]::NewGuid().ToString('N'); label='Preset 2 ON'; kind='rf_preset'; target='2'; action='on'; color='Green' }
+        [pscustomobject]@{ id=[Guid]::NewGuid().ToString('N'); label='Preset 2 OFF'; kind='rf_preset'; target='2'; action='off'; color='Red' }
+        [pscustomobject]@{ id=[Guid]::NewGuid().ToString('N'); label='Preset 3 ON'; kind='rf_preset'; target='3'; action='on'; color='Green' }
+        [pscustomobject]@{ id=[Guid]::NewGuid().ToString('N'); label='Preset 3 OFF'; kind='rf_preset'; target='3'; action='off'; color='Red' }
+    )
+    Save-TowerConfig
 }
 
 $headers = @{ Authorization = "Bearer $($config.token)" }
@@ -1305,6 +1317,7 @@ $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 $script:sidebarVisible = $false
 $script:sidebarAnimating = $false
 $script:sidebarPinned = $false
+$script:sidebarEditHold = $false
 $script:lastInsideAt = [DateTime]::Now
 $script:targetScreen = $null
 $script:openBounds = $null
@@ -2283,21 +2296,21 @@ $homeTab.Padding = New-Object System.Windows.Forms.Padding(14)
 [void]$tabs.TabPages.Add($homeTab)
 
 $homeTitle = New-Object System.Windows.Forms.Label
-$homeTitle.Text = 'Which device would you like to control?'
+$homeTitle.Text = 'Tower dashboard'
 $homeTitle.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 17)
 $homeTitle.AutoSize = $true
 $homeTitle.Location = New-Object System.Drawing.Point(18, 16)
 $homeTab.Controls.Add($homeTitle)
 
 $homeHint = New-Object System.Windows.Forms.Label
-$homeHint.Text = 'Choose a device to open its remote controls.'
+$homeHint.Text = 'Run a favorite action or choose a device to open its remote.'
 $homeHint.ForeColor = [System.Drawing.Color]::DimGray
 $homeHint.AutoSize = $true
 $homeHint.Location = New-Object System.Drawing.Point(20, 52)
 $homeTab.Controls.Add($homeHint)
 
 $homeDevicePanel = New-Object System.Windows.Forms.FlowLayoutPanel
-$homeDevicePanel.Location = New-Object System.Drawing.Point(14, 82)
+$homeDevicePanel.Location = New-Object System.Drawing.Point(14, 222)
 $homeDevicePanel.Anchor = 'Top,Bottom,Left,Right'
 $homeDevicePanel.AutoScroll = $true
 $homeDevicePanel.WrapContents = $true
@@ -2307,7 +2320,7 @@ $homeTab.Controls.Add($homeDevicePanel)
 function Position-HomeLayout {
     if ($null -eq $homeDevicePanel) { return }
     $homeDevicePanel.Width = [Math]::Max(100, $homeTab.ClientSize.Width - 28)
-    $homeDevicePanel.Height = [Math]::Max(100, $homeTab.ClientSize.Height - 96)
+    $homeDevicePanel.Height = [Math]::Max(100, $homeTab.ClientSize.Height - 236)
 }
 $homeTab.Add_Resize({ Position-HomeLayout })
 Position-HomeLayout
@@ -13123,6 +13136,7 @@ else {
 }
 
 . (Join-Path $PSScriptRoot 'Tower-Devices-Scripts.ps1')
+. (Join-Path $PSScriptRoot 'Tower-Home-Actions.ps1')
 . (Join-Path $PSScriptRoot 'Tower-Unsaved-Indicator.ps1')
 [void]$tabs.TabPages.Add($settingsTab)
 
@@ -13291,7 +13305,7 @@ Add-TowerSafeTimerTick $edgeTimer 'Sidebar edge watcher' {
         return
     }
 
-    if ($script:sidebarPinned) {
+    if ($script:sidebarPinned -or $script:sidebarEditHold) {
         $script:lastInsideAt = [DateTime]::Now
         return
     }

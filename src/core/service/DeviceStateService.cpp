@@ -239,43 +239,48 @@ bool DeviceStateService::track(const std::string& key,const std::string& command
     std::lock_guard lock(execution);
     if(disabled(key))return true;
     struct ReceptionGuard{bool ir;ReceptionGuard(bool value):ir(value){if(ir)DeviceStateService::suppressReception(120000);}~ReceptionGuard(){if(ir)mutedUntil.store(milliseconds()+700);}} reception(key.rfind("ir:",0)==0);
-    if(suppressTracking)return send();
-    auto d=readStore();std::string effect;
-    if(key.rfind("rf:",0)==0 && (command=="on"||command=="off"))effect=command;
-    else if(d["profiles"].contains(key))effect=d["profiles"][key].value("effects",json::object()).value(command,"");
-    if(effect.empty()){
-        bool ok=send();if(ok){applyFields(d,key,command);d["states"][key]["source"]="command sent (estimated)";d["states"][key]["updated"]=std::time(nullptr);writeStore(d);}return ok;
-    }
-    auto previous=get(d,key);
-    put(d,key,"unknown","command in progress");
     const bool ok=send();
-    std::string next="unknown";
-    if(ok)next=powerAfter(d["profiles"].value(key,json::object()),key,command,effect,previous);
-    else pendingOff.erase(key);
-    put(d,key,next,ok?"command sent (estimated)":"command failed");if(ok){applyFields(d,key,command);applyLinkedIr(d,key,next,"command sent (estimated)");writeStore(d);}return ok;
+    if(suppressTracking)return ok;
+
+    // State is passive telemetry. A state-file read/write or inference error
+    // must never block, alter, or turn a successfully transmitted command into
+    // an operational failure.
+    try{
+        auto d=readStore();std::string effect;
+        if(key.rfind("rf:",0)==0 && (command=="on"||command=="off"))effect=command;
+        else if(d["profiles"].contains(key))effect=d["profiles"][key].value("effects",json::object()).value(command,"");
+        const auto previous=get(d,key);
+        std::string next=previous;
+        if(ok&&!effect.empty())next=powerAfter(d["profiles"].value(key,json::object()),key,command,effect,previous);
+        else if(!ok){next="unknown";pendingOff.erase(key);}
+        if(!d["states"].contains(key))d["states"][key]=json::object();
+        d["states"][key]["state"]=next;
+        d["states"][key]["source"]=ok?"command sent (estimated)":"command failed";
+        d["states"][key]["updated"]=std::time(nullptr);
+        if(ok){applyFields(d,key,command);applyLinkedIr(d,key,next,"command sent (estimated)");}
+        writeStore(d);
+    }catch(...){
+        // The physical command result is authoritative for execution. The
+        // estimate can be refreshed later without affecting automation.
+    }
+    return ok;
 }
 bool DeviceStateService::ensure(const std::string& key,const std::string& desired,const json& transmitters,std::string& error){
     std::lock_guard lock(execution);
     try{
-        validKey(key);if(disabled(key)){error.clear();ExecutionDisplay::publish({key,"Disabled","Skipped","No signal sent",true,5});return true;}auto d=readStore();auto current=get(d,key);auto target=desired;
-        if(target=="toggle"){
-            if(current=="unknown")throw std::runtime_error("Current state unknown: set "+key+" state in Devices first");
-            target=current=="on"?"off":"on";
-        }
-        if(target!="on"&&target!="off")throw std::runtime_error("Choose on, off, or toggle");
-        if(current==target){ExecutionDisplay::publish({key,"Already "+target,"Skipped","No signal sent",true,5});error.clear();return true;}
+        validKey(key);if(disabled(key)){error.clear();ExecutionDisplay::publish({key,"Disabled","Skipped","No signal sent",true,5});return true;}auto d=readStore();const auto target=desired;
+        if(target!="on"&&target!="off")throw std::runtime_error("Automatic SMART/toggle actions are disabled; choose ON or OFF");
         if(key.rfind("rf:",0)==0)return RFCommandService().send(key.substr(3),target,error);
         if(!d["profiles"].contains(key))throw std::runtime_error("Configure power controls for "+key+" in Devices first");
         const auto profile=d["profiles"][key];
-        if(current=="unknown"&&!profile.value("discrete",false))throw std::runtime_error("Current state unknown: set "+key+" state in Devices before using toggle power");
         const auto outputs=transmitters.empty()?profile.value("transmitters",json::array()):transmitters;
-        put(d,key,"unknown","power sequence in progress");
         struct Guard{bool old=suppressTracking;Guard(){suppressTracking=true;}~Guard(){suppressTracking=old;}} guard;
         for(const auto& step:profile.at(target)){
             std::this_thread::sleep_for(std::chrono::seconds(step.value("delay_before_seconds",0)));
             auto r=CommandExecutor().execute(key.substr(3),step.at("command").get<std::string>(),outputs.get<std::vector<std::string>>());
             if(!r.succeeded())throw std::runtime_error(r.message);
         }
-        pendingOff.erase(key);put(d,key,target,"power sequence sent (estimated)");error.clear();return true;
+        try{pendingOff.erase(key);d["states"][key]["state"]=target;d["states"][key]["source"]="power sequence sent (estimated)";d["states"][key]["updated"]=std::time(nullptr);writeStore(d);}catch(...){}
+        error.clear();return true;
     }catch(const std::exception& e){error=e.what();return false;}
 }

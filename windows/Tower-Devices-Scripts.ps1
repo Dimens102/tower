@@ -1,6 +1,7 @@
 # Shared estimated power states and scripts stored on Tower.
 $script:dsPopulating = $false
 $script:dsScriptId = ''
+$script:ssDraftDirty = $false
 function New-DsButton($parent, [string]$text) {
     $b=New-Object System.Windows.Forms.Button
     $b.Text=$text; $b.AutoSize=$true; $b.Height=32; $b.Margin=New-Object System.Windows.Forms.Padding(4)
@@ -22,20 +23,21 @@ foreach($height in @(44,42)){[void]$dsRoot.RowStyles.Add((New-Object System.Wind
 [void]$dsRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Percent',100)))
 [void]$dsRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Absolute',330)))
 $dsTab.Controls.Add($dsRoot)
-$dsHint=New-Object System.Windows.Forms.Label; $dsHint.Dock='Fill';$dsHint.Text='Estimated states from Tower commands. Mark On/Off corrects the record without sending a signal.';$dsHint.Padding=New-Object System.Windows.Forms.Padding(8);$dsRoot.Controls.Add($dsHint,0,0)
+$dsHint=New-Object System.Windows.Forms.Label; $dsHint.Dock='Fill';$dsHint.Text='Passive estimates only. Tower always sends requested commands and never skips or changes automation based on these values.';$dsHint.Padding=New-Object System.Windows.Forms.Padding(8);$dsRoot.Controls.Add($dsHint,0,0)
 $dsTools=New-Object System.Windows.Forms.FlowLayoutPanel;$dsTools.Dock='Fill';$dsRoot.Controls.Add($dsTools,0,1)
 $dsRefresh=New-DsButton $dsTools 'Refresh'
 $dsMarkOn=New-DsButton $dsTools 'Mark On';$dsMarkOff=New-DsButton $dsTools 'Mark Off';$dsMarkUnknown=New-DsButton $dsTools 'Mark Unknown'
-$dsSendOn=New-DsButton $dsTools 'Turn On';$dsSendOff=New-DsButton $dsTools 'Turn Off'
+$dsMarkOn.Visible=$false;$dsMarkOff.Visible=$false;$dsMarkUnknown.Visible=$false
+$dsSendOn=New-DsButton $dsTools 'Send ON sequence';$dsSendOff=New-DsButton $dsTools 'Send OFF sequence'
 $dsDisable=New-DsButton $dsTools 'Disable / Enable'
 $dsList=New-Object System.Windows.Forms.ListView;$dsList.Dock='Fill';$dsList.View='Details';$dsList.FullRowSelect=$true;$dsList.MultiSelect=$false;$dsList.HideSelection=$false
 $dsList.Scrollable=$true
-foreach($col in @(@('Device',190),@('Current configuration',390),@('Updated',130),@('Observed via',210),@('Last command',130))){[void]$dsList.Columns.Add([string]$col[0],[int]$col[1])}
+foreach($col in @(@('Device',190),@('Estimated configuration',390),@('Updated',130),@('Estimate source',210),@('Last command',130))){[void]$dsList.Columns.Add([string]$col[0],[int]$col[1])}
 $dsRoot.Controls.Add($dsList,0,2)
 $dsDetailTabs=New-Object System.Windows.Forms.TabControl;$dsDetailTabs.Dock='Fill';$dsRoot.Controls.Add($dsDetailTabs,0,3)
 $dsPowerPage=New-Object System.Windows.Forms.TabPage;$dsPowerPage.Text='Power behavior';$dsDetailTabs.TabPages.Add($dsPowerPage)
-$dsMapPage=New-Object System.Windows.Forms.TabPage;$dsMapPage.Text='Command effects';$dsDetailTabs.TabPages.Add($dsMapPage)
-$dsLinkPage=New-Object System.Windows.Forms.TabPage;$dsLinkPage.Text='RF to IR link';$dsDetailTabs.TabPages.Add($dsLinkPage)
+$dsMapPage=New-Object System.Windows.Forms.TabPage;$dsMapPage.Text='Command effects'
+$dsLinkPage=New-Object System.Windows.Forms.TabPage;$dsLinkPage.Text='RF to IR link'
 $dsProfile=New-Object System.Windows.Forms.GroupBox;$dsProfile.Text='IR power behavior';$dsProfile.Dock='Fill';$dsPowerPage.Controls.Add($dsProfile)
 $dsMapRoot=New-Object System.Windows.Forms.TableLayoutPanel;$dsMapRoot.Dock='Fill';$dsMapRoot.ColumnCount=1;$dsMapRoot.RowCount=3
 [void]$dsMapRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Absolute',36)));[void]$dsMapRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Percent',100)));[void]$dsMapRoot.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Absolute',44)));$dsMapPage.Controls.Add($dsMapRoot)
@@ -58,7 +60,7 @@ $dsCount=New-Object System.Windows.Forms.NumericUpDown;$dsCount.Minimum=1;$dsCou
 $dsDelayText=New-Object System.Windows.Forms.Label;$dsDelayText.Text='presses; seconds between:';$dsDelayText.AutoSize=$true;$dsDelayText.Margin=New-Object System.Windows.Forms.Padding(8,6,8,0);$dsOffDetails.Controls.Add($dsDelayText)
 $dsDelay=New-Object System.Windows.Forms.NumericUpDown;$dsDelay.Minimum=0;$dsDelay.Maximum=30;$dsDelay.Width=60;$dsOffDetails.Controls.Add($dsDelay);New-DsRow $dsFields 'OFF sequence' $dsOffDetails
 $dsOutputs=New-Object System.Windows.Forms.TextBox;New-DsRow $dsFields 'IR outputs (001, 002...)' $dsOutputs
-$dsDiscrete=New-Object System.Windows.Forms.CheckBox;$dsDiscrete.Text='Separate ON and OFF signals (safe even when state is unknown)';$dsDiscrete.AutoSize=$true;New-DsRow $dsFields 'Power signal type' $dsDiscrete
+$dsDiscrete=New-Object System.Windows.Forms.CheckBox;$dsDiscrete.Text='Separate ON and OFF signals';$dsDiscrete.AutoSize=$true;New-DsRow $dsFields 'Power signal type' $dsDiscrete
 $dsSave=New-Object System.Windows.Forms.Button;$dsSave.Text='Save to Tower';$dsSave.Size=New-Object System.Drawing.Size(160,36)
 # A fixed-height row prevents the last AutoSize row stretching the button.
 $dsSaveRow=$dsFields.RowCount;$dsFields.RowCount++
@@ -208,44 +210,91 @@ $ssRoot=New-Object System.Windows.Forms.TableLayoutPanel;$ssRoot.Dock='Fill';$ss
 $ssTools=New-Object System.Windows.Forms.FlowLayoutPanel;$ssTools.Dock='Fill';$ssTools.AutoSize=$true;$ssTools.AutoSizeMode='GrowAndShrink';$ssRoot.Controls.Add($ssTools,0,0)
 $ssChoice=New-Object System.Windows.Forms.ComboBox;$ssChoice.DropDownStyle='DropDownList';$ssChoice.Width=230;$ssTools.Controls.Add($ssChoice)
 $ssNew=New-DsButton $ssTools 'New';$ssReload=New-DsButton $ssTools 'Reload';$ssSave=New-DsButton $ssTools 'Save to Tower';$ssRun=New-DsButton $ssTools 'Run';$ssDelete=New-DsButton $ssTools 'Delete'
-$ssWorker=New-DsButton $ssTools 'Enable Windows worker';$ssWorkerStop=New-DsButton $ssTools 'Disable Windows worker';$ssJobStatus=New-DsButton $ssTools 'Run status'
+$ssJobStatus=New-DsButton $ssTools 'Run status'
 $ssFields=New-Object System.Windows.Forms.TableLayoutPanel;$ssFields.Dock='Top';$ssFields.ColumnCount=2;$ssFields.RowCount=0;$ssFields.AutoSize=$true;$ssFields.AutoSizeMode='GrowAndShrink'
 [void]$ssFields.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle('Absolute',160)));[void]$ssFields.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle('Percent',100)));$ssRoot.Controls.Add($ssFields,0,1)
 $ssName=New-Object System.Windows.Forms.TextBox;New-DsRow $ssFields 'Name' $ssName
 $ssKind=New-Object System.Windows.Forms.ComboBox;$ssKind.DropDownStyle='DropDownList';[void]$ssKind.Items.AddRange(@('Raspberry Pi - Bash','Raspberry Pi - Wake-on-LAN','Windows - PowerShell'));New-DsRow $ssFields 'Run on / type' $ssKind
 $ssTarget=New-Object System.Windows.Forms.TextBox;New-DsRow $ssFields 'Windows PC | user' $ssTarget
+$ssWindow=New-Object System.Windows.Forms.ComboBox;$ssWindow.DropDownStyle='DropDownList';[void]$ssWindow.Items.AddRange(@('Visible','Hidden'));$ssWindow.SelectedIndex=0;New-DsRow $ssFields 'PowerShell window' $ssWindow
 $ssTimeout=New-Object System.Windows.Forms.NumericUpDown;$ssTimeout.Minimum=1;$ssTimeout.Maximum=120;$ssTimeout.Value=15;New-DsRow $ssFields 'Timeout (seconds)' $ssTimeout
 $ssMac=New-Object System.Windows.Forms.TextBox;New-DsRow $ssFields 'MAC address (WOL)' $ssMac
 $ssBroadcast=New-Object System.Windows.Forms.TextBox;$ssBroadcast.Text='255.255.255.255';New-DsRow $ssFields 'Broadcast (WOL)' $ssBroadcast
 $ssBody=New-Object System.Windows.Forms.TextBox;$ssBody.Multiline=$true;$ssBody.AcceptsTab=$true;$ssBody.AcceptsReturn=$true;$ssBody.ScrollBars='Both';$ssBody.WordWrap=$false;$ssBody.Dock='Fill';$ssBody.Font=New-Object System.Drawing.Font('Consolas',11);$ssRoot.Controls.Add($ssBody,0,2)
-$ssResult=New-Object System.Windows.Forms.TextBox;$ssResult.Multiline=$true;$ssResult.ReadOnly=$true;$ssResult.ScrollBars='Vertical';$ssResult.Dock='Fill';$ssResult.Text='Bash and Wake-on-LAN run on the Pi. Windows PowerShell runs in the selected logged-in user session; enable its worker on that PC. Use Voice, Control or Remote buttons to call saved scripts.';$ssRoot.Controls.Add($ssResult,0,3)
+$ssResult=New-Object System.Windows.Forms.TextBox;$ssResult.Multiline=$true;$ssResult.ReadOnly=$true;$ssResult.ScrollBars='Vertical';$ssResult.Dock='Fill';$ssResult.Text='Bash and Wake-on-LAN run on the Pi. Windows PowerShell runs elevated in the selected logged-in user session and can be visible or hidden. Its worker is managed automatically by Tower Control startup integration.';$ssRoot.Controls.Add($ssResult,0,3)
 function Get-SsLocalTarget {return ('{0}|{1}' -f $env:COMPUTERNAME,[Security.Principal.WindowsIdentity]::GetCurrent().Name).ToLowerInvariant()}
+function Set-SsDraftDirty([bool]$dirty) {
+    $script:ssDraftDirty=$dirty
+    if(Get-Command Set-TowerDirty -ErrorAction SilentlyContinue){Set-TowerDirty $ssSave $dirty}
+    $script:sidebarEditHold=$dirty -and $tabs.SelectedTab -eq $ssTab
+}
+function Get-SsTypePrefix($scriptItem) {
+    switch([string]$scriptItem.kind) {
+        'wol' {'[WOL]'}
+        'powershell' {'[WIN]'}
+        default {'[PI]'}
+    }
+}
 function Refresh-SsScripts {
     $script:ssPopulating=$true
-    try {$script:ssRows=@((Invoke-TowerGet '/api/v1/control/scripts').scripts);$ssChoice.Items.Clear();foreach($s in $script:ssRows){[void]$ssChoice.Items.Add([string]$s.name)}}finally{$script:ssPopulating=$false}
+    try {$script:ssRows=@((Invoke-TowerGet '/api/v1/control/scripts').scripts);$ssChoice.Items.Clear();foreach($s in $script:ssRows){[void]$ssChoice.Items.Add("$(Get-SsTypePrefix $s) $([string]$s.name)")}}finally{$script:ssPopulating=$false}
 }
 function New-SsScript {
     $script:ssPopulating=$true
-    try{$script:dsScriptId=[Guid]::NewGuid().ToString('N');$ssChoice.SelectedIndex=-1;$ssName.Text='New script';$ssKind.SelectedIndex=0;$ssTarget.Text=Get-SsLocalTarget;$ssTimeout.Value=15;$ssBody.Text="# Runs on the Raspberry Pi`r`necho 'Hello from Tower'";$ssMac.Clear();$ssBroadcast.Text='255.255.255.255'}finally{$script:ssPopulating=$false}
-    if(Get-Command Set-TowerDirty -ErrorAction SilentlyContinue){Set-TowerDirty $ssSave $true}
+    try{$script:dsScriptId=[Guid]::NewGuid().ToString('N');$ssChoice.SelectedIndex=-1;$ssName.Text='';$ssKind.SelectedIndex=0;$ssTarget.Text=Get-SsLocalTarget;$ssWindow.SelectedIndex=0;$ssTimeout.Value=15;$ssBody.Text="# Runs on the Raspberry Pi`r`necho 'Hello from Tower'";$ssMac.Clear();$ssBroadcast.Text='255.255.255.255'}finally{$script:ssPopulating=$false}
+    Set-SsDraftDirty $true;$ssName.Focus()
 }
-function Save-SsScript {
-    if(-not $script:dsScriptId){throw 'Create or select a script first.'}
-    $s=@{id=$script:dsScriptId;name=$ssName.Text;kind=$(@('bash','wol','powershell')[$ssKind.SelectedIndex]);target=$ssTarget.Text.Trim().ToLowerInvariant();body=$ssBody.Text;mac=$ssMac.Text.Trim();broadcast=$ssBroadcast.Text.Trim();timeout_seconds=[int]$ssTimeout.Value}
+function Start-SsCopiedDraft($savedScript) {
+    $script:ssPopulating=$true
+    try {
+        $script:dsScriptId=[Guid]::NewGuid().ToString('N')
+        $ssChoice.SelectedIndex=-1
+        $ssName.Text=''
+        $ssKind.SelectedIndex=if($savedScript.kind -eq 'wol'){1}elseif($savedScript.kind -eq 'powershell'){2}else{0}
+        $ssTarget.Text=[string]$savedScript.target
+        $ssWindow.SelectedIndex=if([string]$savedScript.window_mode -eq 'hidden'){1}else{0}
+        $ssTimeout.Value=if($savedScript.timeout_seconds){[int]$savedScript.timeout_seconds}else{15}
+        $ssBody.Text=[string]$savedScript.body
+        $ssMac.Text=[string]$savedScript.mac
+        $ssBroadcast.Text=[string]$savedScript.broadcast
+    }
+    finally {$script:ssPopulating=$false}
+    Set-SsDraftDirty $true
+    $ssName.Focus()
+}
+function Save-SsScript([bool]$prepareCopy=$true) {
+    if(-not $script:dsScriptId){$script:dsScriptId=[Guid]::NewGuid().ToString('N')}
+    if([string]::IsNullOrWhiteSpace($ssName.Text)){throw 'Enter a script name.'}
+    if($ssKind.SelectedIndex -lt 0){throw 'Select where and how the script runs.'}
+    if($ssKind.SelectedIndex -eq 1 -and [string]::IsNullOrWhiteSpace($ssMac.Text)){throw 'Enter the Wake-on-LAN MAC address.'}
+    if($ssKind.SelectedIndex -eq 1 -and $ssMac.Text.Trim() -notmatch '^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$'){throw 'Enter a six-byte MAC address such as D8:9E:F3:3F:44:E7.'}
+    if($ssKind.SelectedIndex -eq 2 -and [string]::IsNullOrWhiteSpace($ssTarget.Text)){throw 'Enter the Windows PC and user target.'}
+    $broadcast=$ssBroadcast.Text.Trim();if(-not $broadcast){$broadcast='255.255.255.255'}
+    $s=[pscustomobject][ordered]@{id=$script:dsScriptId;name=$ssName.Text.Trim();kind=$(@('bash','wol','powershell')[$ssKind.SelectedIndex]);target=$ssTarget.Text.Trim().ToLowerInvariant();body=$ssBody.Text;mac=($ssMac.Text.Trim() -replace '-',':').ToUpperInvariant();broadcast=$broadcast;timeout_seconds=[int]$ssTimeout.Value;window_mode=$(if($ssWindow.SelectedIndex -eq 1){'hidden'}else{'visible'})}
     [void](Invoke-TowerPost '/api/v1/control/scripts' @{script=$s})
-    if(Get-Command Set-TowerDirty -ErrorAction SilentlyContinue){Set-TowerDirty $ssSave $false}
-    $ssResult.Text='Saved on Tower.';Refresh-SsScripts
+    $savedId=$script:dsScriptId;Refresh-SsScripts
+    if($prepareCopy){
+        $ssResult.Text="Saved '$([string]$s.name)' on Tower. The same settings are ready as a new script; enter a new name to save another copy."
+        Start-SsCopiedDraft ([pscustomobject]$s)
+    } else {
+        for($i=0;$i -lt $script:ssRows.Count;$i++){if([string]$script:ssRows[$i].id -eq $savedId){$ssChoice.SelectedIndex=$i;break}}
+        Set-SsDraftDirty $false
+    }
+    return $savedId
 }
 $ssChoice.Add_SelectedIndexChanged({
     if($script:ssPopulating -or $ssChoice.SelectedIndex -lt 0){return}
     $script:ssPopulating=$true
-    try{$s=$script:ssRows[$ssChoice.SelectedIndex];$script:dsScriptId=[string]$s.id;$ssName.Text=[string]$s.name;$ssKind.SelectedIndex=if($s.kind -eq 'wol'){1}elseif($s.kind -eq 'powershell'){2}else{0};$ssTarget.Text=[string]$s.target;$ssTimeout.Value=if($s.timeout_seconds){[int]$s.timeout_seconds}else{15};$ssBody.Text=[string]$s.body;$ssMac.Text=[string]$s.mac;$ssBroadcast.Text=[string]$s.broadcast;if(Get-Command Set-TowerDirty -ErrorAction SilentlyContinue){Set-TowerDirty $ssSave $false}}finally{$script:ssPopulating=$false}
+    try{$s=$script:ssRows[$ssChoice.SelectedIndex];$script:dsScriptId=[string]$s.id;$ssName.Text=[string]$s.name;$ssKind.SelectedIndex=if($s.kind -eq 'wol'){1}elseif($s.kind -eq 'powershell'){2}else{0};$ssTarget.Text=[string]$s.target;$ssWindow.SelectedIndex=if([string]$s.window_mode -eq 'hidden'){1}else{0};$ssTimeout.Value=if($s.timeout_seconds){[int]$s.timeout_seconds}else{15};$ssBody.Text=[string]$s.body;$ssMac.Text=[string]$s.mac;$ssBroadcast.Text=[string]$s.broadcast}finally{$script:ssPopulating=$false}
+    Set-SsDraftDirty $false
 })
-$ssKind.Add_SelectedIndexChanged({$ssBody.Enabled=$ssKind.SelectedIndex -ne 1;$ssMac.Enabled=$ssKind.SelectedIndex -eq 1;$ssBroadcast.Enabled=$ssKind.SelectedIndex -eq 1;$ssTarget.Enabled=$ssKind.SelectedIndex -eq 2;if($ssKind.SelectedIndex -eq 2 -and -not $ssTarget.Text){$ssTarget.Text=Get-SsLocalTarget}})
-$ssWorker.Add_Click({Invoke-DsTask {$p=Start-Process powershell.exe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f (Join-Path $PSScriptRoot 'Tower-Script-Worker.ps1')),'-Mode','Install') -Wait -PassThru;if($p.ExitCode -ne 0){throw 'Windows worker installation failed. Check the PowerShell output.'};$ssResult.Text='Worker enabled for '+(Get-SsLocalTarget)}})
-$ssWorkerStop.Add_Click({Invoke-DsTask {$p=Start-Process powershell.exe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f (Join-Path $PSScriptRoot 'Tower-Script-Worker.ps1')),'-Mode','Remove') -Wait -PassThru;if($p.ExitCode -ne 0){throw 'Worker removal failed'};$ssResult.Text='Windows script worker disabled.'}})
+$ssKind.Add_SelectedIndexChanged({$ssBody.Enabled=$ssKind.SelectedIndex -ne 1;$ssMac.Enabled=$ssKind.SelectedIndex -eq 1;$ssBroadcast.Enabled=$ssKind.SelectedIndex -eq 1;$ssTarget.Enabled=$ssKind.SelectedIndex -eq 2;$ssWindow.Enabled=$ssKind.SelectedIndex -eq 2;if($ssKind.SelectedIndex -eq 2 -and -not $ssTarget.Text){$ssTarget.Text=Get-SsLocalTarget};if(-not $script:ssPopulating){Set-SsDraftDirty $true}})
 $ssJobStatus.Add_Click({Invoke-DsTask {$jobs=@((Invoke-TowerGet '/api/v1/control/windows-jobs').jobs|Where-Object{[string]$_.script -eq $script:dsScriptId});$ssResult.Text=if($jobs.Count){($jobs|Select-Object -Last 5|ForEach-Object{"$($_.status): $($_.target) $($_.message)"}) -join "`r`n"}else{'No Windows runs recorded for this script.'}}})
-$ssNew.Add_Click({New-SsScript});$ssReload.Add_Click({Invoke-DsTask {Refresh-SsScripts}});$ssSave.Add_Click({Invoke-DsTask {Save-SsScript}})
-$ssRun.Add_Click({Invoke-DsTask {Save-SsScript;$ssResult.Text='Running...';[System.Windows.Forms.Application]::DoEvents();$r=Invoke-TowerPost '/api/v1/control/scripts/run' @{id=$script:dsScriptId};$ssResult.Text=[string]$r.message}})
-$ssDelete.Add_Click({Invoke-DsTask {if(-not $script:dsScriptId){return};if([System.Windows.Forms.MessageBox]::Show('Delete this saved script?','Tower','YesNo','Question') -ne 'Yes'){return};[void](Invoke-TowerPost '/api/v1/control/scripts/delete' @{id=$script:dsScriptId});$script:dsScriptId='';Refresh-SsScripts}})
-$ssTab.Add_Enter({Invoke-DsTask {Refresh-SsScripts}})
+$ssNew.Add_Click({New-SsScript});$ssReload.Add_Click({Invoke-DsTask {Refresh-SsScripts}});$ssSave.Add_Click({Invoke-DsTask {[void](Save-SsScript $true)}})
+$ssRun.Add_Click({Invoke-DsTask {$savedId=Save-SsScript $false;$ssResult.Text='Running...';[System.Windows.Forms.Application]::DoEvents();$r=Invoke-TowerPost '/api/v1/control/scripts/run' @{id=$savedId};$ssResult.Text=[string]$r.message}})
+$ssDelete.Add_Click({Invoke-DsTask {if(-not $script:dsScriptId){return};if([System.Windows.Forms.MessageBox]::Show('Delete this saved script?','Tower','YesNo','Question') -ne 'Yes'){return};[void](Invoke-TowerPost '/api/v1/control/scripts/delete' @{id=$script:dsScriptId});$script:dsScriptId='';Refresh-SsScripts;New-SsScript}})
+foreach($field in @($ssName,$ssTarget,$ssBody,$ssMac,$ssBroadcast)){$field.Add_TextChanged({if(-not $script:ssPopulating){Set-SsDraftDirty $true}})}
+$ssTimeout.Add_ValueChanged({if(-not $script:ssPopulating){Set-SsDraftDirty $true}})
+$ssWindow.Add_SelectedIndexChanged({if(-not $script:ssPopulating){Set-SsDraftDirty $true}})
+$ssTab.Add_Enter({$script:sidebarEditHold=$script:ssDraftDirty;Invoke-DsTask {Refresh-SsScripts}})
+$tabs.Add_SelectedIndexChanged({$script:sidebarEditHold=$script:ssDraftDirty -and $tabs.SelectedTab -eq $ssTab})

@@ -19,6 +19,18 @@ namespace
 {
 const std::filesystem::path voicePath =
     std::filesystem::path("data") / "voice" / "voice_commands.json";
+
+std::string savedScriptName(const std::string& id)
+{
+    for (const auto& script : ScriptService::list())
+    {
+        if (script.value("id", "") == id)
+        {
+            return script.value("name", id);
+        }
+    }
+    return id;
+}
 }
 
 bool ActionExecutionService::execute(
@@ -40,8 +52,9 @@ bool ActionExecutionService::execute(
         }
         else if(type == "script") {
             std::string detail;
-            const bool ok=ScriptService::run(action.at("script").get<std::string>(), detail);
-            ExecutionDisplay::publish({"Saved script",action.at("script").get<std::string>(),ok?(detail.rfind("Queued",0)==0?"Queued":"Completed"):"Failed",detail,ok,5});
+            const std::string scriptId=action.at("script").get<std::string>();
+            const bool ok=ScriptService::run(scriptId, detail);
+            ExecutionDisplay::publish({"Saved script",savedScriptName(scriptId),ok?(detail.rfind("Queued",0)==0?"Queued":"Completed"):"Failed",detail,ok,5});
             if(!ok){error=detail;return false;}
         }
         else if (type == "command")
@@ -143,24 +156,19 @@ bool ActionExecutionService::execute(
                     "Voice command path does not end in an action set");
             }
 
-            ExecutionDisplay::publish({
-                displayPath,
-                "Voice sequence",
-                "starting",
-                "Running actions...",
-                true,
-                5,
-            });
-
-            const bool completed = executeAll(node->at("actions"), error);
-            ExecutionDisplay::publish({
-                displayPath,
-                "Voice sequence",
-                completed ? "completed" : "failed",
-                completed ? "OK - sequence done" : "FAILED - check log",
-                completed,
-                5,
-            });
+            bool completed = false;
+            bool displayTopLevel = false;
+            {
+                ExecutionDisplaySequence displaySequence;
+                displayTopLevel = displaySequence.topLevel();
+                completed = executeAll(node->at("actions"), error);
+            }
+            if (displayTopLevel)
+            {
+                ExecutionDisplay::publishCompletion(
+                    "Voice list",
+                    completed);
+            }
             if (!completed)
             {
                 return false;

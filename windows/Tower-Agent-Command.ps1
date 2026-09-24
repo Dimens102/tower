@@ -30,6 +30,32 @@ $body = $null
 if ($Method -eq 'POST') {
     $body = ConvertFrom-Json -InputObject $BodyJson
 }
+
+# Windows logoff and power-off leave only a short execution window. Try the
+# request synchronously with the protected SYSTEM agent configuration first;
+# the normal disk queue remains the fallback for temporary Tower outages.
+$agentConfigPath = Join-Path $towerRoot 'agent.json'
+if (Test-Path -LiteralPath $agentConfigPath) {
+    try {
+        $agentConfig = Get-Content -LiteralPath $agentConfigPath -Raw | ConvertFrom-Json
+        $request = @{
+            Method = $Method
+            Uri = "$([string]$agentConfig.server)$Path"
+            Headers = @{ Authorization = "Bearer $([string]$agentConfig.token)" }
+            DisableKeepAlive = $true
+            TimeoutSec = 10
+        }
+        if ($Method -eq 'POST') {
+            $request.ContentType = 'application/json'
+            $request.Body = $BodyJson
+        }
+        [void](Invoke-RestMethod @request)
+        exit 0
+    }
+    catch {
+        # Queue below so the background agent can retry after connectivity returns.
+    }
+}
 $id = [Guid]::NewGuid().ToString('N')
 $temporary = Join-Path $queuePath "$id.tmp"
 $destination = Join-Path $queuePath "$id.json"

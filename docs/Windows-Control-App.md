@@ -62,7 +62,8 @@ the affected task or application. The older `Install-Tower-Control.cmd` flow is
 retained as a development/recovery option.
 
 When a valid `%APPDATA%\Tower\client.json` already exists, MSI installation also
-configures the background agent and scheduled tasks. On a new machine without a
+configures the background agent, elevated per-user script worker, and scheduled
+tasks. On a new machine without a
 connection profile, the application is installed first; after configuring the
 connection, Settings > Install / Repair completes startup integration.
 
@@ -76,24 +77,66 @@ the agent can therefore deliver it while the GUI is closed or has not started.
 interactive logon. Windows services are intentionally not used for the GUI
 because services cannot display an interactive desktop application.
 
+`Tower Script Worker - <user SID>` starts at user logon with highest privileges
+and executes authenticated `[WIN]` jobs in that interactive session. This keeps
+visible PowerShell jobs visible while allowing Tower Control itself to be closed.
+Its registration is repaired with the rest of startup integration; no separate
+enable or disable control is required in the Scripts tab.
+
 The Settings tab reports both task states and the latest agent connection. Its
 Install/Repair and Remove controls require UAC. Windows Apps/Installed apps also
 contains a Tower Control uninstall entry; uninstall removes the agent and tasks
 but preserves `%APPDATA%\Tower`.
 
+## Home dashboard
+
+The top of Home is an editable quick-action dashboard, with the existing visual
+device cards immediately below it. `Edit Home` can add, clone, rename, recolor, remove,
+and reorder buttons for RF presets, Tower schedules, programmable remote
+buttons, Voice command sets, individual learned IR commands, and saved scripts.
+
+Schedule buttons store the schedule's stable Tower ID rather than its displayed
+name. A schedule can therefore be renamed without breaking its Home button.
+The dashboard itself is local to the Windows user and is stored in
+`%APPDATA%\Tower\client.json`; it does not overwrite the Pi-owned schedule or
+command definitions. The editor can optionally create a desktop shortcut for
+one action. The shortcut calls the same Tower API directly and remains a
+secondary convenience rather than a separate configuration system.
+
+Quick actions flow left-to-right and automatically wrap into additional rows
+at the current window width. The device cards move below the complete action
+area. `Earlier` and `Later` in Edit Home control the exact saved order; the
+same order is retained when the window is resized or Tower Control restarts.
+The schedule target list reads the nested Tower schedule document and stores
+the selected stable ID.
+
 ## Control scheduler
 
-The `Control` tab stores every schedule and its action definition on the Tower.
+The `Control` tab stores every schedule and its ordered action definitions on the Tower.
+Actions can mix Voice command sets, scripts, RF, and IR in one schedule and can
+be added, updated, removed, or reordered. Clone creates an independent schedule
+ID while preserving the trigger and complete action list.
+
+The Voice tree also provides **Clone** for any non-root command or branch. A
+complete branch, including all descendants and ordered actions, is copied with a
+speech-safe `copy` suffix and selected for immediate renaming.
 Normal one-time, daily, and weekly schedules run entirely on the Pi. The
 Windows application is not required once they are saved.
 
-Four Windows-specific triggers are also supported: user logon, machine startup,
-Windows idle, and a basic Windows Event Log match (log, provider/source, and
-event ID). These create SYSTEM tasks under `\RF Tower\Schedules`. Each task
-contains only the Tower schedule ID and queues that ID through the background
-agent; IR, RF, and Voice command-set actions remain centrally editable on the
-Pi. Saving, disabling, editing, or deleting a schedule reconciles the matching
-Windows task. Uninstall removes the managed task folder.
+Six Windows-specific triggers are also supported: user logon, user logoff,
+machine startup, real machine shutdown, Windows idle, and a basic Windows Event
+Log match (log, provider/source, and event ID). These create SYSTEM tasks under
+`\RF Tower\Schedules`. Logoff uses Security event 4647 and therefore requires
+that event to be present in the local Security log. Shutdown uses User32 event
+1074 with the `power off` event value so a restart is excluded.
+
+Each task contains only the Tower schedule ID. The scheduled helper first tries
+to deliver the request directly using the protected background-agent
+configuration, which matters during the short logoff/shutdown window, and falls
+back to the normal queue if Tower is temporarily unavailable. IR, RF, and Voice
+command-set actions remain centrally editable on the Pi. Saving, disabling,
+editing, or deleting a schedule reconciles the matching Windows task. Uninstall
+removes the managed task folder.
 
 ## Programmable IR remote buttons
 
@@ -110,18 +153,17 @@ that button is later pressed, Tower's installed
 
 Supported targets are:
 
-- RF Presets 1-3 using SMART, ON, or OFF.
-- An individual RF power device using SMART, ON, or OFF.
+- RF Presets 1-3 using an explicit ON or OFF action.
+- An individual RF power device using an explicit ON or OFF action.
 - Any enabled IR command and its selected transmitter.
 - Any saved Voice command leaf, executed as an ordered action set without
   requiring speech recognition.
 
 The trigger listener requires ten seconds without the same button signal
 before accepting it again. Full NEC frames and short held-key repeats extend
-this lockout. SMART remembers successful sends per RF preset or RF device
-while `tower.service` remains running. Explicit ON/OFF also updates this
-memory. After a service restart, the first SMART action sends ON. This is
-last-sent state, not feedback from the physical appliance.
+this lockout. Each accepted trigger always transmits its explicit ON or OFF
+action. Existing SMART definitions remain readable, but the editor flags them
+as disabled and requires conversion to ON or OFF before saving.
 
 Definitions are stored on the Pi in `data/control/ir_triggers.json`. The
 Windows editor only creates and changes them.

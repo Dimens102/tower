@@ -16,12 +16,12 @@ int main(){
     int fd=socket(AF_INET,SOCK_DGRAM,0);assert(fd>=0);sockaddr_in addr{};addr.sin_family=AF_INET;addr.sin_port=0;inet_pton(AF_INET,"127.0.0.1",&addr.sin_addr);
     assert(bind(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))==0);timeval timeout{2,0};setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));
     socklen_t length=sizeof(addr);assert(getsockname(fd,reinterpret_cast<sockaddr*>(&addr),&length)==0);
-    assert(ScriptService::wake("02:11:22:33:44:55","127.0.0.1",message,ntohs(addr.sin_port)));unsigned char packet[102];assert(recv(fd,packet,102,0)==102);close(fd);
+    assert(ScriptService::wake("02:11:22:33:44:55","127.0.0.1",message,ntohs(addr.sin_port)));assert(message.find("sent 3 times")!=std::string::npos);unsigned char packet[102];assert(recv(fd,packet,102,0)==102);close(fd);
     for(int i=0;i<6;i++)assert(packet[i]==255);const unsigned char expected[]={2,17,34,51,68,85};for(int j=0;j<16;j++)for(int i=0;i<6;i++)assert(packet[6+j*6+i]==expected[i]);
-    script["kind"]="powershell";script["target"]="dragon|dragon\\dude";script["body"]="Start-Process notepad.exe";
+    script["kind"]="powershell";script["target"]="dragon|dragon\\dude";script["body"]="Start-Process notepad.exe";script["window_mode"]="hidden";
     ScriptService::save(script);assert(ScriptService::run("example",message));assert(message.find("Queued on Windows")==0);
     assert(ScriptService::claim("other-pc|other-user").is_null());
-    auto job=ScriptService::claim("dragon|dragon\\dude");assert(job["body"]==script["body"]);
+    auto job=ScriptService::claim("dragon|dragon\\dude");assert(job["body"]==script["body"]);assert(job["window_mode"]=="hidden");
     assert(ScriptService::claim("dragon|dragon\\dude").is_null());
     ScriptService::complete({{"id",job["id"]},{"target",job["target"]},{"ok",true},{"message","Launched"}});
     assert(ScriptService::jobs()[0]["status"]=="completed");assert(!ScriptService::jobs()[0].contains("body"));

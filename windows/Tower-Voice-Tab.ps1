@@ -100,6 +100,11 @@ $voiceAddButton.Text = '+ Add child'
 $voiceAddButton.Size = New-Object System.Drawing.Size(100, 29)
 [void]$voiceTreeButtons.Controls.Add($voiceAddButton)
 
+$voiceCloneButton = New-Object System.Windows.Forms.Button
+$voiceCloneButton.Text = 'Clone'
+$voiceCloneButton.Size = New-Object System.Drawing.Size(72, 29)
+[void]$voiceTreeButtons.Controls.Add($voiceCloneButton)
+
 $voiceDeleteButton = New-Object System.Windows.Forms.Button
 $voiceDeleteButton.Text = 'Delete'
 $voiceDeleteButton.Size = New-Object System.Drawing.Size(78, 29)
@@ -557,7 +562,21 @@ function Get-VoiceActionDisplayName($action) {
     $delayText = if ($delaySeconds -gt 0) { " [wait ${delaySeconds}s]" } else { '' }
     switch ([string]$action.type) {
         'device_power' { return "Power $([string]$action.device) -> $([string]$action.state)$delayText" }
-        'script' { return "Script: $([string]$action.script)$delayText" }
+        'script' {
+            $scriptId = [string]$action.script
+            $saved = @($script:voiceScriptRows | Where-Object {
+                [string]$_.id -eq $scriptId
+            }) | Select-Object -First 1
+            if ($null -ne $saved) {
+                $prefix = switch ([string]$saved.kind) {
+                    'wol' {'[WOL]'}
+                    'powershell' {'[WIN]'}
+                    default {'[PI]'}
+                }
+                return "Script: $prefix $([string]$saved.name)$delayText"
+            }
+            return "Script: missing [$scriptId]$delayText"
+        }
         'rf_preset' {
             return "RF Preset $([int]$action.preset) -> $([string]$action.action)$delayText"
         }
@@ -816,7 +835,14 @@ function Update-VoiceActionFields(
     elseif ($type -eq 'Saved script') {
         $voiceTargetLabel.Text = 'Saved script'
         $script:voiceScriptRows = @((Invoke-TowerGet '/api/v1/control/scripts').scripts)
-        foreach ($item in $script:voiceScriptRows) { [void]$voiceTargetCombo.Items.Add([string]$item.name) }
+        foreach ($item in $script:voiceScriptRows) {
+            $prefix = switch ([string]$item.kind) {
+                'wol' {'[WOL]'}
+                'powershell' {'[WIN]'}
+                default {'[PI]'}
+            }
+            [void]$voiceTargetCombo.Items.Add("$prefix $([string]$item.name)")
+        }
         Set-VoiceComboIndexById $voiceTargetCombo $script:voiceScriptRows $targetId
     }
     elseif ($isPreset) {
@@ -885,6 +911,7 @@ function Show-VoiceTreeSelection {
     $voiceTypeCombo.Enabled = -not $isRoot
     $voiceApplyButton.Enabled = -not $isRoot
     $voiceDeleteButton.Enabled = -not $isRoot
+    $voiceCloneButton.Enabled = -not $isRoot
     $voiceTestButton.Enabled = -not $isRoot
 
     if ($isRoot) {
@@ -1069,6 +1096,39 @@ function Add-VoiceChild {
     Refresh-VoiceTree (@($selectedPath) + @($phrase))
 }
 
+function Clone-VoiceLevel {
+    $selectedNode = $voiceTree.SelectedNode
+    if ($null -eq $selectedNode -or $null -eq $selectedNode.Parent) { return }
+    if (-not (Apply-VoiceNodeEditor $true)) { return }
+
+    $selectedNode = $voiceTree.SelectedNode
+    $sourcePhrase = [string]$selectedNode.Text
+    $siblings = $selectedNode.Tag.Siblings
+    $sourceNode = $selectedNode.Tag.NodeData
+    if ($null -eq $siblings -or $null -eq $sourceNode) {
+        throw 'Cannot locate the selected Voice command. Press Reload and try again.'
+    }
+
+    $copyNumber = 2
+    do {
+        $newPhrase = "$sourcePhrase copy"
+        if ($copyNumber -gt 2) { $newPhrase = "$sourcePhrase copy $copyNumber" }
+        $exists = $null -ne $siblings.PSObject.Properties[$newPhrase]
+        $copyNumber++
+    } while ($exists)
+
+    $clone = $sourceNode | ConvertTo-Json -Depth 60 | ConvertFrom-Json
+    $siblings | Add-Member -MemberType NoteProperty -Name $newPhrase -Value $clone
+    $parentPath = @(Get-VoicePathFromTreeNode $selectedNode.Parent)
+    Refresh-VoiceTree (@($parentPath) + @($newPhrase))
+    $voicePhraseText.SelectAll()
+    $voicePhraseText.Focus()
+    if (Get-Command Set-TowerDirty -ErrorAction SilentlyContinue) {
+        Set-TowerDirty $voiceSaveButton $true
+    }
+    Set-VoiceStatus "Voice command cloned as '$newPhrase'. Rename it, then Save to Tower."
+}
+
 function Remove-VoiceLevel {
     $selectedNode = $voiceTree.SelectedNode
     if ($null -eq $selectedNode -or $null -eq $selectedNode.Parent) { return }
@@ -1179,6 +1239,7 @@ function Refresh-VoiceEditor {
         $catalogResponse = Invoke-TowerGet '/api/v1/voice/catalog'
         $script:voiceConfig = $configResponse.config
         $script:voiceCatalog = $catalogResponse.catalog
+        $script:voiceScriptRows = @((Invoke-TowerGet '/api/v1/control/scripts').scripts)
         Merge-LegacyVoiceCommands
         $voiceWakeText.Text = [string]$script:voiceConfig.wake_phrase
         $wakeConfidenceProperty =
@@ -1321,6 +1382,9 @@ $voiceMoveActionDownButton.Add_Click({
 })
 $voiceAddButton.Add_Click({
     Invoke-VoiceEditorEvent { Add-VoiceChild } 'add'
+})
+$voiceCloneButton.Add_Click({
+    Invoke-VoiceEditorEvent { Clone-VoiceLevel } 'clone'
 })
 $voiceDeleteButton.Add_Click({
     Invoke-VoiceEditorEvent { Remove-VoiceLevel } 'delete'

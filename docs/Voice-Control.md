@@ -116,6 +116,16 @@ sudo systemctl --no-pager --full status rf-tower-voice.service
 sudo journalctl --no-pager -u rf-tower-voice.service -n 100
 ```
 
+If wake recognition suddenly becomes less reliable after an otherwise unrelated
+Tower update, first verify the microphone and confidence values rather than
+changing the command tree. Releases v0.11.13 through v0.11.20 do not change the Vosk
+model, audio chunk size, microphone selection, capture gain, or wake matching
+algorithm. A service restart can nevertheless reapply the configured C930e
+capture gain. Check the journal for recognized alternatives/confidence and test
+the wake `Minimum` value at 80% instead of 85%. If that immediately restores
+reliable `Tower` detection without false wakes, keep 80%; otherwise restore 85%
+and inspect ALSA input level and microphone placement.
+
 The voice service is intentionally separate from `rf-tower.service`: audio or
 Vosk can restart independently without interrupting RF, IR, sensors, or the
 main API.
@@ -162,12 +172,12 @@ found after it is reconnected. Changes to microphone name, sample rate, or Vosk
 model still require a service restart because they change open audio/model
 resources.
 
-Before a spoken leaf executes, the voice process queues a sequence-start
-message on Tower's LCD. The shared execution display then shows each actual IR
-or RF action once, in order, for five seconds. A final Voice-sequence success
-or failure message follows. The display does not cycle back to an earlier
-action; after the final five-second message, the backlight switches off and
-the normal environmental display remains available for the next button press.
+Before a spoken leaf executes, the voice process marks a live sequence on
+Tower's LCD. Each actual IR or RF send immediately replaces the preceding
+device name; actions never accumulate in a five-second display queue. The last
+send is immediately replaced by `Voice command / complete` for 1.5 seconds.
+The same live behavior is used by RF presets, schedules, programmable remote
+buttons, and Voice lists started from Home or a desktop shortcut.
 
 ## Current command branches
 

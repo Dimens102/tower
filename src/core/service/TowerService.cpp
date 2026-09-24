@@ -155,7 +155,8 @@ std::string compactVoiceTarget(
 bool isSequenceSummary(
     const ExecutionDisplayNotification& notification)
 {
-    return notification.title.rfind("RF Preset ", 0) == 0 ||
+    return notification.replaceCurrent ||
+        notification.title.rfind("RF Preset ", 0) == 0 ||
         notification.title == "Voice sequence" ||
         notification.target == "Voice sequence";
 }
@@ -283,6 +284,30 @@ void TowerService::queueExecutionDisplay(
 
         // A voice sequence is live: the newest device replaces the previous
         // screen instead of waiting behind a list of five-second messages.
+        executionDisplayQueue_.clear();
+        executionDisplayActive_ = false;
+        executionDisplayPainted_ = false;
+    }
+    else if (normalized.liveSequenceItem)
+    {
+        // All multi-action sources use the same live display behavior. Show
+        // only the device currently being transmitted, replacing the previous
+        // action immediately instead of building a five-second queue.
+        const std::string deviceName = compactVoiceTarget(normalized);
+        normalized.title.clear();
+        normalized.target = deviceName;
+        normalized.command.clear();
+        normalized.result.clear();
+        normalized.durationSeconds = 1;
+        normalized.durationMilliseconds = 1000;
+        executionDisplayQueue_.clear();
+        executionDisplayActive_ = false;
+        executionDisplayPainted_ = false;
+    }
+    else if (normalized.replaceCurrent)
+    {
+        // Completion belongs to the sequence that just finished. Replace its
+        // final device immediately, then keep the concise result for 1.5 s.
         executionDisplayQueue_.clear();
         executionDisplayActive_ = false;
         executionDisplayPainted_ = false;
@@ -713,11 +738,21 @@ void TowerService::updateDisplay()
                         executionDisplayCurrent_.repetitions);
             }
 
-            lcd_.show(
-                fitDisplayLine(executionDisplayCurrent_.title),
-                fitDisplayLine(executionDisplayCurrent_.target),
-                fitDisplayLine(commandLine),
-                fitDisplayLine(executionDisplayCurrent_.result));
+            if (executionDisplayCurrent_.replaceCurrent)
+            {
+                const auto lines = ExecutionDisplay::completionLines(
+                    executionDisplayCurrent_.title,
+                    executionDisplayCurrent_.target);
+                lcd_.show(lines[0], lines[1], lines[2], lines[3]);
+            }
+            else
+            {
+                lcd_.show(
+                    fitDisplayLine(executionDisplayCurrent_.title),
+                    fitDisplayLine(executionDisplayCurrent_.target),
+                    fitDisplayLine(commandLine),
+                    fitDisplayLine(executionDisplayCurrent_.result));
+            }
 
             if (!executionDisplayPainted_)
             {

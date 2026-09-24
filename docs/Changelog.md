@@ -1,5 +1,66 @@
 # Tower Changelog
 
+## v0.11.20 - 2026-09-24
+
+- Record an explicit exit result from each Windows PowerShell child so Run status no longer reports successful jobs as `failed (exit )`.
+- Confirm that Home, Voice, Control, and Remote actions preserve the saved Visible/Hidden PowerShell setting through the common Tower script queue.
+- Document that `RF Tower\Schedules` tasks are per-schedule Windows triggers and remain separate from the SYSTEM agent, GUI launcher, and interactive script worker.
+
+## v0.11.19 - 2026-09-24
+
+- Integrate the elevated per-user PowerShell worker into normal Tower Control installation and Settings > Install / Repair.
+- Start and repair the worker automatically, keep it persistent across Windows restarts, and remove it with startup integration.
+- Remove the redundant Enable/Disable Windows worker controls from Scripts while retaining per-script Visible/Hidden selection and Run status.
+
+## v0.11.18 - 2026-09-24
+
+- Repair Windows PowerShell execution by reinstalling its logged-in-user worker at highest privileges, allowing commands such as `shutdown.exe` to run with the same authority as an elevated manual console.
+- Let every saved Windows PowerShell definition choose a visible or hidden window; existing definitions default to visible for observable testing.
+- Report the window and privilege mode in Windows job results and return a direct repair instruction when an older limited worker claims a job.
+
+## v0.11.17 - 2026-09-24
+
+- Add Voice-tree cloning for complete leaf commands and branches, using speech-safe `copy` names that can immediately be renamed.
+- Resolve stable saved-script IDs into readable `[PI]`, `[WOL]`, or `[WIN]` names in Control and Voice action lists and in LCD execution notifications.
+- Refresh saved-script catalogs whenever Voice, Control, Home, or programmable Remote selectors are opened, while continuing to store stable IDs internally.
+- Validate and normalize Wake-on-LAN MAC addresses when saving and preserve all WOL fields in the blank-name copied draft.
+- Send each Wake-on-LAN magic packet three times and report its MAC and broadcast destination for clearer hardware diagnostics.
+
+## v0.11.16 - 2026-09-24
+
+- Clone Home dashboard buttons and complete Control schedules under a new stable ID, preserving their target, appearance, trigger, and full ordered action list.
+- Let one Control schedule combine Voice command sets, saved scripts, RF commands, and IR commands in an editable add/update/remove/reorder list.
+- Distinguish saved scripts as `[PI]`, `[WOL]`, or `[WIN]`; after a direct save, start a copied blank-name draft so creating a similar script cannot silently overwrite the saved one.
+- Keep the slide-away Tower Control panel open while a Scripts draft has unsaved edits.
+- Center sequence-completion text on the LCD, placing short names on row 2, long names across rows 1-2, and `Done` or `Failed` consistently on row 3 for 1.5 seconds.
+
+## v0.11.15 - 2026-09-24
+
+- Wrap Home quick actions into responsive rows and move the device-card area down automatically instead of letting buttons disappear beyond the horizontal edge.
+- Clarify Home layout ordering with Earlier/Later controls while keeping the saved left-to-right order stable across restarts and window sizes.
+- Load Tower schedules from the API's nested schedule document so schedule targets appear in the Home editor.
+- Let Save create the ID for a new Wake-on-LAN, Bash, or Windows PowerShell definition, with type-specific required-field validation.
+- Apply live LCD replacement to every multi-action source, including RF presets, Tower schedules, Home/desktop actions, Voice lists, and programmable IR buttons.
+- Show only the device currently being transmitted during a sequence, then immediately replace it with a concise 1.5-second completion such as `Preset 1 / Done`.
+
+## v0.11.14 - 2026-09-23
+
+- Add an editable Home dashboard with polished quick-action buttons for RF presets, Tower schedules, programmable remote commands, Voice command sets, learned IR commands, and saved scripts.
+- Link Home schedule buttons by their stable Tower schedule ID, so renaming a schedule does not break its button.
+- Let each Windows user rename, recolor, reorder, add, or remove Home buttons without changing Tower-owned automation data.
+- Add an optional desktop shortcut for any Home action while keeping shortcut creation inside the Home editor.
+- Add Windows logoff and real shutdown schedule triggers. Shutdown excludes restarts, and the scheduled helper attempts immediate delivery before falling back to the background queue.
+- Preserve the v0.11.13 Voice recognition configuration and document a focused confidence/microphone diagnostic instead of silently changing recognition sensitivity.
+
+## v0.11.13 - 2026-09-22
+
+- Make estimated device configuration passive: it remains visible but never skips, changes, or chooses an operational command.
+- Always transmit every explicit ON/OFF request from schedules, voice commands, programmable remotes, presets, and manual controls—even when the estimate already matches.
+- Apply state bookkeeping only after a successful send and prevent bookkeeping failures from turning successful device commands into failures.
+- Hide manual estimate correction, command-effect, and RF-to-IR state-link editors while retaining the underlying groundwork for future sensor-backed detection.
+- Remove SMART/toggle from the programmable-remote editor and clearly flag legacy SMART definitions for conversion to explicit ON or OFF.
+- Keep explicit Disabled devices as the sole intentional device-level command block.
+
 ## v0.11.12 - 2026-09-21
 
 - Show voice action sequences live instead of replaying queued five-second LCD messages after execution.

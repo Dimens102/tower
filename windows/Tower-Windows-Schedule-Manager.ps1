@@ -114,6 +114,23 @@ function Register-TowerWindowsSchedule($service, $folder, $schedule, [string]$Ap
         'windows_startup' {
             $trigger = $definition.Triggers.Create(8)
         }
+        'windows_logoff' {
+            $trigger = $definition.Triggers.Create(0)
+            $trigger.Subscription =
+                '<QueryList><Query Id="0" Path="Security">' +
+                '<Select Path="Security">' +
+                '*[System[Provider[@Name="Microsoft-Windows-Security-Auditing"] and (EventID=4647)]]' +
+                '</Select></Query></QueryList>'
+        }
+        'windows_shutdown' {
+            $trigger = $definition.Triggers.Create(0)
+            $trigger.Subscription =
+                '<QueryList><Query Id="0" Path="System">' +
+                '<Select Path="System">' +
+                '*[System[Provider[@Name="User32"] and (EventID=1074)]] and ' +
+                '*[EventData[Data[@Name="param5"]="power off"]]' +
+                '</Select></Query></QueryList>'
+        }
         'windows_idle' {
             $trigger = $definition.Triggers.Create(6)
             $definition.Settings.IdleSettings.IdleDuration = 'PT10M'

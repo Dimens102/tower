@@ -50,6 +50,8 @@ void ScriptService::save(const json& s){
     auto kind=s.value("kind","bash");
     if(kind!="bash"&&kind!="wol"&&kind!="powershell")throw std::runtime_error("Choose Bash, Windows PowerShell or Wake-on-LAN");
     if(kind=="powershell"&&(s.value("target","").empty()||s.value("target","").size()>160))throw std::runtime_error("Select the Windows worker target");
+    auto windowMode=s.value("window_mode","visible");
+    if(kind=="powershell"&&windowMode!="visible"&&windowMode!="hidden")throw std::runtime_error("Windows window mode must be visible or hidden");
     if(s.value("body","").size()>32768)throw std::runtime_error("Script is limited to 32 KB");
     int seconds=s.value("timeout_seconds",15);if(seconds<1||seconds>120)throw std::runtime_error("Timeout must be 1-120 seconds");
     auto d=readScripts();bool found=false;for(auto& item:d)if(item.at("id")==s.at("id")){item=s;found=true;break;}if(!found)d.push_back(s);writeScripts(d);
@@ -63,8 +65,19 @@ bool ScriptService::wake(const std::string& mac,const std::string& broadcast,std
     sockaddr_in destination{};destination.sin_family=AF_INET;destination.sin_port=htons(static_cast<unsigned short>(port));
     if(inet_pton(AF_INET,broadcast.c_str(),&destination.sin_addr)!=1){message="Invalid IPv4 broadcast address";return false;}
     int fd=socket(AF_INET,SOCK_DGRAM,0);if(fd<0){message="Cannot open Wake-on-LAN socket";return false;}
-    int enabled=1;bool ok=setsockopt(fd,SOL_SOCKET,SO_BROADCAST,&enabled,sizeof(enabled))==0 && sendto(fd,packet,sizeof(packet),0,reinterpret_cast<sockaddr*>(&destination),sizeof(destination))==sizeof(packet);close(fd);
-    message=ok?"Wake packet sent; PC power state is not confirmed":"Wake packet could not be sent";return ok;
+    int enabled=1;int sent=0;
+    if(setsockopt(fd,SOL_SOCKET,SO_BROADCAST,&enabled,sizeof(enabled))==0){
+        for(int attempt=0;attempt<3;++attempt){
+            if(sendto(fd,packet,sizeof(packet),0,reinterpret_cast<sockaddr*>(&destination),sizeof(destination))==sizeof(packet))++sent;
+            if(attempt<2)std::this_thread::sleep_for(std::chrono::milliseconds(75));
+        }
+    }
+    close(fd);
+    const bool ok=sent==3;
+    message=ok
+        ?"Wake packet sent 3 times to "+broadcast+" for "+mac+"; PC power state is not confirmed"
+        :"Wake packet delivery failed ("+std::to_string(sent)+" of 3 sent) to "+broadcast+" for "+mac;
+    return ok;
 }
 bool ScriptService::run(const std::string& id,std::string& message){
     try{
@@ -74,7 +87,7 @@ bool ScriptService::run(const std::string& id,std::string& message){
             std::lock_guard lock(scriptsMutex);auto d=readJobs();expireJobs(d);
             // Retain a bounded history but never discard pending work silently.
             while(d.size()>=100){auto it=std::find_if(d.begin(),d.end(),[](const json& j){return j.value("status","")!="queued"&&j.value("status","")!="running";});if(it==d.end())throw std::runtime_error("Windows queue is full");d.erase(it);}
-            json job={{"id",jobId()},{"script",id},{"name",script.value("name",id)},{"target",script.at("target")},{"body",script.value("body","")},{"timeout_seconds",script.value("timeout_seconds",15)},{"status","queued"},{"created",std::time(nullptr)},{"expires",std::time(nullptr)+60}};
+            json job={{"id",jobId()},{"script",id},{"name",script.value("name",id)},{"target",script.at("target")},{"body",script.value("body","")},{"timeout_seconds",script.value("timeout_seconds",15)},{"window_mode",script.value("window_mode","visible")},{"status","queued"},{"created",std::time(nullptr)},{"expires",std::time(nullptr)+60}};
             d.push_back(job);writeJobs(d);message="Queued on Windows: "+script.at("target").get<std::string>()+" (expires in 60 seconds if offline)";return true;
         }
         if(script.value("kind","bash")=="wol")return wake(script.value("mac",""),script.value("broadcast","255.255.255.255"),message,script.value("port",9));
